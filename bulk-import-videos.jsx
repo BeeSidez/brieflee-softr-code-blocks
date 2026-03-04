@@ -40,15 +40,15 @@ const QA_OPTIONS = [
   { id: "a135797b-d452-4f83-9b39-9a40481f1411", label: "Inspiration link match" },
 ];
 
-// Field select — includes lookup fields for filtered dropdowns
-// userAccounts (gXpkS) and userBriefs (2xMIW) are lookup fields on the user
-// that return ONLY the accounts/briefs assigned to the logged-in user.
-// We READ from those lookups but WRITE to the actual fields (accounts / briefs).
+// Field select for the SUBMISSIONS table
+// TODO: To filter accounts/briefs to only the user's, add lookup fields
+// to the Submissions table, add them to the block config in Softr, then
+// uncomment userAccounts/userBriefs below and switch useLinkedRecords to use them.
 const select = q.select({
   accounts: "v94f0",
   briefs: "fqtit",
-  userAccounts: "gXpkS",
-  userBriefs: "2xMIW",
+  // userAccounts: "gXpkS",   // uncomment once added to Submissions table + block config
+  // userBriefs: "2xMIW",     // uncomment once added to Submissions table + block config
   qaChecklist: "qYYxu",
   users: "DxNOa",
   videoFile: "PP7rO",
@@ -543,9 +543,12 @@ export default function Block() {
   const { uploadAsync, isUploading } = useUpload();
   const createRecord = useRecordCreate({ fields: select });
 
-  // READ from lookup fields — only the logged-in user's accounts/briefs
-  const { data: accountsData } = useLinkedRecords({ select, field: "userAccounts", count: 100 });
-  const { data: briefsData } = useLinkedRecords({ select, field: "userBriefs", count: 100 });
+  // READ linked records for accounts and briefs
+  // TODO: Once lookup fields (gXpkS, 2xMIW) are added to the Submissions table
+  // and configured in the Softr block, switch these to "userAccounts" / "userBriefs"
+  // to filter to only the logged-in user's data.
+  const { data: accountsData } = useLinkedRecords({ select, field: "accounts", count: 100 });
+  const { data: briefsData } = useLinkedRecords({ select, field: "briefs", count: 100 });
 
   const accounts = accountsData?.pages.flatMap((p) => p.items) ?? [];
   const briefs = briefsData?.pages.flatMap((p) => p.items) ?? [];
