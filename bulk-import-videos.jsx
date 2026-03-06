@@ -567,7 +567,7 @@ export default function Block() {
         file: r.file,
         uploadedUrl: r.url,
         creatorName: user?.fullName || "",
-        creatorEmail: user?.email || "",
+        creatorEmail: "",
         qaChecklist: [],
         brief: null,
         notes: "",
