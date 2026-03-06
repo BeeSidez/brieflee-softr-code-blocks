@@ -48,6 +48,18 @@ const PLATFORM_OPTIONS = [
   { id: "2e269f77-2443-4815-82f4-151dcb1b1ed3", label: "Other" },
 ];
 
+// Content Type option IDs for the BRIEFS table
+const CONTENT_TYPE_OPTIONS = [
+  { id: "1aa3942b-d3d8-4a94-bc66-1e26b408c657", label: "Educational" },
+  { id: "ffb25a43-37c2-4ad8-bebc-92192df5fc5a", label: "Direct sales" },
+  { id: "a1951d4b-f34d-408f-8c63-e2594b9ed302", label: "Testimonial" },
+  { id: "cefdd1a6-db70-4454-9717-b5807ffff8ba", label: "Behind the scenes" },
+  { id: "148efe00-4a01-4f32-80bf-510009adcf92", label: "Product demo" },
+  { id: "cfbfd531-434f-4541-8106-15b230f8d423", label: "Unboxing" },
+  { id: "b291f409-e6ce-4272-9606-bf3b9ba4d16c", label: "Tutorial" },
+  { id: "eb5d95ad-0e78-4f4f-a3b3-ed73c521419c", label: "Lifestyle" },
+];
+
 // Build lookups: lowercase label -> UUID
 const QA_LABEL_TO_ID = {};
 QA_OPTIONS.forEach((opt) => { QA_LABEL_TO_ID[opt.label.toLowerCase()] = opt.id; });
@@ -55,10 +67,14 @@ QA_OPTIONS.forEach((opt) => { QA_LABEL_TO_ID[opt.label.toLowerCase()] = opt.id; 
 const PLATFORM_LABEL_TO_ID = {};
 PLATFORM_OPTIONS.forEach((opt) => { PLATFORM_LABEL_TO_ID[opt.label.toLowerCase()] = opt.id; });
 
+const CONTENT_TYPE_LABEL_TO_ID = {};
+CONTENT_TYPE_OPTIONS.forEach((opt) => { CONTENT_TYPE_LABEL_TO_ID[opt.label.toLowerCase()] = opt.id; });
+
 // Fields that need label-to-UUID conversion (multi-selects)
 const MULTI_SELECT_LOOKUPS = {
   qa_checklist: QA_LABEL_TO_ID,
   platform: PLATFORM_LABEL_TO_ID,
+  content_type: CONTENT_TYPE_LABEL_TO_ID,
 };
 
 const DESTINATION_FIELDS = [
