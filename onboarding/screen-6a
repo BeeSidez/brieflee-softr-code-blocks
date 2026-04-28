@@ -1,0 +1,241 @@
+import { useState, useEffect, useRef } from 'react';
+import { useCurrentUser } from '@/lib/user';
+import { useRecord, q } from '@/lib/datasource';
+
+const readFields = q.select({
+  internal_link: 'GarE7'
+});
+
+export default function Block({ recordId }) {
+  const [reviewReady, setReviewReady] = useState(false);
+  const loadingRef = useRef(null);
+  const user = useCurrentUser();
+
+  const { data: submissionData } = useRecord({
+    recordId: recordId,
+    select: readFields,
+  });
+
+  const submissionLink = submissionData?.fields?.internal_link || '#';
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setReviewReady(true);
+    }, 30000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (reviewReady && loadingRef.current) {
+      loadingRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [reviewReady]);
+
+  return (
+    <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(to bottom, rgba(217, 224, 255, 0.15), rgba(255, 255, 255, 1))' }}>
+      <style>
+        {`
+          @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;500;800&display=swap');
+          * {
+            font-family: 'League Spartan', sans-serif;
+          }
+          @keyframes bounce {
+            0%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-8px); }
+          }
+          .typing-dot {
+            animation: bounce 1.4s infinite;
+          }
+          .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+          }
+          .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+          }
+
+          @keyframes gradientSpin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+
+          @keyframes pulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+          }
+
+          @keyframes fadeInUp {
+            from {
+              opacity: 0;
+              transform: translateY(12px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+
+          .video-frame-outer {
+            position: relative;
+            width: 220px;
+            height: 390px;
+            border-radius: 20px;
+            padding: 3px;
+            overflow: hidden;
+          }
+
+          .video-frame-outer::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: conic-gradient(
+              from 0deg,
+              #7A93FF,
+              #294FF6,
+              #D9E0FF,
+              #7A93FF,
+              #294FF6,
+              #D9E0FF,
+              #7A93FF
+            );
+            animation: gradientSpin 3s linear infinite;
+          }
+
+          .video-frame-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: #FFFFFF;
+            border-radius: 17px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
+          }
+
+          .review-ready .video-frame-outer::before {
+            animation: none;
+            background: conic-gradient(
+              from 0deg,
+              #7A93FF,
+              #294FF6,
+              #7A93FF
+            );
+          }
+        `}
+      </style>
+
+      <div className="flex-1 overflow-y-auto pb-48">
+        <div className="container mx-auto px-4 py-8 max-w-2xl">
+          <div className="mb-6">
+            <div className="flex items-center justify-center gap-2">
+              <div className="h-1.5 w-1.5 rounded-full bg-gray-200"></div>
+              <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#D9E0FF' }}></div>
+              <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#D9E0FF' }}></div>
+              <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#D9E0FF' }}></div>
+              <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#D9E0FF' }}></div>
+              <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#7A93FF' }}></div>
+              <div className="h-1.5 w-1.5 rounded-full bg-gray-200"></div>
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <div className="flex gap-2.5 items-start">
+              <img src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
+              <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}>
+                <p className="text-sm leading-relaxed" style={{ color: '#000F4D', fontWeight: 300 }}>
+                  {reviewReady
+                    ? "Your review is ready! Here's what I found."
+                    : "Give me a moment while I review your content..."
+                  }
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div ref={loadingRef} className="mb-4 ml-10">
+            <div className={reviewReady ? 'review-ready' : ''}>
+              <div className="video-frame-outer">
+                <div className="video-frame-inner">
+
+                  {!reviewReady ? (
+                    <div className="flex flex-col items-center justify-center px-6 text-center">
+                      <div
+                        style={{
+                          border: '3px solid #D9E0FF',
+                          borderTop: '3px solid #7A93FF',
+                          borderRadius: '50%',
+                          width: '36px',
+                          height: '36px',
+                          animation: 'spin 1s linear infinite'
+                        }}
+                      ></div>
+
+                      <p className="mt-5 text-sm" style={{ color: '#000F4D', fontWeight: 500 }}>
+                        Analysing your content...
+                      </p>
+                      <p className="mt-2 text-xs leading-relaxed" style={{ color: '#001364', fontWeight: 300 }}>
+                        Our AI is reviewing your submission. This usually takes a few minutes.
+                      </p>
+
+                      <div className="flex gap-1.5 mt-6">
+                        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#7A93FF', animation: 'pulse 1.5s ease-in-out infinite' }}></div>
+                        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#7A93FF', animation: 'pulse 1.5s ease-in-out 0.3s infinite' }}></div>
+                        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#7A93FF', animation: 'pulse 1.5s ease-in-out 0.6s infinite' }}></div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center px-6 text-center" style={{ animation: 'fadeInUp 0.5s ease-out' }}>
+                      <div
+                        className="w-12 h-12 rounded-full flex items-center justify-center"
+                        style={{ backgroundColor: 'rgba(122, 147, 255, 0.1)' }}
+                      >
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7A93FF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                      </div>
+
+                      <p className="mt-4 text-sm" style={{ color: '#000F4D', fontWeight: 500 }}>
+                        Review complete!
+                      </p>
+                      <p className="mt-1.5 text-xs leading-relaxed" style={{ color: '#001364', fontWeight: 300 }}>
+                        Your content has been analysed. Click below to see your results.
+                      </p>
+
+                      <a
+                        href="/review-details"
+                        className="mt-5 inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm transition-all duration-200"
+                        style={{
+                          backgroundColor: '#7A93FF',
+                          color: '#FFFFFF',
+                          fontWeight: 500,
+                          textDecoration: 'none',
+                          boxShadow: '0 2px 8px rgba(122, 147, 255, 0.3)'
+                        }}
+                        onMouseEnter={(e) => e.target.style.boxShadow = '0 4px 12px rgba(122, 147, 255, 0.4)'}
+                        onMouseLeave={(e) => e.target.style.boxShadow = '0 2px 8px rgba(122, 147, 255, 0.3)'}
+                      >
+                        View my results →
+                      </a>
+                    </div>
+                  )}
+
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
