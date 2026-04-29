@@ -15,10 +15,10 @@ Triggered when user is added to the audience (on signup). Stops if user is remov
 |---|---|---|---|
 | 1 | `bl-features-day-01-welcome` | Day 0 (immediate) | Warm welcome. What Brieflee is, what's coming over the next 14 days. |
 | 2 | `bl-features-day-02-account` | +1 day | Set up your workspace — brand bio, voice, tone. Why it matters for AI review quality. |
-| 3 | `bl-features-day-03-swipe-videos` | +1 day | The Tinder-style swipe interface for quick content review. |
+| 3 | `bl-features-day-03-swipe-videos` | +1 day | Swipe files — save content you love as inspo, attach to briefs so creators see your reference, or remix into your own briefs. |
 | 4 | `bl-features-day-04-quality-settings` | +1 day | Quality thresholds — set the bar for what gets approved. |
 | 5 | `bl-features-day-05-review-content` | +1 day | How AI review works end-to-end. Sample reviews. |
-| 6 | `bl-features-day-06-remix-content` | +1 day | Content remixing — give creators feedback to iterate. |
+| 6 | `bl-features-day-06-remix-content` | +1 day | Remix — take a swipe file and turn it into your own brief, or attach it as inspo so creators see what you want. |
 | 7 | `bl-features-day-07-create-campaign` | +1 day | Campaigns — group reviews under a single brand effort. |
 | 8 | `bl-features-day-08-create-brief` | +1 day | Briefs — what you ask creators to make. |
 | 9 | `bl-features-day-09-invite-team` | +1 day | Bring colleagues into the workspace as collaborators. |
@@ -100,9 +100,9 @@ Day 97: user record is deleted (no email, just Slack audit message).
 | `bl-trial-set-quality-settings` | Day 2 after account | `thresholds_acknowledged = false` (or thresholds untouched since creation) | Tune your quality settings — show defaults aren't always optimal. |
 | `bl-trial-first-review` | Day 5 after account | No submissions exist for this account | "Submit your first review" — show the magic of AI review. |
 | `bl-trial-reminder-1` | Day 7 after account | `subscription.status = trialing` | Halfway-through nudge — "make the most of your remaining 7 days." |
-| `bl-trial-reminder-2-48h` | Day 12 after account | `subscription.status = trialing` | 48h warning — 20% off code (`TRIAL20`). |
-| `bl-trial-reminder-3-24h` | Day 13 after account | `subscription.status = trialing` | 24h warning — same `TRIAL20` code, more urgent framing. |
-| `bl-trial-ends-today` | Day 14 after account | `subscription.status = trialing` | Trial ends today — final offer with `FINALDAY` code + bundled value (strategy session, priority support). |
+| `bl-trial-reminder-2-48h` | Day 12 after account | `subscription.status = trialing` | 48 hours to trial end. **Offer:** Upgrade now with 20% off your first month. **Code:** `TRIALUPGRADE` |
+| `bl-trial-reminder-3-24h` | Day 13 after account | `subscription.status = trialing` | 24 hours to trial end. **Offer:** Upgrade now and save 20%. **Code:** `LASTCHANCE` |
+| `bl-trial-ends-today` | Day 14 after account | `subscription.status = trialing` | Trial ends today. **Special Final Offer (next 12 hours):** 30% off your first 3 months + free 30-minute strategy session with the team + priority support for your first campaign. **CTA:** "Claim This Offer Now". **Code:** `FINALDAY` |
 
 ### From `BL | Payment failed` workflow (Stripe webhook)
 

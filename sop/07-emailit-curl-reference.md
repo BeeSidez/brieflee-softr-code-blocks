@@ -42,9 +42,9 @@ curl -X POST https://api.emailit.com/v2/emails \
 | Workspace+Team — trial 2 | `bl-trial-set-quality-settings` | `first_name`, `app_url` |
 | Workspace+Team — trial 3 | `bl-trial-first-review` | `first_name`, `app_url` |
 | Workspace+Team — trial 4 | `bl-trial-reminder-1` | `first_name`, `days_left` |
-| Workspace+Team — trial 5 | `bl-trial-reminder-2-48h` | `first_name`, `upgrade_url`, `promo_code: TRIAL20` |
-| Workspace+Team — trial 6 | `bl-trial-reminder-3-24h` | `first_name`, `upgrade_url`, `promo_code: TRIAL20` |
-| Workspace+Team — trial 7 | `bl-trial-ends-today` | `first_name`, `upgrade_url`, `promo_code: FINALDAY` |
+| Workspace+Team — trial 5 | `bl-trial-reminder-2-48h` | `first_name`, `upgrade_url`, `promo_code: TRIALUPGRADE` (20% off first month) |
+| Workspace+Team — trial 6 | `bl-trial-reminder-3-24h` | `first_name`, `upgrade_url`, `promo_code: LASTCHANCE` (20% off) |
+| Workspace+Team — trial 7 | `bl-trial-ends-today` | `first_name`, `upgrade_url`, `promo_code: FINALDAY` (30% off first 3 months + strategy session + priority support, valid 12 hours) |
 | New Stripe Sub | `bl-tx-payment-success` | `first_name`, `plan_name`, `dashboard_url` |
 | Payment Failed | `bl-tx-payment-failed` | `first_name`, `update_payment_url` |
 
