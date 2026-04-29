@@ -1,9 +1,9 @@
 {
   "date": "2026-04-29",
   "description": "Subscription backfill from billing records (option A)",
-  "subscriptions_created": 9,
+  "subscriptions_created": 14,
   "records_skipped": 0,
-  "unique_accounts_processed": 9,
+  "unique_accounts_processed": 14,
   "entries": [
     {
       "account_id": "AuwCWSttE3E7b9",
@@ -85,6 +85,57 @@
       "payment_status": "trial",
       "mapped_to_status": "trialing",
       "plan_id": "3DudH4fLuqChIr"
+    },
+    {
+      "account_id": "nf6O7jLg2cfyr1",
+      "subscription_id": "5UzRbLeidvy8zl",
+      "sourced_from_billing": "MzxXOg78irk2QB",
+      "customer_email": "mgjxa37@tempomailusa.com",
+      "payment_status": "cancelled",
+      "mapped_to_status": "canceled",
+      "plan_id": "AQI1eTOfZOYM5h",
+      "resolved_via": "user_link"
+    },
+    {
+      "account_id": "9zsfOj2QVP8kas",
+      "subscription_id": "PgHdKQyBkZF1hb",
+      "sourced_from_billing": "gfPIAMAwXFQj0s",
+      "customer_email": "mohamadsuhaidi@gmail.com",
+      "payment_status": "paid",
+      "mapped_to_status": "active",
+      "plan_id": "MOFJ50J3sX5cQ4",
+      "resolved_via": "user_link"
+    },
+    {
+      "account_id": "Kd5GVsD9tfQxmO",
+      "subscription_id": "sfHBTG9eZGxCNF",
+      "sourced_from_billing": "Z6b3IWHfFvel2c",
+      "customer_email": "edward.e@sociallypowerful.com",
+      "payment_status": "cancelled",
+      "mapped_to_status": "canceled",
+      "plan_id": "QHonFLGNkspIop",
+      "resolved_via": "user_link"
+    },
+    {
+      "account_id": "gTzLyf14gTK9c3",
+      "subscription_id": "LbiChD46SBh61S",
+      "sourced_from_billing": "zds4Vt1sMVUEjJ",
+      "customer_email": "vivekgautam2400@gmail.com",
+      "payment_status": "cancelled",
+      "mapped_to_status": "canceled",
+      "plan_id": "QHonFLGNkspIop",
+      "resolved_via": "user_link"
+    },
+    {
+      "account_id": "0auwfO2ZS0tWI9",
+      "subscription_id": "daOtvkpb4Rsgn3",
+      "sourced_from_billing": "yEuzPZ4LzYsOim",
+      "customer_email": "priya.sharma@gymshark.com",
+      "payment_status": "paid",
+      "mapped_to_status": "active",
+      "plan_id": "3DudH4fLuqChIr",
+      "resolved_via": "user_link"
     }
-  ]
+  ],
+  "v3_extension_note": "V3 added user-link fallback: when billing.accounts is empty, resolve account via billing.user \u2192 user.accounts. Catches records orphaned by the broken Stripe webhook that linked to user but not account."
 }
