@@ -1,0 +1,90 @@
+{
+  "date": "2026-04-29",
+  "description": "Subscription backfill from billing records (option A)",
+  "subscriptions_created": 9,
+  "records_skipped": 0,
+  "unique_accounts_processed": 9,
+  "entries": [
+    {
+      "account_id": "AuwCWSttE3E7b9",
+      "subscription_id": "gSBfOhB1ANuiM0",
+      "sourced_from_billing": "lOVHcSNmTReEXg",
+      "customer_email": "kawaiiandpotato@gmail.com",
+      "payment_status": "cancelled",
+      "mapped_to_status": "canceled",
+      "plan_id": "MOFJ50J3sX5cQ4"
+    },
+    {
+      "account_id": "Cg8XFPcUvn1hJe",
+      "subscription_id": "HDT3H07K1YOIuM",
+      "sourced_from_billing": "vQoAz5kLctzao4",
+      "customer_email": "ijlaguer@gmail.com",
+      "payment_status": "cancelled",
+      "mapped_to_status": "canceled",
+      "plan_id": "MOFJ50J3sX5cQ4"
+    },
+    {
+      "account_id": "GkRshlQaHYifGa",
+      "subscription_id": "3QnjiJnoMABtub",
+      "sourced_from_billing": "H5rds18qmeZquQ",
+      "customer_email": "simplymindlesssolutions@gmail.com",
+      "payment_status": "cancelled",
+      "mapped_to_status": "canceled",
+      "plan_id": "MOFJ50J3sX5cQ4"
+    },
+    {
+      "account_id": "ERc8gXyHLeukdW",
+      "subscription_id": "hTLcJpMm2Hg7Oa",
+      "sourced_from_billing": "QarCanBICmWsNe",
+      "customer_email": "home.jorton@gmail.com",
+      "payment_status": "cancelled",
+      "mapped_to_status": "canceled",
+      "plan_id": "MOFJ50J3sX5cQ4"
+    },
+    {
+      "account_id": "ZP7S6kHzgzLXrM",
+      "subscription_id": "N9KobFe91Qs5iX",
+      "sourced_from_billing": "hugblUC0BKMeHx",
+      "customer_email": "gina@joyspringvitamins.com",
+      "payment_status": "cancelled",
+      "mapped_to_status": "canceled",
+      "plan_id": "MOFJ50J3sX5cQ4"
+    },
+    {
+      "account_id": "JN8YoPwZqVjyYW",
+      "subscription_id": "SDw4s4DmjVB8Cs",
+      "sourced_from_billing": "nubmSYSpnLhzBQ",
+      "customer_email": "dahmouchepro@gmail.com",
+      "payment_status": "cancelled",
+      "mapped_to_status": "canceled",
+      "plan_id": "MOFJ50J3sX5cQ4"
+    },
+    {
+      "account_id": "YdpX0NCo4oAmGS",
+      "subscription_id": "WSqSkMcC1gbCeo",
+      "sourced_from_billing": "1AtrAd9vNrOtjL",
+      "customer_email": "agossourichmath08@gmail.com",
+      "payment_status": "cancelled",
+      "mapped_to_status": "canceled",
+      "plan_id": "efLCArKogDzBco"
+    },
+    {
+      "account_id": "VLIDJIe56KC0BK",
+      "subscription_id": "yhswDAWES2q0B6",
+      "sourced_from_billing": "5bMvIigs8re4E6",
+      "customer_email": "lilyansahfante@gmail.com",
+      "payment_status": "cancelled",
+      "mapped_to_status": "canceled",
+      "plan_id": "AQI1eTOfZOYM5h"
+    },
+    {
+      "account_id": "SxKHkytMF4Csvr",
+      "subscription_id": "zIxS6YhkOL2J9B",
+      "sourced_from_billing": "4is2ZpOYjIwrd7",
+      "customer_email": "dev@cloudandculture.co",
+      "payment_status": "trial",
+      "mapped_to_status": "trialing",
+      "plan_id": "3DudH4fLuqChIr"
+    }
+  ]
+}
