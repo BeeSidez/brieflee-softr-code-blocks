@@ -1,6 +1,23 @@
 # Brieflee Workflow Architecture Spec
 
-> Source-of-truth doc for FigJam workflow build. Covers Softr workflows + EmailIt setup. Stripe-specific workflows are a separate spec.
+> Source-of-truth doc for the Softr workflow build. Covers Softr workflows + EmailIt setup.
+
+## Visual diagrams (FigJam)
+
+Each workflow has a FigJam — use these for explaining the system:
+
+| Diagram | Link |
+|---|---|
+| Workflow overview (master) | https://www.figma.com/board/vPr2oHapkKksuXg4kUNEMr |
+| BL \| New Signup detail | https://www.figma.com/board/lKfo7zKngJXuBLSnNcb6r7 |
+| BL \| New Workspace + Team detail | https://www.figma.com/board/ZL3J6FgybJ0ZMhneDOkkt0 |
+| BL \| New Stripe Sub detail | https://www.figma.com/board/BRDjDkwsfi5EDrMTEBAbvr |
+| BL \| Sub Cancelled detail | https://www.figma.com/board/htWBxgsgha6lLrLeJfhkjg |
+| BL \| Payment failed detail | https://www.figma.com/board/QKKlj3ST7drCdUQks2gNGi |
+
+## SOPs (process docs)
+
+Day-to-day operational docs are at [`sop/`](../sop/00-README.md). Read those for the "how do we run this" view; this doc is the "what should each workflow do" reference.
 
 ## Current EmailIt account state (verified 2026-04-29)
 
