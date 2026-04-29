@@ -13,6 +13,7 @@ Standard operating procedure docs — how Brieflee actually runs day-to-day. Wri
 | [`05-deletion-policy.md`](05-deletion-policy.md) | Who gets deleted, when, and why — with the cadence schedule |
 | [`06-test-accounts.md`](06-test-accounts.md) | How to test without polluting production data |
 | [`07-emailit-curl-reference.md`](07-emailit-curl-reference.md) | Ready-to-import cURLs for every EmailIt action |
+| [`08-email-matrix.md`](08-email-matrix.md) | Every email — alias, audience, wait time, what it covers |
 | [`in-progress/`](in-progress/) | Feature trackers for work currently in flight |
 
 ## Cross-product references
