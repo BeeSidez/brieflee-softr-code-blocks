@@ -2,6 +2,17 @@
 
 > Source-of-truth doc for FigJam workflow build. Covers Softr workflows + EmailIt setup. Stripe-specific workflows are a separate spec.
 
+## Current EmailIt account state (verified 2026-04-29)
+
+- **Workspace:** Bev (`/4fee711d/`)
+- **API key:** `Brieflee` with Full Access scope, prefix `secret_JIMBO…`
+- **Domain:** verified ✓
+- **Send-first-email setup step:** not done yet (67% setup progress)
+- **Audiences:** only the default `General` (`aud_4CwMZkngdbhVxwjRmJSbpLNtuHE`) — needs Trial Users, Active Subscribers, Lapsed created
+- **Templates:** 8 exist but all Creator Scans content — Brieflee templates need to be created from scratch
+- **Automations:** Beta. Three contexts available: Contact (active), Email (active), Event ("Soon" — not yet available). **We're locked into Contact-trigger automations for v1**, which means triggering by audience membership.
+- **Quotas:** 50k monthly usage cap, 5,000/day, 2/sec. Email credits show 0 — TBD whether that's a separate paid layer or just unused; flag for Bev.
+
 ## High-level architecture
 
 Three categories of work:
