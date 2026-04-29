@@ -33,8 +33,8 @@ curl -X POST https://api.emailit.com/v2/emails \
 |---|---|---|
 | New Signup — member branch | `bl-tx-team-invite` | `first_name`, `owner_name`, `accept_url` |
 | New Signup — owner step 9 | `bl-features-day-01-welcome` | `first_name` |
-| New Signup — owner step 13 | `bl-trial-create-account` | `first_name`, `account_setup_url` |
-| New Signup — owner step 16 | `bl-trial-create-account` | `first_name`, `account_setup_url`, `urgent: true` |
+| New Signup — owner step 13 (day 1) | `bl-trial-create-account` | `first_name`, `account_setup_url` |
+| New Signup — owner step 16 (day 6) | `bl-trial-create-account-day6` | `first_name`, `account_setup_url` |
 | New Signup — owner step 19 | `bl-winback-30d` | `first_name`, `return_url`, `promo_code` |
 | New Signup — owner step 22 | `bl-winback-60d` | `first_name`, `return_url` |
 | New Signup — owner step 25 | `bl-winback-90d-final` | `first_name`, `return_url`, `closure_date` |

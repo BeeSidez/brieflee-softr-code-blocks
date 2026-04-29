@@ -168,11 +168,16 @@
       "id": "tem_4D1rc8trNE4pKi7idCSJYIUSStk",
       "alias": "bl-tx-team-invite",
       "name": "BL | Team invite"
+    },
+    "bl-trial-create-account-day6": {
+      "id": "tem_4D2FO5uKCRJRlJlIKU7Em8oTuqR",
+      "alias": "bl-trial-create-account-day6",
+      "name": "BL | Trial \u2014 Create account (day 6 stronger CTA)"
     }
   },
   "totals": {
     "audiences": 4,
-    "templates": 29
+    "templates": 30
   },
   "note_renamed_2026_04_29": "Audiences renamed for clarity: First 14 Days \u2192 Onboarding, Active Subscribers \u2192 Subscribers. Added Team Members audience. Lapsed kept as-is."
 }

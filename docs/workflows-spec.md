@@ -148,7 +148,7 @@ Owns the "we have an email, no workspace yet" stage. Drip enrolment, affiliate s
 | 13 | **EmailIt API: send `bl-trial-create-account`** | First nudge |
 | 14 | **Wait — 5 days** (= day 6) | |
 | 15 | **Softr DB: find account** + branch — exists? exit : continue | |
-| 16 | **EmailIt API: send `bl-trial-create-account`** with stronger CTA copy variant | Could be a second template, or pass a variable into the same template that toggles tone |
+| 16 | **EmailIt API: send `bl-trial-create-account-day6`** | Separate template with stronger CTA copy than day-1 nudge |
 | 17 | **Wait — 24 days** (= day 30) | |
 | 18 | **Softr DB: find account** + branch — exists? exit : continue | |
 | 19 | **EmailIt API: send `bl-winback-30d`** | "We saved your spot, here's 20% off if you come back" |
