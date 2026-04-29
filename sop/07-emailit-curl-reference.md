@@ -54,7 +54,7 @@ curl -X POST https://api.emailit.com/v2/emails \
 
 ⚠️ All three return **409 Conflict if email already exists**. Set the Softr Call API step to continue on error — 409 is success.
 
-### Add to BL | First 14 Days
+### Add to BL | Onboarding
 ```bash
 curl -X POST https://api.emailit.com/v2/audiences/aud_4D1p0CkELqJe0jjrJ4aOuVywgP6/subscribers \
   -H "Content-Type: application/json" \
@@ -68,7 +68,7 @@ curl -X POST https://api.emailit.com/v2/audiences/aud_4D1p0CkELqJe0jjrJ4aOuVywgP
   }'
 ```
 
-### Add to BL | Active Subscribers
+### Add to BL | Subscribers
 ```bash
 curl -X POST https://api.emailit.com/v2/audiences/aud_4D1p0CkELqJULokJegC0AoQhoCM/subscribers \
   -H "Content-Type: application/json" \
@@ -96,18 +96,33 @@ curl -X POST https://api.emailit.com/v2/audiences/aud_4D1p0CkELqJm3pkW5ZDdARUZYv
   }'
 ```
 
+### Add to BL | Team Members
+Used in New Signup workflow when `user.role = Member` (replaces the inline `bl-tx-team-invite` send if you want member emails to come from EmailIt automation instead).
+```bash
+curl -X POST https://api.emailit.com/v2/audiences/aud_4D2CLqQohy7lOMT8wESKL5uSGEa/subscribers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "{{record.fields.email}}",
+    "first_name": "{{Name.first_name}}",
+    "custom_fields": {
+      "softr_user_id": "{{record.id}}",
+      "owner_name": "{{record.fields.owner_name}}"
+    }
+  }'
+```
+
 ---
 
 ## Remove subscriber from audience
 
 Requires `subscriber_id`, not email. Recommended: store the ID on the user record when adding (add `emailit_subscriber_id` field to users table).
 
-### Remove from BL | First 14 Days
+### Remove from BL | Onboarding
 ```bash
 curl -X DELETE "https://api.emailit.com/v2/audiences/aud_4D1p0CkELqJe0jjrJ4aOuVywgP6/subscribers/{{record.fields.emailit_subscriber_id}}"
 ```
 
-### Remove from BL | Active Subscribers
+### Remove from BL | Subscribers
 ```bash
 curl -X DELETE "https://api.emailit.com/v2/audiences/aud_4D1p0CkELqJULokJegC0AoQhoCM/subscribers/{{record.fields.emailit_subscriber_id}}"
 ```
@@ -128,8 +143,9 @@ curl -X DELETE "https://api.emailit.com/v2/audiences/aud_xxx/subscribers/{{step1
 
 | Audience | ID |
 |---|---|
-| `BL | First 14 Days` | `aud_4D1p0CkELqJe0jjrJ4aOuVywgP6` |
-| `BL | Active Subscribers` | `aud_4D1p0CkELqJULokJegC0AoQhoCM` |
+| `BL | Onboarding` | `aud_4D1p0CkELqJe0jjrJ4aOuVywgP6` |
+| `BL | Subscribers` | `aud_4D1p0CkELqJULokJegC0AoQhoCM` |
 | `BL | Lapsed` | `aud_4D1p0CkELqJm3pkW5ZDdARUZYvy` |
+| `BL | Team Members` | `aud_4D2CLqQohy7lOMT8wESKL5uSGEa` |
 
 Full list of template IDs (if you ever need to reference by ID instead of alias) is in [`docs/emailit-assets-2026-04-29.json`](../docs/emailit-assets-2026-04-29.json).

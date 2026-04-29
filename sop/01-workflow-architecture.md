@@ -35,7 +35,7 @@ The catalogue of Softr workflow capabilities (action types, triggers, integratio
 
 1. **One workflow per lifecycle stage, not one mega-workflow.** Splits cleanly by trigger event (signup vs. account vs. Stripe).
 2. **Trial timer anchors at account creation, not signup.** A user who signs up but never creates a workspace doesn't waste trial days.
-3. **Drip campaign is independent of trial state.** Lives in EmailIt as a Contact-trigger automation watching the `First 14 Days` audience. Whether someone creates an account or not, they get the 14 educational emails.
+3. **Drip campaign is independent of trial state.** Lives in EmailIt as a Contact-trigger automation watching the `Onboarding` audience. Whether someone creates an account or not, they get the 14 educational emails.
 4. **Stripe webhooks update one source of truth (subscriptions table).** Quota and access rules are derived from there via Softr formulas.
 5. **Notifications table + Slack** at every meaningful step. Slack for phone alerts; notifications table for in-app badges.
 6. **Auto-delete dormant signups at day 97**, after a 30/60/90 win-back cadence. See [`05-deletion-policy.md`](05-deletion-policy.md).

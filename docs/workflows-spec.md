@@ -48,7 +48,7 @@ Create in EmailIt UI. These are the "buckets" subscribers move between:
 | Audience | Purpose | Who's in it |
 |---|---|---|
 | **Trial Users** | Drives 14-day drip | Anyone with `subscription_status = trialing` |
-| **Active Subscribers** | Drives upsell/retention sends | Anyone with `subscription_status = active` |
+| **Subscribers** | Drives upsell/retention sends | Anyone with `subscription_status = active` |
 | **Lapsed** | Re-engagement targets | Anyone with `subscription_status IN (canceled, past_due)` |
 
 Notes:
@@ -97,7 +97,7 @@ After review of the existing workflows + EmailIt account, these are the architec
 1. **Two main workflows**, not one mega-workflow:
    - `BL | New Signup` — fires on user record create. Owns the "no account yet" stage.
    - `BL | New Workspace + Team` — fires on account create. Owns the trial timer + product nudges.
-2. **Drip continues independently in EmailIt** — Contact-trigger automation watching `First 14 Days` audience, fires day 02–14 emails automatically.
+2. **Drip continues independently in EmailIt** — Contact-trigger automation watching `Onboarding` audience, fires day 02–14 emails automatically.
 3. **Trial timer anchored at account creation**, not signup. If user signs up but never creates account, no trial expires for them — they just sit in drip + lapse to win-back.
 4. **Team members** (added via the team_email fields in onboarding) get role=Member, status=Pending, and **are NOT enrolled in the 14-day drip**. They get a separate single invite email instead.
 5. **Google Sheets row stays as a deletion backup** (not the primary capture). EmailIt audience is primary.
@@ -140,7 +140,7 @@ Owns the "we have an email, no workspace yet" stage. Drip enrolment, affiliate s
 | 5 | **Google Sheets: Add row** to Subscribers/New Users | Backup record (deletion safety net — if a user is deleted we still have audit trail) |
 | 6 | **Call API — Referly: create affiliate** | POST `https://www.referly.so/api/v1/affiliates`, body `{ email, firstName, lastName, affiliateLink, commissionRate: 40 }`. Auth credential: new `Brieflee Referly` connection. |
 | 7 | **Softr DB: update user** | Save `affiliate_link` field returned by Referly (need to add this field to users table — TBD whether response contains the link or it's constructible from input) |
-| 8 | **EmailIt API: add subscriber to `First 14 Days` audience** (`aud_4D1p0CkELqJe0jjrJ4aOuVywgP6`) | POST `https://api.emailit.com/v2/audiences/{aud_xxx}/subscribers` body `{ "email", "first_name", "last_name", "custom_fields": { "softr_user_id" } }`. **Returns 409 if email exists — accept that as success.** Audience-membership kicks off the 14-day drip automation in EmailIt UI. |
+| 8 | **EmailIt API: add subscriber to `Onboarding` audience** (`aud_4D1p0CkELqJe0jjrJ4aOuVywgP6`) | POST `https://api.emailit.com/v2/audiences/{aud_xxx}/subscribers` body `{ "email", "first_name", "last_name", "custom_fields": { "softr_user_id" } }`. **Returns 409 if email exists — accept that as success.** Audience-membership kicks off the 14-day drip automation in EmailIt UI. |
 | 9 | **EmailIt API: send `bl-features-day-01-welcome`** (template alias) | First drip email, sent inline so welcome arrives instantly. EmailIt automation handles days 02–14. |
 | 10 | **Wait — 1 day** | |
 | 11 | **Softr DB: find account** for this user | |
@@ -160,7 +160,7 @@ Owns the "we have an email, no workspace yet" stage. Drip enrolment, affiliate s
 | 25 | **EmailIt API: send `bl-winback-90d-final`** | "We're closing your account in 7 days unless you come back" |
 | 26 | **Wait — 7 days** | |
 | 27 | **Branch: account exists?** exit if yes | |
-| 28 | **EmailIt API: remove subscriber from `First 14 Days` audience**, add to `Lapsed` | They're done with the active funnel; keep email for occasional broadcasts |
+| 28 | **EmailIt API: remove subscriber from `Onboarding` audience**, add to `Lapsed` | They're done with the active funnel; keep email for occasional broadcasts |
 | 29 | **Softr DB: delete user record** | Frees up the Softr 5k-external-user slot |
 | 30 | **Slack: Post message** to `#new-user` | "Auto-deleted dormant user: {email} (97 days no account)" — audit trail |
 
@@ -203,8 +203,8 @@ The current workflow does too much — separate concerns. Simplified target:
 | 4 | Softr DB: upsert subscription record (one per `stripe_subscription_id`), status=`active`, link to account + plan |
 | 5 | Softr DB: update account.`current_subscription` link |
 | 6 | Softr DB: add notification record (notification_type = `Subscription started`) |
-| 7 | EmailIt API: remove subscriber from `First 14 Days` audience (stops drip) |
-| 8 | EmailIt API: add subscriber to `Active Subscribers` audience |
+| 7 | EmailIt API: remove subscriber from `Onboarding` audience (stops drip) |
+| 8 | EmailIt API: add subscriber to `Subscribers` audience |
 | 9 | EmailIt API: send `bl-tx-payment-success` |
 | 10 | Slack: Post message "🎉 New paid subscriber" |
 
@@ -217,7 +217,7 @@ The existing 12-step "do everything" Stripe Sub workflow can be retired once thi
 ## Workflow 3: `BL | Sub Cancelled` (existing, minor tweaks)
 
 Keep the existing 7-step shape. Add to the end:
-- EmailIt API: remove subscriber from `Active Subscribers` audience
+- EmailIt API: remove subscriber from `Subscribers` audience
 - EmailIt API: add subscriber to `Lapsed` audience
 - EmailIt API: send `bl-tx-cancellation-confirm` (optional)
 
@@ -304,7 +304,7 @@ The daily cron workflow needs to respect this. If you're nudging 100 users/day, 
 ### 1. Stopping the drip when someone pays
 When the Stripe checkout success redirect fires (separate spec):
 - Remove subscriber from **Trial Users** audience → drip stops automatically
-- Add subscriber to **Active Subscribers** audience
+- Add subscriber to **Subscribers** audience
 - Send `payment-success` transactional email
 
 If you forget to remove from Trial Users, paying customers keep getting "Day 7 of your trial" emails. That's a bad look.

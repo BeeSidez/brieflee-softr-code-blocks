@@ -2,17 +2,25 @@
   "created_at": "2026-04-29",
   "api_key_used_prefix": "secret_JIM8OD...",
   "audiences": {
-    "BL | First 14 Days": {
+    "BL | Onboarding": {
       "id": "aud_4D1p0CkELqJe0jjrJ4aOuVywgP6",
-      "name": "BL | First 14 Days"
+      "name": "BL | Onboarding",
+      "purpose": "Signed up, no workspace yet. Drives onboarding drip + win-back if no account created."
     },
-    "BL | Active Subscribers": {
+    "BL | Subscribers": {
       "id": "aud_4D1p0CkELqJULokJegC0AoQhoCM",
-      "name": "BL | Active Subscribers"
+      "name": "BL | Subscribers",
+      "purpose": "Active paying customers."
     },
     "BL | Lapsed": {
       "id": "aud_4D1p0CkELqJm3pkW5ZDdARUZYvy",
-      "name": "BL | Lapsed"
+      "name": "BL | Lapsed",
+      "purpose": "Churned/expired. Available for re-engagement broadcasts."
+    },
+    "BL | Team Members": {
+      "id": "aud_4D2CLqQohy7lOMT8wESKL5uSGEa",
+      "name": "BL | Team Members",
+      "purpose": "Members invited by an account owner. Shorter member-specific drip."
     }
   },
   "templates": {
@@ -163,8 +171,8 @@
     }
   },
   "totals": {
-    "audiences": 3,
+    "audiences": 4,
     "templates": 29
   },
-  "note_renamed_2026_04_29": "Audiences renamed with BL | prefix to keep them clearly Brieflee-namespaced (Creator Scans audiences will use CS | prefix in the same workspace)."
+  "note_renamed_2026_04_29": "Audiences renamed for clarity: First 14 Days \u2192 Onboarding, Active Subscribers \u2192 Subscribers. Added Team Members audience. Lapsed kept as-is."
 }

@@ -59,7 +59,7 @@ See [`06-test-accounts.md`](06-test-accounts.md). Use Stripe test mode + test ca
 - **Webhook not firing:** check Stripe dashboard → Developers → Webhooks → recent events. Each Softr workflow has its own webhook URL (`https://workflows-api.softr.io/v1/workflows/{id}`). Confirm the URL matches what's set in Stripe.
 - **Subscription created but not in Softr DB:** webhook hit but the find-user step failed. Often the customer email in Stripe doesn't match a user record in Softr. Check `customer_email` in the Stripe event vs `email` in users table.
 - **User stuck on "trial expired" but they paid:** the `BL | New Stripe Sub` workflow didn't run, OR ran but didn't update `account.current_subscription` link. Check workflow run history in Softr.
-- **User getting trial reminders after paying:** they weren't removed from the `First 14 Days` EmailIt audience. Confirm the Stripe Sub workflow's removal step ran.
+- **User getting trial reminders after paying:** they weren't removed from the `Onboarding` EmailIt audience. Confirm the Stripe Sub workflow's removal step ran.
 
 ## Stripe customer portal
 

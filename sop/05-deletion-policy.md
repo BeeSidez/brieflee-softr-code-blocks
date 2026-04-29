@@ -22,7 +22,7 @@ Built into the `BL | New Signup` workflow (see [FigJam diagram](https://www.figm
 | 30 | `bl-winback-30d` — "we miss you, 20% off if you set up" |
 | 60 | `bl-winback-60d` — different angle (story, new feature) |
 | 90 | `bl-winback-90d-final` — "your account closes in 7 days unless you come back" |
-| 97 | Move from `First 14 Days` → `Lapsed` audience in EmailIt; verify Sheets backup row exists; delete user record from Softr; Slack audit message |
+| 97 | Move from `Onboarding` → `Lapsed` audience in EmailIt; verify Sheets backup row exists; delete user record from Softr; Slack audit message |
 
 If at any point during 1-97 they create an account, the workflow exits — they're now a real user.
 
