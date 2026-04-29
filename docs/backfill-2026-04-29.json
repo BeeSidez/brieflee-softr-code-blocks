@@ -12,7 +12,8 @@
       "customer_email": "kawaiiandpotato@gmail.com",
       "payment_status": "cancelled",
       "mapped_to_status": "canceled",
-      "plan_id": "MOFJ50J3sX5cQ4"
+      "plan_id": "MOFJ50J3sX5cQ4",
+      "cleaned_up": true
     },
     {
       "account_id": "Cg8XFPcUvn1hJe",
@@ -21,7 +22,8 @@
       "customer_email": "ijlaguer@gmail.com",
       "payment_status": "cancelled",
       "mapped_to_status": "canceled",
-      "plan_id": "MOFJ50J3sX5cQ4"
+      "plan_id": "MOFJ50J3sX5cQ4",
+      "cleaned_up": true
     },
     {
       "account_id": "GkRshlQaHYifGa",
@@ -30,7 +32,8 @@
       "customer_email": "simplymindlesssolutions@gmail.com",
       "payment_status": "cancelled",
       "mapped_to_status": "canceled",
-      "plan_id": "MOFJ50J3sX5cQ4"
+      "plan_id": "MOFJ50J3sX5cQ4",
+      "cleaned_up": true
     },
     {
       "account_id": "ERc8gXyHLeukdW",
@@ -39,7 +42,8 @@
       "customer_email": "home.jorton@gmail.com",
       "payment_status": "cancelled",
       "mapped_to_status": "canceled",
-      "plan_id": "MOFJ50J3sX5cQ4"
+      "plan_id": "MOFJ50J3sX5cQ4",
+      "cleaned_up": true
     },
     {
       "account_id": "ZP7S6kHzgzLXrM",
@@ -48,7 +52,8 @@
       "customer_email": "gina@joyspringvitamins.com",
       "payment_status": "cancelled",
       "mapped_to_status": "canceled",
-      "plan_id": "MOFJ50J3sX5cQ4"
+      "plan_id": "MOFJ50J3sX5cQ4",
+      "cleaned_up": true
     },
     {
       "account_id": "JN8YoPwZqVjyYW",
@@ -57,7 +62,8 @@
       "customer_email": "dahmouchepro@gmail.com",
       "payment_status": "cancelled",
       "mapped_to_status": "canceled",
-      "plan_id": "MOFJ50J3sX5cQ4"
+      "plan_id": "MOFJ50J3sX5cQ4",
+      "cleaned_up": true
     },
     {
       "account_id": "YdpX0NCo4oAmGS",
@@ -66,7 +72,8 @@
       "customer_email": "agossourichmath08@gmail.com",
       "payment_status": "cancelled",
       "mapped_to_status": "canceled",
-      "plan_id": "efLCArKogDzBco"
+      "plan_id": "efLCArKogDzBco",
+      "cleaned_up": true
     },
     {
       "account_id": "VLIDJIe56KC0BK",
@@ -75,7 +82,8 @@
       "customer_email": "lilyansahfante@gmail.com",
       "payment_status": "cancelled",
       "mapped_to_status": "canceled",
-      "plan_id": "AQI1eTOfZOYM5h"
+      "plan_id": "AQI1eTOfZOYM5h",
+      "cleaned_up": true
     },
     {
       "account_id": "SxKHkytMF4Csvr",
@@ -84,7 +92,8 @@
       "customer_email": "dev@cloudandculture.co",
       "payment_status": "trial",
       "mapped_to_status": "trialing",
-      "plan_id": "3DudH4fLuqChIr"
+      "plan_id": "3DudH4fLuqChIr",
+      "cleaned_up": true
     },
     {
       "account_id": "nf6O7jLg2cfyr1",
@@ -94,7 +103,8 @@
       "payment_status": "cancelled",
       "mapped_to_status": "canceled",
       "plan_id": "AQI1eTOfZOYM5h",
-      "resolved_via": "user_link"
+      "resolved_via": "user_link",
+      "cleaned_up": true
     },
     {
       "account_id": "9zsfOj2QVP8kas",
@@ -114,7 +124,8 @@
       "payment_status": "cancelled",
       "mapped_to_status": "canceled",
       "plan_id": "QHonFLGNkspIop",
-      "resolved_via": "user_link"
+      "resolved_via": "user_link",
+      "cleaned_up": true
     },
     {
       "account_id": "gTzLyf14gTK9c3",
@@ -124,7 +135,8 @@
       "payment_status": "cancelled",
       "mapped_to_status": "canceled",
       "plan_id": "QHonFLGNkspIop",
-      "resolved_via": "user_link"
+      "resolved_via": "user_link",
+      "cleaned_up": true
     },
     {
       "account_id": "0auwfO2ZS0tWI9",
@@ -134,8 +146,11 @@
       "payment_status": "paid",
       "mapped_to_status": "active",
       "plan_id": "3DudH4fLuqChIr",
-      "resolved_via": "user_link"
+      "resolved_via": "user_link",
+      "cleaned_up": true
     }
   ],
-  "v3_extension_note": "V3 added user-link fallback: when billing.accounts is empty, resolve account via billing.user \u2192 user.accounts. Catches records orphaned by the broken Stripe webhook that linked to user but not account."
+  "v3_extension_note": "V3 added user-link fallback: when billing.accounts is empty, resolve account via billing.user \u2192 user.accounts. Catches records orphaned by the broken Stripe webhook that linked to user but not account.",
+  "cleanup_note": "After Stripe subscriptions export confirmed only Mohamad has an active sub, deleted all 13 other backfilled subscriptions and cleared their account.current_subscription links. Those 13 accounts will receive fresh Studio trial subscriptions during the re-engagement campaign. Billing table left intact as historical record.",
+  "final_subscription_count": 1
 }
