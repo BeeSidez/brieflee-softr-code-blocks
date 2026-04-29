@@ -73,125 +73,186 @@ This is the cleanest way to handle the drip — you don't manage scheduling, Ema
 
 ---
 
-## Workflow 1: `BL | New Signup` (revise existing)
+## Workflow architecture (revised after reviewing existing workflows)
+
+**One main workflow per user lifecycle event, anchored on the trigger date with Wait actions for time-based steps.** No daily cron sweep — that's harder to maintain and each user has their own clock anyway.
+
+The existing Brieflee workflows (`BL | New Stripe Sub`, `BL | Successful Recurring Payment`, `BL | Sub Cancelled`, `BL | Payment failed`) already follow this pattern using Softr's native Wait action. We mirror it.
+
+### The 3 active workflows we need
+
+| Workflow | Trigger | Purpose |
+|---|---|---|
+| `BL | New Signup` | User record added | Whole user lifecycle from day 0 → day 14: drip enrolment, conditional nudges, trial reminders, trial end |
+| `BL | New Stripe Sub` (revise existing) | Stripe webhook `customer.subscription.created` OR Checkout success | Convert trial to paid, remove from drip audience, add to active subscribers, send payment-success email |
+| `BL | Sub Cancelled` (existing, fine) | Stripe webhook `customer.subscription.deleted` | Update DB state, remove from active audience, send cancel-confirm |
+| `BL | Payment failed` (existing, fine) | Stripe webhook `invoice.payment_failed` | Update DB state, send dunning email |
+
+---
+
+## Workflow 1: `BL | New Signup` (revise heavily)
 
 **Trigger:** User added (Softr DB)
 
-| Step | Action | Details |
+This is the big one. Replaces the existing 4-step signup PLUS the originally-spec'd "Account Created" + "Daily Trial Check" workflows. One linear chain with Wait steps timing each beat against the user's signup date.
+
+| # | Action | What it does |
 |---|---|---|
-| 1 | (keep) Add row to Google Sheets | Existing — useful for analytics |
-| 2 | (keep) Post Slack message | Existing — internal visibility |
-| 3 | **Branch: skip if `user.is_internal = true`** | Don't enrol staff in marketing flows |
-| 4 | **NEW** API call — EmailIt: add to **Trial Users** audience | `POST /v2/audiences/{TRIAL_AUDIENCE_ID}/subscribers/add` body `{ "email": "{{user.email}}", "fields": { "first_name": "{{user.first_name}}" } }` |
-| 5 | **NEW** API call — EmailIt: send `welcome` template | `POST /v2/emails/send` body `{ "to": "{{user.email}}", "template_id": "{WELCOME_TEMPLATE_ID}", "variables": { "first_name": "{{user.first_name}}", "account_setup_url": "https://app.brieflee.co/account-setup" } }` |
+| 1 | **Run custom code** — `Name parts` | Split full_name into first_name/last_name (mirror the Creator Scans `Name` step) |
+| 2 | **Softr DB: add notification record** (notifications table) | `notification_type = Welcome`, link to user. Visible in app's notification badge. |
+| 3 | **Slack: Post channel message** to `#new-user` | Internal alert: name, email |
+| 4 | **Google Sheets: Add row** to Subscribers/New Users | Existing — keep for analytics |
+| 5 | **Call API — Referly: create affiliate** | POST `https://www.referly.so/api/v1/affiliates`, body `{ email, firstName, lastName, affiliateLink, commissionRate: 40 }`. Auth credential: new `Brieflee Referly` connection. |
+| 6 | **Softr DB: update user** | Save `affiliate_link` field returned by Referly (need to add this field to users table — TBD whether response contains the link or it's constructible from input) |
+| 7 | **EmailIt API: add subscriber to `First 14 Days` audience** | POST `https://api.emailit.com/v2/audiences/{aud_xxx}/subscribers` body `{ "email", "first_name", "last_name", "custom_fields": { "softr_user_id" } }`. **Returns 409 if email exists — accept that as success.** Audience-membership kicks off the 14-day drip automation in EmailIt UI. |
+| 8 | **EmailIt API: send `bl-features-day-01-welcome`** (or use Softr native Send email if simpler initially) | First drip email. Question: do we let EmailIt's automation send day 01, or send it inline here so the welcome arrives instantly? Recommend: inline send here for instant delivery, then EmailIt automation sends days 02-14. |
+| 9 | **Wait — 1 day** | |
+| 10 | **Softr DB: find account** for this user | If found, skip step 11. If not found, fall through. |
+| 11 | **EmailIt API: send `bl-trial-create-account`** | Conditional — only if no account yet. Use a Branch action here gating on step 10's result. |
+| 12 | **Wait — 4 days** (= day 5 from signup) | |
+| 13 | **Softr DB: find account** + check `aiMode` | |
+| 14 | **EmailIt API: send `bl-trial-pick-review-mode`** | Conditional — only if account exists and aiMode is blank |
+| 15 | **Wait — 1 day** (= day 6) | |
+| 16 | **EmailIt API: send `bl-trial-set-quality-settings`** | Conditional — if thresholds still at defaults |
+| 17 | **Wait — 1 day** (= day 7, halfway) | |
+| 18 | **EmailIt API: send `bl-trial-reminder-1`** | Halfway-through nudge |
+| 19 | **Wait — 1 day** (= day 8) | |
+| 20 | **Softr DB: find submissions** for this user's accounts | |
+| 21 | **EmailIt API: send `bl-trial-first-review`** | Conditional — only if no submission yet |
+| 22 | **Wait — 4 days** (= day 12) | |
+| 23 | **Branch: did they pay yet?** Check `account.subscription_status` | If `active` → exit workflow (Stripe Sub workflow handled it). Else continue. |
+| 24 | **EmailIt API: send `bl-trial-reminder-2-48h`** | 48h warning |
+| 25 | **Wait — 1 day** (= day 13) | |
+| 26 | **Branch: paid yet?** | Same gate |
+| 27 | **EmailIt API: send `bl-trial-reminder-3-24h`** | 24h warning |
+| 28 | **Wait — 1 day** (= day 14) | |
+| 29 | **Branch: paid yet?** | Same gate |
+| 30 | **EmailIt API: send `bl-trial-ends-today`** | Final-day offer |
+| 31 | **Softr DB: update subscription** | `status = expired` |
+| 32 | **Slack: Post channel message** to `#new-user` | "Trial expired without conversion" alert |
 
-**What we're NOT doing here:**
-- Not creating an account record (user does that themselves on dashboard)
-- Not creating a subscription record (that fires when account is created — Workflow 2)
+**Notes:**
+- Trial timer is anchored to **signup date** (not account creation). Bev's preference: simpler model, accept the edge case where signup-without-account burns trial days.
+- Steps 23 / 26 / 29 are all "did they convert?" branches. When the Stripe Sub workflow runs, it should set a flag on the user record (or update `account.subscription_status`) — these branches read that flag and exit early to avoid sending trial reminders to paying customers.
+- **Don't suppress on `is_internal`** — Bev wants to dogfood emails on her own account.
 
----
+### What about account creation?
 
-## Workflow 2: `BL | Account Created` (NEW)
+When user clicks "Create your workspace" in the dashboard, that fires a separate "Account Created" trigger we can hook into:
 
-**Trigger:** Account record created (Softr DB)
+**Workflow 1b: `BL | Account Created`** (small workflow, fires from a different trigger)
 
-| Step | Action | Details |
-|---|---|---|
-| 1 | API call — Softr: create subscription | POST to `subscriptions` table: `{ "account": [account.id], "plan": [STUDIO_MONTHLY_PRICING_ID], "status": "trialing", "current_period_end": TODAY + 14 days, "name": "{{account.name}} → trial" }` |
-| 2 | API call — Softr: link account.current_subscription | PATCH account record with `{ "current_subscription": [new_sub_id] }` |
-| 3 | (Optional) Slack notify "new trial started" | Visibility |
+| # | Action |
+|---|---|
+| 1 | Softr DB: create subscription with `status = trialing`, `plan = Studio Monthly`, `current_period_end = today + 14 days` |
+| 2 | Softr DB: update account, set `current_subscription` link |
+| 3 | Slack: Post message "Workspace created" |
 
-**Why account-creation, not signup:** users sign up but might not create an account for hours/days. Trial timer only makes sense from when they have a brand to actually review against.
-
----
-
-## Workflow 3: `BL | Daily Trial Check` (NEW, scheduled)
-
-**Trigger:** Scheduled, runs once daily at e.g. 09:00 UTC
-
-This is one workflow that does multiple checks. Each check runs over all matching users.
-
-### Check A: trial reminder cadence
-
-For each `subscriptions` where `status = trialing`:
-- `current_period_end - today = 7 days` → send `trial-reminder-7d`
-- `current_period_end - today = 2 days` → send `trial-reminder-48h`
-- `current_period_end - today = 1 day` → send `trial-reminder-24h`
-- `current_period_end - today = 0` → send `trial-ends-today` AND update sub: `status = expired`
-
-### Check B: account-not-created nudge
-
-For each `users` where `created_at < (now - 24h)` AND user has no linked account AND `last_nudge_sent != "account-not-created"`:
-- Send `account-not-created`
-- Update user: `last_nudge_sent = "account-not-created"`
-
-### Check C: review-mode-not-picked nudge
-
-For each `accounts` where `created_at < (now - 24h)` AND `aiMode` is blank AND not yet nudged:
-- Send `review-mode-not-picked`
-- Set a flag so we don't repeat
-
-### Check D: thresholds-not-set nudge
-
-For each `accounts` where `aiMode` set but thresholds at default values AND `account.created_at < (now - 48h)` AND not yet nudged:
-- Send `thresholds-not-set`
-
-### Idempotency
-
-Add a `last_nudge_sent` SELECT field on `users` and/or `accounts` (with options matching template names) so the daily workflow doesn't re-send the same nudge. Reset on re-engagement campaigns.
+This is the trial-record creation. It's not part of New Signup because account creation can happen any time after signup (or never).
 
 ---
 
-## EmailIt API call patterns (reference for FigJam nodes)
+## Workflow 2: `BL | New Stripe Sub` (revise existing)
+
+The current workflow does too much — separate concerns. Simplified target:
+
+**Trigger:** Stripe webhook `customer.subscription.created` (or invoice.paid for first invoice)
+
+| # | Action |
+|---|---|
+| 1 | Run custom code — Dates & Money (existing, keep) |
+| 2 | Softr DB: find user by `customer_email` |
+| 3 | Softr DB: find pricing by `stripe_price_id` |
+| 4 | Softr DB: upsert subscription record (one per `stripe_subscription_id`), status=`active`, link to account + plan |
+| 5 | Softr DB: update account.`current_subscription` link |
+| 6 | Softr DB: add notification record (notification_type = `Subscription started`) |
+| 7 | EmailIt API: remove subscriber from `First 14 Days` audience (stops drip) |
+| 8 | EmailIt API: add subscriber to `Active Subscribers` audience |
+| 9 | EmailIt API: send `bl-tx-payment-success` |
+| 10 | Slack: Post message "🎉 New paid subscriber" |
+
+**One upsert (step 4) drives quota.** Everything else in the original workflow's billing/usage chain happens automatically through Softr formulas now (since the schema migration).
+
+The existing 12-step "do everything" Stripe Sub workflow can be retired once this leaner version is wired up.
+
+---
+
+## Workflow 3: `BL | Sub Cancelled` (existing, minor tweaks)
+
+Keep the existing 7-step shape. Add to the end:
+- EmailIt API: remove subscriber from `Active Subscribers` audience
+- EmailIt API: add subscriber to `Lapsed` audience
+- EmailIt API: send `bl-tx-cancellation-confirm` (optional)
+
+---
+
+## Workflow 4: `BL | Payment failed` (existing, minor tweaks)
+
+Keep the existing 7-step shape. Add to the end:
+- EmailIt API: send `bl-tx-payment-failed` (transactional, not marketing — no unsubscribe)
+
+Stripe handles the dunning retry schedule automatically; this email is the user-facing "your card needs attention" message.
+
+---
+
+## EmailIt API call patterns (corrected to match actual docs)
 
 **Base URL:** `https://api.emailit.com/v2`
 **Auth header:** `Authorization: Bearer {EMAILIT_API_KEY}`
 
 ### Add subscriber to audience
 ```http
-POST /v2/audiences/{audience_id}/subscribers/add
+POST /v2/audiences/{aud_xxxxx}/subscribers
 Content-Type: application/json
 Authorization: Bearer ...
 
 {
   "email": "user@example.com",
-  "fields": {
-    "first_name": "Jane",
-    "account_id": "abc123"
+  "first_name": "Jane",
+  "last_name": "Doe",
+  "custom_fields": {
+    "softr_user_id": "abc123"
   }
 }
 ```
+**Note:** Returns 409 Conflict on duplicate email. Workflow should treat 409 as success (already-added).
 
 ### Remove subscriber from audience
 ```http
-DELETE /v2/audiences/{audience_id}/subscribers/{subscriber_id}
+DELETE /v2/audiences/{aud_xxxxx}/subscribers/{subscriber_id}
 ```
 
 ### Send transactional email (template-based)
+Endpoint is `POST /v2/emails` (not `/emails/send`). Template can be referenced by alias OR by `tem_xxx` ID.
 ```http
-POST /v2/emails/send
+POST /v2/emails
 
 {
+  "from": "hello@brieflee.co",
   "to": "user@example.com",
-  "template_id": "tpl_xxx",
+  "template": "bl-welcome",
   "variables": {
     "first_name": "Jane",
     "account_setup_url": "https://app.brieflee.co/..."
   }
 }
 ```
+**Variable syntax in templates:** Mustache — `{{first_name}}`
 
 ### Send transactional email (ad-hoc, no template)
 ```http
-POST /v2/emails/send
+POST /v2/emails
 
 {
+  "from": "hello@brieflee.co",
   "to": "user@example.com",
   "subject": "Welcome",
-  "html": "<p>Hi {{first_name}}...</p>",
-  "from": "hello@brieflee.co"
+  "html": "<p>Hi {{first_name}}...</p>"
 }
 ```
+
+### Idempotency
+For workflow steps that might retry, add header `Idempotency-Key: {unique-string}` (max 256 chars, alphanumeric + dash + underscore). EmailIt prevents duplicates within 24h.
 
 ### Rate limits
 - 2 messages/sec (new workspaces)
