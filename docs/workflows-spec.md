@@ -73,6 +73,22 @@ This is the cleanest way to handle the drip — you don't manage scheduling, Ema
 
 ---
 
+## Final decisions (locked 2026-04-29)
+
+After review of the existing workflows + EmailIt account, these are the architecture decisions:
+
+1. **Two main workflows**, not one mega-workflow:
+   - `BL | New Signup` — fires on user record create. Owns the "no account yet" stage.
+   - `BL | New Workspace + Team` — fires on account create. Owns the trial timer + product nudges.
+2. **Drip continues independently in EmailIt** — Contact-trigger automation watching `First 14 Days` audience, fires day 02–14 emails automatically.
+3. **Trial timer anchored at account creation**, not signup. If user signs up but never creates account, no trial expires for them — they just sit in drip + lapse to win-back.
+4. **Team members** (added via the team_email fields in onboarding) get role=Member, status=Pending, and **are NOT enrolled in the 14-day drip**. They get a separate single invite email instead.
+5. **Google Sheets row stays as a deletion backup** (not the primary capture). EmailIt audience is primary.
+6. **Auto-deletion of dormant signups at day 90** with 30/60/90 day win-back cadence first. Necessary because of Softr's 5,000-external-user cap shared across Bev's products.
+7. **`is_internal` flag** suppresses paywall/quota gates only — emails still go to staff for dogfooding.
+
+---
+
 ## Workflow architecture (revised after reviewing existing workflows)
 
 **One main workflow per user lifecycle event, anchored on the trigger date with Wait actions for time-based steps.** No daily cron sweep — that's harder to maintain and each user has their own clock anyway.
@@ -90,65 +106,69 @@ The existing Brieflee workflows (`BL | New Stripe Sub`, `BL | Successful Recurri
 
 ---
 
-## Workflow 1: `BL | New Signup` (revise heavily)
+## Workflow 1: `BL | New Signup` (revise existing)
 
 **Trigger:** User added (Softr DB)
 
-This is the big one. Replaces the existing 4-step signup PLUS the originally-spec'd "Account Created" + "Daily Trial Check" workflows. One linear chain with Wait steps timing each beat against the user's signup date.
+Owns the "we have an email, no workspace yet" stage. Drip enrolment, affiliate setup, account-creation nudge, and eventual deletion if they ghost.
+
+**Important: skip enrolment for team members.** Check `user.role` first — if `role = Member`, branch to a separate invite email instead of the drip. Members didn't sign up themselves; they were added by an account owner.
 
 | # | Action | What it does |
 |---|---|---|
 | 1 | **Run custom code** — `Name parts` | Split full_name into first_name/last_name (mirror the Creator Scans `Name` step) |
-| 2 | **Softr DB: add notification record** (notifications table) | `notification_type = Welcome`, link to user. Visible in app's notification badge. |
-| 3 | **Slack: Post channel message** to `#new-user` | Internal alert: name, email |
-| 4 | **Google Sheets: Add row** to Subscribers/New Users | Existing — keep for analytics |
-| 5 | **Call API — Referly: create affiliate** | POST `https://www.referly.so/api/v1/affiliates`, body `{ email, firstName, lastName, affiliateLink, commissionRate: 40 }`. Auth credential: new `Brieflee Referly` connection. |
-| 6 | **Softr DB: update user** | Save `affiliate_link` field returned by Referly (need to add this field to users table — TBD whether response contains the link or it's constructible from input) |
-| 7 | **EmailIt API: add subscriber to `First 14 Days` audience** | POST `https://api.emailit.com/v2/audiences/{aud_xxx}/subscribers` body `{ "email", "first_name", "last_name", "custom_fields": { "softr_user_id" } }`. **Returns 409 if email exists — accept that as success.** Audience-membership kicks off the 14-day drip automation in EmailIt UI. |
-| 8 | **EmailIt API: send `bl-features-day-01-welcome`** (or use Softr native Send email if simpler initially) | First drip email. Question: do we let EmailIt's automation send day 01, or send it inline here so the welcome arrives instantly? Recommend: inline send here for instant delivery, then EmailIt automation sends days 02-14. |
-| 9 | **Wait — 1 day** | |
-| 10 | **Softr DB: find account** for this user | If found, skip step 11. If not found, fall through. |
-| 11 | **EmailIt API: send `bl-trial-create-account`** | Conditional — only if no account yet. Use a Branch action here gating on step 10's result. |
-| 12 | **Wait — 4 days** (= day 5 from signup) | |
-| 13 | **Softr DB: find account** + check `aiMode` | |
-| 14 | **EmailIt API: send `bl-trial-pick-review-mode`** | Conditional — only if account exists and aiMode is blank |
-| 15 | **Wait — 1 day** (= day 6) | |
-| 16 | **EmailIt API: send `bl-trial-set-quality-settings`** | Conditional — if thresholds still at defaults |
-| 17 | **Wait — 1 day** (= day 7, halfway) | |
-| 18 | **EmailIt API: send `bl-trial-reminder-1`** | Halfway-through nudge |
-| 19 | **Wait — 1 day** (= day 8) | |
-| 20 | **Softr DB: find submissions** for this user's accounts | |
-| 21 | **EmailIt API: send `bl-trial-first-review`** | Conditional — only if no submission yet |
-| 22 | **Wait — 4 days** (= day 12) | |
-| 23 | **Branch: did they pay yet?** Check `account.subscription_status` | If `active` → exit workflow (Stripe Sub workflow handled it). Else continue. |
-| 24 | **EmailIt API: send `bl-trial-reminder-2-48h`** | 48h warning |
-| 25 | **Wait — 1 day** (= day 13) | |
-| 26 | **Branch: paid yet?** | Same gate |
-| 27 | **EmailIt API: send `bl-trial-reminder-3-24h`** | 24h warning |
-| 28 | **Wait — 1 day** (= day 14) | |
-| 29 | **Branch: paid yet?** | Same gate |
-| 30 | **EmailIt API: send `bl-trial-ends-today`** | Final-day offer |
-| 31 | **Softr DB: update subscription** | `status = expired` |
-| 32 | **Slack: Post channel message** to `#new-user` | "Trial expired without conversion" alert |
+| 2 | **Branch: is `user.role = Member`?** | YES → go to step 3a (invite email path). NO → continue to step 3 (full signup path). |
+| 3 | **Softr DB: add notification record** (notifications table) | `notification_type = Welcome`, link to user. Visible in app's notification badge. |
+| 4 | **Slack: Post channel message** to `#new-user` | Internal alert: name, email |
+| 5 | **Google Sheets: Add row** to Subscribers/New Users | Backup record (deletion safety net — if a user is deleted we still have audit trail) |
+| 6 | **Call API — Referly: create affiliate** | POST `https://www.referly.so/api/v1/affiliates`, body `{ email, firstName, lastName, affiliateLink, commissionRate: 40 }`. Auth credential: new `Brieflee Referly` connection. |
+| 7 | **Softr DB: update user** | Save `affiliate_link` field returned by Referly (need to add this field to users table — TBD whether response contains the link or it's constructible from input) |
+| 8 | **EmailIt API: add subscriber to `First 14 Days` audience** (`aud_4D1p0CkELqJe0jjrJ4aOuVywgP6`) | POST `https://api.emailit.com/v2/audiences/{aud_xxx}/subscribers` body `{ "email", "first_name", "last_name", "custom_fields": { "softr_user_id" } }`. **Returns 409 if email exists — accept that as success.** Audience-membership kicks off the 14-day drip automation in EmailIt UI. |
+| 9 | **EmailIt API: send `bl-features-day-01-welcome`** (template alias) | First drip email, sent inline so welcome arrives instantly. EmailIt automation handles days 02–14. |
+| 10 | **Wait — 1 day** | |
+| 11 | **Softr DB: find account** for this user | |
+| 12 | **Branch: account exists?** | YES → exit workflow (no further account-creation nudges needed; trial workflow takes over). NO → continue. |
+| 13 | **EmailIt API: send `bl-trial-create-account`** | First nudge |
+| 14 | **Wait — 5 days** (= day 6) | |
+| 15 | **Softr DB: find account** + branch — exists? exit : continue | |
+| 16 | **EmailIt API: send `bl-trial-create-account`** with stronger CTA copy variant | Could be a second template, or pass a variable into the same template that toggles tone |
+| 17 | **Wait — 24 days** (= day 30) | |
+| 18 | **Softr DB: find account** + branch — exists? exit : continue | |
+| 19 | **EmailIt API: send `bl-winback-30d`** | "We saved your spot, here's 20% off if you come back" |
+| 20 | **Wait — 30 days** (= day 60) | |
+| 21 | **Branch: account exists?** exit if yes | |
+| 22 | **EmailIt API: send `bl-winback-60d`** | Stronger offer or different angle |
+| 23 | **Wait — 30 days** (= day 90) | |
+| 24 | **Branch: account exists?** exit if yes | |
+| 25 | **EmailIt API: send `bl-winback-90d-final`** | "We're closing your account in 7 days unless you come back" |
+| 26 | **Wait — 7 days** | |
+| 27 | **Branch: account exists?** exit if yes | |
+| 28 | **EmailIt API: remove subscriber from `First 14 Days` audience**, add to `Lapsed` | They're done with the active funnel; keep email for occasional broadcasts |
+| 29 | **Softr DB: delete user record** | Frees up the Softr 5k-external-user slot |
+| 30 | **Slack: Post message** to `#new-user` | "Auto-deleted dormant user: {email} (97 days no account)" — audit trail |
 
-**Notes:**
-- Trial timer is anchored to **signup date** (not account creation). Bev's preference: simpler model, accept the edge case where signup-without-account burns trial days.
-- Steps 23 / 26 / 29 are all "did they convert?" branches. When the Stripe Sub workflow runs, it should set a flag on the user record (or update `account.subscription_status`) — these branches read that flag and exit early to avoid sending trial reminders to paying customers.
-- **Don't suppress on `is_internal`** — Bev wants to dogfood emails on her own account.
-
-### What about account creation?
-
-When user clicks "Create your workspace" in the dashboard, that fires a separate "Account Created" trigger we can hook into:
-
-**Workflow 1b: `BL | Account Created`** (small workflow, fires from a different trigger)
+**Branch 2 (step 3a): team member invite path**
 
 | # | Action |
 |---|---|
-| 1 | Softr DB: create subscription with `status = trialing`, `plan = Studio Monthly`, `current_period_end = today + 14 days` |
-| 2 | Softr DB: update account, set `current_subscription` link |
-| 3 | Slack: Post message "Workspace created" |
+| 3a | **EmailIt API: send `bl-tx-team-invite`** (new template — needs creating) | "{owner_name} invited you to join their Brieflee workspace. Click here to accept." |
+| 3b | Slack: Post message "Team member added: {email} → {account.name}" | Visibility |
+| 3c | END | No drip enrollment for members. They convert to active when they accept the invite (status flips Pending → Active). |
 
-This is the trial-record creation. It's not part of New Signup because account creation can happen any time after signup (or never).
+**Why team members don't get the 14-day drip:** they didn't sign up to learn the product end-to-end; they were invited to collaborate on a specific workspace. The owner is going through the drip and will share with them. Sending them 14 educational emails would feel spammy.
+
+**Notes:**
+- Steps 12, 15, 18, 21, 24, 27 are all "does an account exist?" branches. As soon as one returns YES, the workflow exits — they're being handled by `BL | New Workspace + Team` from now on.
+- All deletion happens via the Softr DB delete record action. Email stays in EmailIt's `Lapsed` audience for any future broadcasts.
+- This workflow is ~30 steps but only 1-3 branches will actually execute for any given user (most either create an account on day 0-6 and exit, or get auto-deleted on day 97).
+
+### Need to add: `bl-tx-team-invite` template + 3 win-back templates
+
+The template list created already includes `bl-trial-winback`. Add three more for the deletion cadence:
+- `bl-winback-30d` — "We've kept your spot. Come back?"
+- `bl-winback-60d` — "Last chance to keep your account active"
+- `bl-winback-90d-final` — "Your account closes in 7 days"
+- `bl-tx-team-invite` — "You've been invited to {workspace_name}"
 
 ---
 

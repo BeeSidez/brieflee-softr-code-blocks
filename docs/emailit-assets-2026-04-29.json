@@ -143,10 +143,30 @@
       "id": "tem_4D1p0huUUhNCPkRdej2ijeycgJu",
       "alias": "bl-tx-payment-failed",
       "name": "BL | Payment failed"
+    },
+    "bl-winback-30d": {
+      "id": "tem_4D1rc16nL0omZ4L0eCiKMcXMOhb",
+      "alias": "bl-winback-30d",
+      "name": "BL | Win-back 30d"
+    },
+    "bl-winback-60d": {
+      "id": "tem_4D1rc424LO6dTKDiztI1QzNPXum",
+      "alias": "bl-winback-60d",
+      "name": "BL | Win-back 60d"
+    },
+    "bl-winback-90d-final": {
+      "id": "tem_4D1rc16nL0oSqHHxhOg6U5iSqif",
+      "alias": "bl-winback-90d-final",
+      "name": "BL | Win-back 90d final"
+    },
+    "bl-tx-team-invite": {
+      "id": "tem_4D1rc8trNE4pKi7idCSJYIUSStk",
+      "alias": "bl-tx-team-invite",
+      "name": "BL | Team invite"
     }
   },
   "totals": {
     "audiences": 3,
-    "templates": 25
+    "templates": 29
   }
 }
