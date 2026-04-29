@@ -1,0 +1,152 @@
+{
+  "created_at": "2026-04-29",
+  "api_key_used_prefix": "secret_JIM8OD...",
+  "audiences": {
+    "First 14 Days": {
+      "id": "aud_4D1p0CkELqJe0jjrJ4aOuVywgP6",
+      "token": "4D1p0CkELqJe0jjrZ5opdFUvGKs",
+      "name": "First 14 Days"
+    },
+    "Active Subscribers": {
+      "id": "aud_4D1p0CkELqJULokJegC0AoQhoCM",
+      "token": "4D1p0CkELqJULokJyHJ5P11X0Gd",
+      "name": "Active Subscribers"
+    },
+    "Lapsed": {
+      "id": "aud_4D1p0CkELqJm3pkW5ZDdARUZYvy",
+      "token": "4D1p0CkELqJm3pkWKQa4y4i9NiM",
+      "name": "Lapsed"
+    }
+  },
+  "templates": {
+    "bl-features-day-01-welcome": {
+      "id": "tem_4D1p09oxLT1bQmc2aaBiJUmNdSi",
+      "alias": "bl-features-day-01-welcome",
+      "name": "BL | Day 1 \u2014 Welcome"
+    },
+    "bl-features-day-02-account": {
+      "id": "tem_4D1p0Hc1NgIGq6BR3FWIZBofVUb",
+      "alias": "bl-features-day-02-account",
+      "name": "BL | Day 2 \u2014 Set up your account"
+    },
+    "bl-features-day-03-swipe-videos": {
+      "id": "tem_4D1p0KXIO3ZzhG3gnGfWqPB4AZl",
+      "alias": "bl-features-day-03-swipe-videos",
+      "name": "BL | Day 3 \u2014 Swipe videos"
+    },
+    "bl-features-day-04-quality-settings": {
+      "id": "tem_4D1p0Hc1NgIGR8weGoyGpza8h0t",
+      "alias": "bl-features-day-04-quality-settings",
+      "name": "BL | Day 4 \u2014 Quality settings"
+    },
+    "bl-features-day-05-review-content": {
+      "id": "tem_4D1p0Hc1NgI6mE0CVrKzusapzoV",
+      "alias": "bl-features-day-05-review-content",
+      "name": "BL | Day 5 \u2014 Review content"
+    },
+    "bl-features-day-06-remix-content": {
+      "id": "tem_4D1p0KXIO3ZqRIQ6mVoK884auki",
+      "alias": "bl-features-day-06-remix-content",
+      "name": "BL | Day 6 \u2014 Remix content"
+    },
+    "bl-features-day-07-create-campaign": {
+      "id": "tem_4D1p0Hc1NgHx7J95L5lAziBwKdB",
+      "alias": "bl-features-day-07-create-campaign",
+      "name": "BL | Day 7 \u2014 Create campaign"
+    },
+    "bl-features-day-08-create-brief": {
+      "id": "tem_4D1p0PP5PtYVHQqzCLBgxALSqNF",
+      "alias": "bl-features-day-08-create-brief",
+      "name": "BL | Day 8 \u2014 Create brief"
+    },
+    "bl-features-day-09-invite-team": {
+      "id": "tem_4D1p0PP5PtYcvZrF43fLsVoVHts",
+      "alias": "bl-features-day-09-invite-team",
+      "name": "BL | Day 9 \u2014 Invite team"
+    },
+    "bl-features-day-10-invite-members": {
+      "id": "tem_4D1p0PP5PtYcWccQww0ZClfGCEi",
+      "alias": "bl-features-day-10-invite-members",
+      "name": "BL | Day 10 \u2014 Invite members"
+    },
+    "bl-features-day-11-invite-creators": {
+      "id": "tem_4D1p0SKMQGqMBh5QI68mYHC5wpz",
+      "alias": "bl-features-day-11-invite-creators",
+      "name": "BL | Day 11 \u2014 Invite creators"
+    },
+    "bl-features-day-12-bulk-upload-briefs": {
+      "id": "tem_4D1p0SKMQGqUEn64wEdftinJ8Lb",
+      "alias": "bl-features-day-12-bulk-upload-briefs",
+      "name": "BL | Day 12 \u2014 Bulk upload briefs"
+    },
+    "bl-features-day-13-bulk-upload-videos": {
+      "id": "tem_4D1p0PP5PtYJbjxdGXlTKmyAJRe",
+      "alias": "bl-features-day-13-bulk-upload-videos",
+      "name": "BL | Day 13 \u2014 Bulk upload videos"
+    },
+    "bl-features-day-14-affiliate": {
+      "id": "tem_4D1p0PP5PtYcvZrGDTez1jMrbbs",
+      "alias": "bl-features-day-14-affiliate",
+      "name": "BL | Day 14 \u2014 Affiliate offer"
+    },
+    "bl-trial-create-account": {
+      "id": "tem_4D1p0a7QSU6pvJQ4FbTyiN68rb5",
+      "alias": "bl-trial-create-account",
+      "name": "BL | Trial \u2014 Create account"
+    },
+    "bl-trial-pick-review-mode": {
+      "id": "tem_4D1p0XC9S6ooxBLkwomrlozjyBK",
+      "alias": "bl-trial-pick-review-mode",
+      "name": "BL | Trial \u2014 Pick review mode"
+    },
+    "bl-trial-set-quality-settings": {
+      "id": "tem_4D1p0a7QSU6YcFlfDkxtF3l2tyf",
+      "alias": "bl-trial-set-quality-settings",
+      "name": "BL | Trial \u2014 Set quality settings"
+    },
+    "bl-trial-first-review": {
+      "id": "tem_4D1p0XC9S6ofIGUdnRH56OQUw9V",
+      "alias": "bl-trial-first-review",
+      "name": "BL | Trial \u2014 First review"
+    },
+    "bl-trial-reminder-1": {
+      "id": "tem_4D1p0XC9S6ofhDdQ6NDdr7Gh4Ev",
+      "alias": "bl-trial-reminder-1",
+      "name": "BL | Trial reminder 1 \u2014 Halfway"
+    },
+    "bl-trial-reminder-2-48h": {
+      "id": "tem_4D1p0XC9S6oz13X2zmIlU1nNroo",
+      "alias": "bl-trial-reminder-2-48h",
+      "name": "BL | Trial reminder 2 \u2014 48h, 20% off"
+    },
+    "bl-trial-reminder-3-24h": {
+      "id": "tem_4D1p0huUUhMuImNDzw5uSwpVfHk",
+      "alias": "bl-trial-reminder-3-24h",
+      "name": "BL | Trial reminder 3 \u2014 24h, 20% off"
+    },
+    "bl-trial-ends-today": {
+      "id": "tem_4D1p0huUUhN3xh52NXpuspoOsxl",
+      "alias": "bl-trial-ends-today",
+      "name": "BL | Trial ends today \u2014 final offer"
+    },
+    "bl-trial-winback": {
+      "id": "tem_4D1p0huUUhN4MeQyyhmZb00x4Gv",
+      "alias": "bl-trial-winback",
+      "name": "BL | Win-back"
+    },
+    "bl-tx-payment-success": {
+      "id": "tem_4D1p0huUUhMuhjRSEZhdZ6HQ94b",
+      "alias": "bl-tx-payment-success",
+      "name": "BL | Payment success"
+    },
+    "bl-tx-payment-failed": {
+      "id": "tem_4D1p0huUUhNCPkRdej2ijeycgJu",
+      "alias": "bl-tx-payment-failed",
+      "name": "BL | Payment failed"
+    }
+  },
+  "totals": {
+    "audiences": 3,
+    "templates": 25
+  }
+}
