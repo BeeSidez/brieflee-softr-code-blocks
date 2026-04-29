@@ -265,12 +265,12 @@ Endpoint is `POST /v2/emails` (not `/emails/send`). Template can be referenced b
 POST /v2/emails
 
 {
-  "from": "hello@brieflee.co",
+  "from": "Brieflee <bev@brieflee.co>",
   "to": "user@example.com",
   "template": "bl-welcome",
   "variables": {
     "first_name": "Jane",
-    "account_setup_url": "https://app.brieflee.co/..."
+    "account_setup_url": "https://www.brieflee.co/login"
   }
 }
 ```
@@ -281,7 +281,7 @@ POST /v2/emails
 POST /v2/emails
 
 {
-  "from": "hello@brieflee.co",
+  "from": "Brieflee <bev@brieflee.co>",
   "to": "user@example.com",
   "subject": "Welcome",
   "html": "<p>Hi {{first_name}}...</p>"

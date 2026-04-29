@@ -51,7 +51,7 @@ curl -X POST https://api.emailit.com/v2/emails \
   -H "Authorization: Bearer $EMAILIT_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "from": "hello@brieflee.co",
+    "from": "Brieflee <bev@brieflee.co>",
     "to": "you@example.com",
     "template": "bl-features-day-01-welcome",
     "variables": { "first_name": "Test" }
