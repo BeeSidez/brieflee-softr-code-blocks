@@ -12,6 +12,8 @@ Standard operating procedure docs — how Brieflee actually runs day-to-day. Wri
 | [`04-stripe-integration.md`](04-stripe-integration.md) | How payments and subscriptions flow through the system |
 | [`05-deletion-policy.md`](05-deletion-policy.md) | Who gets deleted, when, and why — with the cadence schedule |
 | [`06-test-accounts.md`](06-test-accounts.md) | How to test without polluting production data |
+| [`07-emailit-curl-reference.md`](07-emailit-curl-reference.md) | Ready-to-import cURLs for every EmailIt action |
+| [`in-progress/`](in-progress/) | Feature trackers for work currently in flight |
 
 ## Cross-product references
 

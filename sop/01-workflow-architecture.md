@@ -20,7 +20,7 @@ Each workflow has its own FigJam board. **Use these when explaining the system t
 |---|---|
 | [Workflow overview](https://www.figma.com/board/vPr2oHapkKksuXg4kUNEMr) | How all 5 workflows connect through the lifecycle |
 | [BL \| New Signup detail](https://www.figma.com/board/lKfo7zKngJXuBLSnNcb6r7) | Member branching, drip enrolment, win-back cadence ending in deletion |
-| [BL \| New Workspace + Team detail](https://www.figma.com/board/ZL3J6FgybJ0ZMhneDOkkt0) | Brand blueprint generation (native Gemini), team member creation, trial reminders |
+| [BL \| New Workspace + Team detail (v2)](https://www.figma.com/board/NnuKx0A5XJoy41FRLM5MEM) | Brand blueprint generation (native Gemini), team_emails parse + loop, trial reminders. _v1 at https://www.figma.com/board/ZL3J6FgybJ0ZMhneDOkkt0 superseded — kept for history._ |
 | [BL \| New Stripe Sub detail](https://www.figma.com/board/BRDjDkwsfi5EDrMTEBAbvr) | Lean revised webhook handler (single subscription upsert) |
 | [BL \| Sub Cancelled detail](https://www.figma.com/board/htWBxgsgha6lLrLeJfhkjg) | Cancellation handling + audience updates |
 | [BL \| Payment failed detail](https://www.figma.com/board/QKKlj3ST7drCdUQks2gNGi) | Dunning email + status changes |
