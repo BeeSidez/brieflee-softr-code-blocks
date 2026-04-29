@@ -2,20 +2,17 @@
   "created_at": "2026-04-29",
   "api_key_used_prefix": "secret_JIM8OD...",
   "audiences": {
-    "First 14 Days": {
+    "BL | First 14 Days": {
       "id": "aud_4D1p0CkELqJe0jjrJ4aOuVywgP6",
-      "token": "4D1p0CkELqJe0jjrZ5opdFUvGKs",
-      "name": "First 14 Days"
+      "name": "BL | First 14 Days"
     },
-    "Active Subscribers": {
+    "BL | Active Subscribers": {
       "id": "aud_4D1p0CkELqJULokJegC0AoQhoCM",
-      "token": "4D1p0CkELqJULokJyHJ5P11X0Gd",
-      "name": "Active Subscribers"
+      "name": "BL | Active Subscribers"
     },
-    "Lapsed": {
+    "BL | Lapsed": {
       "id": "aud_4D1p0CkELqJm3pkW5ZDdARUZYvy",
-      "token": "4D1p0CkELqJm3pkWKQa4y4i9NiM",
-      "name": "Lapsed"
+      "name": "BL | Lapsed"
     }
   },
   "templates": {
@@ -168,5 +165,6 @@
   "totals": {
     "audiences": 3,
     "templates": 29
-  }
+  },
+  "note_renamed_2026_04_29": "Audiences renamed with BL | prefix to keep them clearly Brieflee-namespaced (Creator Scans audiences will use CS | prefix in the same workspace)."
 }
