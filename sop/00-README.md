@@ -14,6 +14,7 @@ Standard operating procedure docs — how Brieflee actually runs day-to-day. Wri
 | [`06-test-accounts.md`](06-test-accounts.md) | How to test without polluting production data |
 | [`07-emailit-curl-reference.md`](07-emailit-curl-reference.md) | Ready-to-import cURLs for every EmailIt action |
 | [`08-email-matrix.md`](08-email-matrix.md) | Every email — alias, audience, wait time, what it covers |
+| [`09-email-assets.md`](09-email-assets.md) | CTA URL placeholders + Cloudinary image assets per template |
 | [`in-progress/`](in-progress/) | Feature trackers for work currently in flight |
 
 ## Cross-product references
