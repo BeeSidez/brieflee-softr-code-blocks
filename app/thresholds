@@ -1,0 +1,574 @@
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+import { useCurrentUser } from "@/lib/user";
+import { useRecords, useRecordUpdate, q } from "@/lib/datasource";
+import { toast } from "sonner";
+
+const select = q.select({
+  productScreenTime: "AFgpo",
+  textLegibility: "TNRuM",
+  hookSpeed: "wthaW",
+  visualHook: "Nq4ZX",
+  ctaPlacement: "FA452",
+  engagementPacing: "bR5PL",
+  faceTime: "FH27O",
+  brandMentionCount: "HCvZw"
+});
+
+const updateFields = q.select({
+  productScreenTime: "AFgpo",
+  textLegibility: "TNRuM",
+  hookSpeed: "wthaW",
+  visualHook: "Nq4ZX",
+  ctaPlacement: "FA452",
+  engagementPacing: "bR5PL",
+  faceTime: "FH27O",
+  brandMentionCount: "HCvZw"
+});
+
+export default function Block() {
+  const user = useCurrentUser();
+  
+  const { data, status, refetch } = useRecords({ 
+    select,
+    count: 1
+  });
+
+  const updateRecord = useRecordUpdate({
+    fields: updateFields,
+    async onSuccess() {
+      await refetch();
+      toast.success("Settings saved successfully!");
+    },
+    onError: (error) => {
+      toast.error("Failed to save settings", {
+        description: error.message
+      });
+    }
+  });
+
+  const accountRecord = data?.pages?.[0]?.items?.[0];
+  const accountId = accountRecord?.id;
+
+  // State for form values
+  const [productVisibility, setProductVisibility] = useState(40);
+  const [productVisibilityNone, setProductVisibilityNone] = useState(false);
+  const [textLegibility, setTextLegibility] = useState(70);
+  const [textLegibilityNone, setTextLegibilityNone] = useState(false);
+  const [audioHookTiming, setAudioHookTiming] = useState(1);
+  const [audioHookTimingNone, setAudioHookTimingNone] = useState(false);
+  const [visualHookRequired, setVisualHookRequired] = useState(true);
+  const [ctaTiming, setCtaTiming] = useState(3);
+  const [ctaTimingNone, setCtaTimingNone] = useState(false);
+  const [engagementPacing, setEngagementPacing] = useState(2);
+  const [engagementPacingNone, setEngagementPacingNone] = useState(false);
+  const [creativeVisibility, setCreativeVisibility] = useState(20);
+  const [creativeVisibilityNone, setCreativeVisibilityNone] = useState(false);
+  const [brandMentions, setBrandMentions] = useState(1);
+  const [brandMentionsNone, setBrandMentionsNone] = useState(false);
+
+  // Load existing values from database
+  useEffect(() => {
+    if (accountRecord?.fields) {
+      const fields = accountRecord.fields;
+      
+      // Product visibility
+      if (fields.productScreenTime?.label) {
+        const value = parseInt(fields.productScreenTime.label);
+        if (!isNaN(value)) {
+          setProductVisibility(value);
+          setProductVisibilityNone(false);
+        }
+      } else {
+        setProductVisibilityNone(true);
+      }
+      
+      // Text legibility
+      if (fields.textLegibility?.label) {
+        const value = parseInt(fields.textLegibility.label);
+        if (!isNaN(value)) {
+          setTextLegibility(value);
+          setTextLegibilityNone(false);
+        }
+      } else {
+        setTextLegibilityNone(true);
+      }
+      
+      // Audio hook timing
+      if (fields.hookSpeed?.label) {
+        const value = parseInt(fields.hookSpeed.label);
+        if (!isNaN(value)) {
+          setAudioHookTiming(value);
+          setAudioHookTimingNone(false);
+        }
+      } else {
+        setAudioHookTimingNone(true);
+      }
+      
+      // Visual hook
+      if (fields.visualHook?.label) {
+        setVisualHookRequired(fields.visualHook.label === "Required");
+      }
+      
+      // CTA timing
+      if (fields.ctaPlacement?.label) {
+        const match = fields.ctaPlacement.label.match(/\d+/);
+        if (match) {
+          setCtaTiming(parseInt(match[0]));
+          setCtaTimingNone(false);
+        }
+      } else {
+        setCtaTimingNone(true);
+      }
+      
+      // Engagement pacing
+      if (fields.engagementPacing?.label) {
+        const match = fields.engagementPacing.label.match(/\d+/);
+        if (match) {
+          setEngagementPacing(parseInt(match[0]));
+          setEngagementPacingNone(false);
+        }
+      } else {
+        setEngagementPacingNone(true);
+      }
+      
+      // Face time
+      if (fields.faceTime?.label) {
+        const value = parseInt(fields.faceTime.label);
+        if (!isNaN(value)) {
+          setCreativeVisibility(value);
+          setCreativeVisibilityNone(false);
+        }
+      } else {
+        setCreativeVisibilityNone(true);
+      }
+      
+      // Brand mentions - special handling for "0" option
+      if (fields.brandMentionCount?.label) {
+        const label = fields.brandMentionCount.label;
+        if (label === "0") {
+          setBrandMentions(0);
+          setBrandMentionsNone(false);
+        } else {
+          const value = label === "4+" ? 4 : parseInt(label);
+          if (!isNaN(value)) {
+            setBrandMentions(value);
+            setBrandMentionsNone(false);
+          }
+        }
+      } else {
+        setBrandMentionsNone(true);
+      }
+    }
+  }, [accountRecord]);
+
+  const handleSave = () => {
+    if (!accountId) {
+      toast.error("No account found");
+      return;
+    }
+
+    // Map values to option IDs
+    const productScreenTimeId = productVisibilityNone ? null : {
+      40: "b35780d0-cf0c-4ad5-9819-88509bbcea7b",
+      50: "adf5f58d-f355-456a-956e-bb3606953ca4",
+      60: "ab1858bf-81ba-4d74-9299-05aee5ca27cc",
+      70: "c9e7411b-92ad-4e9f-b307-0e2237a9d729",
+      80: "61c37e78-9569-40de-8714-c988ebbfc9c5",
+      90: "8ef83ca6-7faf-45ff-965b-dadff26490ed",
+      100: "f7d50c89-87f3-4b8f-a2b1-ddaea2c5cec8"
+    }[productVisibility];
+
+    const textLegibilityId = textLegibilityNone ? null : {
+      70: "172419f7-1149-490a-a44e-d13537cf6786",
+      80: "82a7dafa-d93e-4dd9-9168-490cb66058eb",
+      90: "b891de6f-d9da-4d6c-a963-d87ff2bd8621",
+      100: "d94e5bdb-6850-4ecb-b316-aceee396e539"
+    }[textLegibility];
+
+    const hookSpeedId = audioHookTimingNone ? null : {
+      1: "9df2a4cf-8700-4429-b511-a683203b0c09",
+      2: "d3b4b86b-17d9-4d6e-845d-ead62d45f9cb",
+      3: "7679470f-b9ef-4e1f-94b2-b62cda5b2c45",
+      5: "03dc29a7-e098-4b92-882b-fb9a95cea132"
+    }[audioHookTiming];
+
+    const visualHookId = visualHookRequired 
+      ? "9df2a4cf-8700-4429-b511-a683203b0c09" 
+      : "d3b4b86b-17d9-4d6e-845d-ead62d45f9cb";
+
+    const ctaPlacementId = ctaTimingNone ? null : {
+      3: "33bfa39e-0740-4aa8-acf0-900305019279",
+      5: "193e4f66-7852-4fca-960a-f8642773b828",
+      7: "cd4956a2-5f0a-4d21-9a4c-a7b95f8f059b",
+      10: "4b841326-cdb4-455a-a144-d7c3f2b31f0b"
+    }[ctaTiming];
+
+    const engagementPacingId = engagementPacingNone ? null : {
+      2: "6fa82020-d6e2-4ff3-a0d3-94c783c4f680",
+      3: "6a1ff582-aa09-40da-ba82-6212c86f99e6",
+      4: "5528fc87-d2d3-4273-ba37-da90fae5bf3e",
+      5: "a0034690-8372-4676-96c6-43e8a4c167cd"
+    }[engagementPacing];
+
+    const faceTimeId = creativeVisibilityNone ? null : {
+      20: "df9abb2d-d48b-41bb-a579-f1c37dd657e2",
+      30: "48c105c0-e7ae-4a55-89b2-13fee1ea247a",
+      40: "c6aa7f4f-1dce-4946-8d20-31dba36d8f3f",
+      50: "b8c2c9b1-f745-4b0f-9636-557eea3d60b5",
+      60: "b993622a-0760-466b-a2a0-dd54e332596e",
+      70: "d2d7cd50-f83c-4442-9e84-b189088931be"
+    }[creativeVisibility];
+
+    // Brand mentions: treat 0 as valid value, only None toggle saves null
+    const brandMentionId = brandMentionsNone ? null : {
+      0: "1673c553-d650-47d3-b42b-3fa1be8f19dd",
+      1: "16e85382-54ad-4559-9b07-e42f920faf40",
+      2: "206736be-aad0-430f-98c7-3f0011390e86",
+      3: "d83d7d2f-00cc-4c1a-92ec-a362c5a47580",
+      4: "98ce1d25-8cf6-4879-a396-d6f57b065fa1"
+    }[brandMentions];
+
+    updateRecord.mutate({
+      recordId: accountId,
+      fields: {
+        productScreenTime: productScreenTimeId,
+        textLegibility: textLegibilityId,
+        hookSpeed: hookSpeedId,
+        visualHook: visualHookId,
+        ctaPlacement: ctaPlacementId,
+        engagementPacing: engagementPacingId,
+        faceTime: faceTimeId,
+        brandMentionCount: brandMentionId
+      }
+    });
+  };
+
+  if (status === "pending") {
+    return (
+      <div className="container py-8">
+        <div className="content max-w-4xl mx-auto text-center">
+          <div className="text-muted-foreground">Loading settings...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="container py-8">
+        <div className="content max-w-4xl mx-auto text-center">
+          <div className="text-muted-foreground">Please log in to manage threshold settings.</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container py-4">
+      <div className="content max-w-2xl mx-auto">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground mb-1">Threshold Settings</h1>
+            <p className="text-sm text-muted-foreground">Configure quality standards for video submissions</p>
+          </div>
+          <Button 
+            size="lg" 
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={handleSave}
+            disabled={updateRecord.status === "pending" || !accountId}
+          >
+            {updateRecord.status === "pending" ? "Saving..." : "Save Settings"}
+          </Button>
+        </div>
+
+        <div className="space-y-3">
+          {/* Product Visibility */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Product Visibility</CardTitle>
+              <CardDescription className="text-xs">Minimum percentage of the video that must show the product clearly</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              <div className="flex items-center space-x-2 mb-2">
+                <Switch 
+                  id="product-none" 
+                  checked={productVisibilityNone}
+                  onCheckedChange={setProductVisibilityNone}
+                />
+                <Label htmlFor="product-none" className="text-sm font-normal">No product required</Label>
+              </div>
+              {!productVisibilityNone && (
+                <>
+                  <Slider
+                    value={[productVisibility]}
+                    onValueChange={(value) => setProductVisibility(value[0])}
+                    min={40}
+                    max={100}
+                    step={10}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>40%</span>
+                    <span className="bg-primary text-primary-foreground px-3 py-1 rounded-full font-semibold">{productVisibility}%</span>
+                    <span>100%</span>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Text Legibility */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Text Legibility</CardTitle>
+              <CardDescription className="text-xs">How readable must the text overlays be</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              <div className="flex items-center space-x-2 mb-4">
+                <Switch 
+                  id="text-legibility-none" 
+                  checked={textLegibilityNone}
+                  onCheckedChange={setTextLegibilityNone}
+                />
+                <Label htmlFor="text-legibility-none" className="text-sm font-normal">No text requirement</Label>
+              </div>
+              {!textLegibilityNone && (
+                <>
+                  <Slider
+                    value={[textLegibility]}
+                    onValueChange={(value) => setTextLegibility(value[0])}
+                    min={70}
+                    max={100}
+                    step={10}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>70%</span>
+                    <span className="bg-primary text-primary-foreground px-3 py-1 rounded-full font-semibold">{textLegibility}%</span>
+                    <span>100%</span>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Audio Hook Timing */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Audio Hook Timing</CardTitle>
+              <CardDescription className="text-xs">How quickly must the video grab attention with spoken content</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              <div className="flex items-center space-x-2 mb-4">
+                <Switch 
+                  id="audio-hook-none" 
+                  checked={audioHookTimingNone}
+                  onCheckedChange={setAudioHookTimingNone}
+                />
+                <Label htmlFor="audio-hook-none" className="text-sm font-normal">No audio hook required</Label>
+              </div>
+              {!audioHookTimingNone && (
+                <>
+                  <Slider
+                    value={[audioHookTiming]}
+                    onValueChange={(value) => setAudioHookTiming(value[0])}
+                    min={1}
+                    max={5}
+                    step={1}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>1 sec</span>
+                    <span className="bg-primary text-primary-foreground px-3 py-1 rounded-full font-semibold">{audioHookTiming} {audioHookTiming === 1 ? 'second' : 'seconds'}</span>
+                    <span>5 sec</span>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Visual Hook Required */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Visual Hook</CardTitle>
+              <CardDescription className="text-xs">Does the first frame or first moment have to grab your attention?</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="inline-flex rounded-lg border border-input bg-background p-1 w-full">
+                <button
+                  type="button"
+                  onClick={() => setVisualHookRequired(true)}
+                  className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                    visualHookRequired
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Required
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVisualHookRequired(false)}
+                  className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                    !visualHookRequired
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Not Required
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Call to Action Timing */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Call to Action Timing</CardTitle>
+              <CardDescription className="text-xs">When should the call to action appear in the video?</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              <div className="flex items-center space-x-2 mb-4">
+                <Switch 
+                  id="cta-timing-none" 
+                  checked={ctaTimingNone}
+                  onCheckedChange={setCtaTimingNone}
+                />
+                <Label htmlFor="cta-timing-none" className="text-sm font-normal">No CTA required</Label>
+              </div>
+              {!ctaTimingNone && (
+                <>
+                  <Slider
+                    value={[ctaTiming]}
+                    onValueChange={(value) => setCtaTiming(value[0])}
+                    min={3}
+                    max={10}
+                    step={1}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>Last 3 sec</span>
+                    <span className="bg-primary text-primary-foreground px-3 py-1 rounded-full font-semibold">Last {ctaTiming} {ctaTiming === 1 ? 'second' : 'seconds'}</span>
+                    <span>Last 10 sec</span>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Engagement Pacing */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Engagement Pacing</CardTitle>
+              <CardDescription className="text-xs">How often should the video change scenes or angles?</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              <div className="flex items-center space-x-2 mb-4">
+                <Switch 
+                  id="engagement-pacing-none" 
+                  checked={engagementPacingNone}
+                  onCheckedChange={setEngagementPacingNone}
+                />
+                <Label htmlFor="engagement-pacing-none" className="text-sm font-normal">No pacing requirement</Label>
+              </div>
+              {!engagementPacingNone && (
+                <>
+                  <Slider
+                    value={[engagementPacing]}
+                    onValueChange={(value) => setEngagementPacing(value[0])}
+                    min={2}
+                    max={5}
+                    step={1}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>Every 2 sec</span>
+                    <span className="bg-primary text-primary-foreground px-3 py-1 rounded-full font-semibold">Every {engagementPacing} {engagementPacing === 1 ? 'second' : 'seconds'}</span>
+                    <span>Every 5 sec</span>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Creator Visibility */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Creator Visibility</CardTitle>
+              <CardDescription className="text-xs">Minimum percentage of the video showing creator's face</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              <div className="flex items-center space-x-2 mb-4">
+                <Switch 
+                  id="creator-visibility-none" 
+                  checked={creativeVisibilityNone}
+                  onCheckedChange={setCreativeVisibilityNone}
+                />
+                <Label htmlFor="creator-visibility-none" className="text-sm font-normal">No face time required</Label>
+              </div>
+              {!creativeVisibilityNone && (
+                <>
+                  <Slider
+                    value={[creativeVisibility]}
+                    onValueChange={(value) => setCreativeVisibility(value[0])}
+                    min={20}
+                    max={70}
+                    step={10}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>20%</span>
+                    <span className="bg-primary text-primary-foreground px-3 py-1 rounded-full font-semibold">{creativeVisibility}%</span>
+                    <span>70%</span>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Brand Mentions */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Brand Mentions</CardTitle>
+              <CardDescription className="text-xs">How many times must the brand name be mentioned?</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              <div className="flex items-center space-x-2 mb-4">
+                <Switch 
+                  id="brand-mentions-none" 
+                  checked={brandMentionsNone}
+                  onCheckedChange={setBrandMentionsNone}
+                />
+                <Label htmlFor="brand-mentions-none" className="text-sm font-normal">No mentions required</Label>
+              </div>
+              {!brandMentionsNone && (
+                <>
+                  <Slider
+                    value={[brandMentions]}
+                    onValueChange={(value) => setBrandMentions(value[0])}
+                    min={0}
+                    max={4}
+                    step={1}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>None</span>
+                    <span className="bg-primary text-primary-foreground px-3 py-1 rounded-full font-semibold">{brandMentions === 0 ? 'No mentions' : brandMentions === 4 ? '4+' : brandMentions} {brandMentions > 0 && (brandMentions === 1 ? 'time' : 'times')}</span>
+                    <span>4+</span>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+
+        </div>
+      </div>
+    </div>
+  );
+}
