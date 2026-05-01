@@ -30,9 +30,13 @@ const updateFields = q.select({
 // Fields for reading validation + polling
 const readFields = q.select({
   // Validation lookup fields (auto-populate from users relationship)
-  users_videos_remaining: 'Ef7z6',
+  // — subscription_status comes from accounts.current_subscription.status (post-migration)
+  // — videos_remaining comes from accounts.usage formulas (also post-migration)
+  // — is_internal bypasses the gate for staff + test users
+  users_subscription_status: 'SQuxf',
+  users_videos_remaining: '3kzMt',
+  users_is_internal: 'gdFt4',
   users_status: 'Lx9pZ',
-  users_payment_status: 'Z91yl',
   user_validation: 'QqS0I',
   // Polling fields
   status: '4flIO',
@@ -173,29 +177,34 @@ export default function Block() {
     if (!showValidationTyping) return; // Only validate when we're expecting it
 
     const fields = submissionData.fields;
-    const paymentStatus = extractFieldValue(fields.users_payment_status);
+    const subscriptionStatus = extractFieldValue(fields.users_subscription_status);
     const videosRemaining = extractNumberValue(fields.users_videos_remaining);
+    const isInternal = fields.users_is_internal === true;
 
-    // Check payment status first (higher priority)
-    if (!paymentStatus || paymentStatus === 'cancelled' || paymentStatus === '') {
-      setShowValidationTyping(false);
-      setValidationFailed(true);
-      setValidationErrorType('payment');
-      setValidationError(
-        'There is no active payment plan on this account. Please update your billing to continue.'
-      );
-      return;
-    }
+    // Internal staff + test users bypass all gates
+    if (!isInternal) {
+      // Check subscription is active or trialing
+      const ALLOWED = ['trialing', 'active'];
+      if (!subscriptionStatus || !ALLOWED.includes(subscriptionStatus)) {
+        setShowValidationTyping(false);
+        setValidationFailed(true);
+        setValidationErrorType('payment');
+        setValidationError(
+          'There is no active subscription on this account. Please upgrade to continue.'
+        );
+        return;
+      }
 
-    // Check credits
-    if (videosRemaining <= 0) {
-      setShowValidationTyping(false);
-      setValidationFailed(true);
-      setValidationErrorType('credits');
-      setValidationError(
-        'There are not enough credits on this account. Please top up your credits and try again.'
-      );
-      return;
+      // Check credits
+      if (videosRemaining <= 0) {
+        setShowValidationTyping(false);
+        setValidationFailed(true);
+        setValidationErrorType('credits');
+        setValidationError(
+          'You have used all your video credits for this billing cycle. Upgrade or wait until your next renewal.'
+        );
+        return;
+      }
     }
 
     // Validation passed
