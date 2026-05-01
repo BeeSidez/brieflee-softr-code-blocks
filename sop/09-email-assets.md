@@ -8,20 +8,20 @@ Fill-in tables for every CTA URL and image asset referenced across Brieflee emai
 
 | Placeholder | What it does | Suggested URL | Used in templates |
 |---|---|---|---|
-| `cta_dashboard` | Sends user to their dashboard home | `https://www.brieflee.co/dashboard` | bl-features-day-01-welcome, bl-tx-payment-success |
-| `cta_brand_bio` | Edit brand bio / blueprint settings | `https://www.brieflee.co/account-setup` | bl-features-day-02-account, bl-trial-create-account, bl-trial-create-account-day6 |
-| `cta_thresholds` | Quality thresholds settings page | `https://www.brieflee.co/settings/thresholds` | bl-features-day-04-quality-settings, bl-trial-set-quality-settings |
-| `cta_review_mode` | AI review mode picker (Auto/Hybrid/Manual) | `https://www.brieflee.co/settings/review-mode` | bl-features-day-05-review-content, bl-trial-pick-review-mode |
-| `cta_swipe_files` | Swipe files library | `https://www.brieflee.co/swipe-files` | bl-features-day-03-swipe-videos |
-| `cta_quick_review` | Start a quick review / submission | `https://www.brieflee.co/review` | bl-trial-first-review |
-| `cta_briefs` | Briefs list | `https://www.brieflee.co/briefs` | bl-features-day-08-create-brief, bl-features-day-06-remix-content |
-| `cta_campaigns` | Campaigns list | `https://www.brieflee.co/campaigns` | bl-features-day-07-create-campaign |
-| `cta_team_invite` | Team invite page | `https://www.brieflee.co/settings/team` | bl-features-day-09-invite-team |
-| `cta_members` | Members management | `https://www.brieflee.co/settings/members` | bl-features-day-10-invite-members |
-| `cta_invite_creators` | Creator invite flow | `https://www.brieflee.co/creators/invite` | bl-features-day-11-invite-creators |
-| `cta_bulk_briefs` | Bulk import briefs | `https://www.brieflee.co/briefs/bulk-import` | bl-features-day-12-bulk-upload-briefs |
-| `cta_bulk_videos` | Bulk import videos | `https://www.brieflee.co/videos/bulk-import` | bl-features-day-13-bulk-upload-videos |
-| `cta_affiliate` | Affiliate dashboard | `https://www.brieflee.co/affiliate` | bl-features-day-14-affiliate |
+| `cta_dashboard` | Sends user to their dashboard home | `https://www.brieflee.co/new` | bl-features-day-01-welcome, bl-tx-payment-success |
+| `cta_brand_bio` | Edit brand bio / blueprint settings | `https://www.brieflee.co/settings#tab1` | bl-features-day-02-account, bl-trial-create-account, bl-trial-create-account-day6 |
+| `cta_thresholds` | Quality thresholds settings page | `https://www.brieflee.co/settings#tab4` | bl-features-day-04-quality-settings, bl-trial-set-quality-settings |
+| `cta_review_mode` | AI review mode picker (Auto/Hybrid/Manual) | `https://www.brieflee.co/settings#tab1` | bl-features-day-05-review-content, bl-trial-pick-review-mode |
+| `cta_swipe_files` | Swipe files library | `https://www.brieflee.co/videos` | bl-features-day-03-swipe-videos |
+| `cta_quick_review` | Start a quick review / submission | `https://www.brieflee.co/videos?modal=%2Freview&modalSize=undefined&modalPlacement=end` | bl-trial-first-review |
+| `cta_briefs` | Briefs list | `https://www.brieflee.co/project` | bl-features-day-08-create-brief, bl-features-day-06-remix-content |
+| `cta_campaigns` | Campaigns list | `https://www.brieflee.co/project` | bl-features-day-07-create-campaign |
+| `cta_team_invite` | Team invite page | `https://www.brieflee.co/settings/settings#tab3` | bl-features-day-09-invite-team |
+| `cta_members` | Members management | `https://www.brieflee.co/settings/projects` | bl-features-day-10-invite-members |
+| `cta_invite_creators` | Creator invite flow | `https://www.brieflee.co/projects` | bl-features-day-11-invite-creators |
+| `cta_bulk_briefs` | Bulk import briefs | `https://www.brieflee.co/briefs` | bl-features-day-12-bulk-upload-briefs |
+| `cta_bulk_videos` | Bulk import videos | `https://www.brieflee.co/bulk` | bl-features-day-13-bulk-upload-videos |
+| `cta_affiliate` | Affiliate dashboard | `https://www.brieflee.co/settings#tab5` | bl-features-day-14-affiliate |
 | `cta_upgrade` | Upgrade plan page (with promo code in query if applicable) | `https://www.brieflee.co/upgrade?promo={{promo_code}}` | bl-trial-reminder-1, bl-trial-reminder-2-48h, bl-trial-reminder-3-24h, bl-trial-ends-today |
 | `cta_manage_subscription` | Subscription / billing management | `https://www.brieflee.co/settings/billing` | bl-tx-payment-success |
 | `cta_update_payment` | Update payment method (Stripe Customer Portal session URL) | Generated per-user via Stripe API; otherwise `https://www.brieflee.co/settings/billing` | bl-tx-payment-failed |
