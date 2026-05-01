@@ -1,0 +1,443 @@
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Getting Started Checklist</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'League Spartan', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        .checklist-container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0, 15, 77, 0.08);
+        }
+
+        .checklist-container.hidden {
+            display: none;
+        }
+
+        .checklist-header {
+            margin-bottom: 20px;
+        }
+
+        .checklist-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #000f4d;
+            margin-bottom: 8px;
+        }
+
+        .checklist-subtitle {
+            font-size: 14px;
+            color: #7a93ff;
+            font-weight: 400;
+        }
+
+        .progress-bar-container {
+            background: #f0f3ff;
+            height: 8px;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+
+        .progress-bar {
+            background: linear-gradient(90deg, #294ff6 0%, #7a93ff 100%);
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 8px;
+        }
+
+        .checklist-items {
+            list-style: none;
+        }
+
+        .checklist-item {
+            display: flex;
+            align-items: center;
+            padding: 14px 0;
+            border-bottom: 1px solid #f0f3ff;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .checklist-item:last-child {
+            border-bottom: none;
+        }
+
+        .checklist-item:hover {
+            background: #f8f9ff;
+            padding-left: 8px;
+            padding-right: 8px;
+            margin-left: -8px;
+            margin-right: -8px;
+            border-radius: 6px;
+        }
+
+        .checkbox {
+            width: 24px;
+            height: 24px;
+            border: 2px solid #d9e0ff;
+            border-radius: 6px;
+            margin-right: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: all 0.2s ease;
+        }
+
+        .checklist-item:hover .checkbox {
+            border-color: #7a93ff;
+        }
+
+        .checklist-item.completed .checkbox {
+            background: #294ff6;
+            border-color: #294ff6;
+        }
+
+        .checkmark {
+            display: none;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .checklist-item.completed .checkmark {
+            display: block;
+        }
+
+        .item-text {
+            font-size: 16px;
+            color: #001364;
+            font-weight: 400;
+            transition: all 0.2s ease;
+        }
+
+        .checklist-item.completed .item-text {
+            color: #7a93ff;
+            text-decoration: line-through;
+        }
+
+        .completion-message {
+            text-align: center;
+            padding: 32px 20px;
+            display: none;
+        }
+
+        .completion-message.show {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .completion-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .completion-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #000f4d;
+            margin-bottom: 8px;
+        }
+
+        .completion-text {
+            font-size: 16px;
+            color: #7a93ff;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .debug-info {
+            margin-top: 20px;
+            padding: 12px;
+            background: #f0f3ff;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #001364;
+            font-family: monospace;
+            white-space: pre-wrap;
+            display: none; /* Hidden now that it's working */
+        }
+    </style>
+</head>
+<body>
+    <div class="checklist-container" id="checklistContainer">
+        <div class="checklist-header">
+            <h2 class="checklist-title">Getting Started</h2>
+            <p class="checklist-subtitle">Complete these steps to get the most out of Brieflee</p>
+        </div>
+
+        <div class="progress-bar-container">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+
+        <ul class="checklist-items" id="checklistItems">
+            <li class="checklist-item" data-task="workspace-created" data-url="/settings#tab1">
+                <div class="checkbox">
+                    <span class="checkmark">✓</span>
+                </div>
+                <span class="item-text">Create workspace</span>
+            </li>
+            <li class="checklist-item" data-task="create-project" data-url="/project">
+                <div class="checkbox">
+                    <span class="checkmark">✓</span>
+                </div>
+                <span class="item-text">Create first project</span>
+            </li>
+            <li class="checklist-item" data-task="create-brief" data-url="/project">
+                <div class="checkbox">
+                    <span class="checkmark">✓</span>
+                </div>
+                <span class="item-text">Create first brief</span>
+            </li>
+            <li class="checklist-item" data-task="upload-video" data-url="/videos">
+                <div class="checkbox">
+                    <span class="checkmark">✓</span>
+                </div>
+                <span class="item-text">Upload first video</span>
+            </li>
+            <li class="checklist-item" data-task="invite-team" data-url="/settings#tab3">
+                <div class="checkbox">
+                    <span class="checkmark">✓</span>
+                </div>
+                <span class="item-text">Invite team member</span>
+            </li>
+        </ul>
+
+        <div class="completion-message" id="completionMessage">
+            <div class="completion-icon">🎉</div>
+            <h3 class="completion-title">You're all set!</h3>
+            <p class="completion-text">Great job completing your setup</p>
+        </div>
+
+        <div class="debug-info" id="debugInfo">
+            Debug: Waiting for data...
+        </div>
+    </div>
+
+    <script>
+        // Configuration - Map checklist items to Softr user fields
+        const FIELD_MAPPING = {
+            'workspace-created': 'accounts',
+            'create-project': 'projects',
+            'create-brief': 'briefs',
+            'upload-video': 'submissions',
+            'invite-team': 'members'
+        };
+
+        // Get elements
+        const container = document.getElementById('checklistContainer');
+        const progressBar = document.getElementById('progressBar');
+        const checklistItems = document.getElementById('checklistItems');
+        const completionMessage = document.getElementById('completionMessage');
+        const debugInfo = document.getElementById('debugInfo');
+        const items = document.querySelectorAll('.checklist-item');
+
+        // Get user data from multiple possible sources
+        function getUserData() {
+            let userData = {
+                accounts: 0,
+                projects: 0,
+                briefs: 0,
+                submissions: 0,
+                members: 0
+            };
+
+            let debugLog = 'DATA SOURCES CHECKED:\n\n';
+
+            // Method 1: Check data attributes on container
+            debugLog += '1. Data Attributes:\n';
+            const dataAttrs = {
+                accounts: container.getAttribute('data-accounts'),
+                projects: container.getAttribute('data-projects'),
+                briefs: container.getAttribute('data-briefs'),
+                submissions: container.getAttribute('data-submissions'),
+                members: container.getAttribute('data-members')
+            };
+            debugLog += JSON.stringify(dataAttrs, null, 2) + '\n\n';
+
+            // Use data attributes if they exist and aren't default values
+            Object.keys(dataAttrs).forEach(key => {
+                if (dataAttrs[key] && dataAttrs[key] !== '0' && dataAttrs[key] !== 'null') {
+                    userData[key] = parseInt(dataAttrs[key]) || 0;
+                }
+            });
+
+            // Method 2: Check window.logged_in_user (if Softr exposes it)
+            debugLog += '2. window.logged_in_user:\n';
+            if (window.logged_in_user) {
+                debugLog += JSON.stringify(window.logged_in_user, null, 2) + '\n\n';
+                Object.keys(FIELD_MAPPING).forEach(taskId => {
+                    const fieldName = FIELD_MAPPING[taskId];
+                    if (window.logged_in_user[fieldName] !== undefined) {
+                        const value = window.logged_in_user[fieldName];
+                        // Check if it's an array (Softr stores linked records as arrays)
+                        if (Array.isArray(value)) {
+                            userData[fieldName] = value.length;
+                        } else {
+                            userData[fieldName] = parseInt(value) || 0;
+                        }
+                    }
+                });
+            } else {
+                debugLog += 'NOT FOUND\n\n';
+            }
+
+            // Method 3: Check Softr's user object (alternative naming)
+            debugLog += '3. window.user:\n';
+            if (window.user) {
+                debugLog += JSON.stringify(window.user, null, 2) + '\n\n';
+                Object.keys(FIELD_MAPPING).forEach(taskId => {
+                    const fieldName = FIELD_MAPPING[taskId];
+                    if (window.user[fieldName] !== undefined) {
+                        const value = window.user[fieldName];
+                        // Check if it's an array
+                        if (Array.isArray(value)) {
+                            userData[fieldName] = value.length;
+                        } else {
+                            userData[fieldName] = parseInt(value) || 0;
+                        }
+                    }
+                });
+            } else {
+                debugLog += 'NOT FOUND\n\n';
+            }
+
+            // Method 4: Check localStorage (sometimes Softr stores here)
+            debugLog += '4. localStorage:\n';
+            try {
+                const storedUser = localStorage.getItem('softr_user') || localStorage.getItem('user');
+                if (storedUser) {
+                    debugLog += storedUser + '\n\n';
+                    const parsed = JSON.parse(storedUser);
+                    Object.keys(FIELD_MAPPING).forEach(taskId => {
+                        const fieldName = FIELD_MAPPING[taskId];
+                        if (parsed[fieldName] !== undefined) {
+                            const value = parsed[fieldName];
+                            // Check if it's an array
+                            if (Array.isArray(value)) {
+                                userData[fieldName] = value.length;
+                            } else {
+                                userData[fieldName] = parseInt(value) || 0;
+                            }
+                        }
+                    });
+                } else {
+                    debugLog += 'NOT FOUND\n\n';
+                }
+            } catch (e) {
+                debugLog += 'ERROR: ' + e.message + '\n\n';
+            }
+
+            debugLog += 'FINAL USER DATA:\n' + JSON.stringify(userData, null, 2);
+            debugInfo.textContent = debugLog;
+
+            return userData;
+        }
+
+        // Update checklist based on database values
+        function updateChecklistFromDatabase() {
+            const userData = getUserData();
+
+            items.forEach(item => {
+                const taskId = item.getAttribute('data-task');
+                const fieldName = FIELD_MAPPING[taskId];
+                
+                // All items always visible
+                item.style.display = 'flex';
+                
+                if (fieldName && userData[fieldName] !== undefined) {
+                    // Field has data (not null, not 0, not empty)
+                    const fieldValue = userData[fieldName];
+                    const hasData = fieldValue > 0;
+                    
+                    if (hasData) {
+                        item.classList.add('completed');
+                    } else {
+                        item.classList.remove('completed');
+                    }
+                }
+            });
+
+            updateProgress();
+        }
+
+        // Update progress bar
+        function updateProgress() {
+            const total = items.length;
+            const completed = document.querySelectorAll('.checklist-item.completed').length;
+            const percentage = total > 0 ? (completed / total) * 100 : 0;
+            
+            progressBar.style.width = percentage + '%';
+
+            // Check if all items are complete
+            if (total > 0 && completed === total) {
+                setTimeout(() => {
+                    showCompletion();
+                }, 300);
+            } else {
+                // Show checklist items if not all complete
+                checklistItems.style.display = 'block';
+                completionMessage.classList.remove('show');
+            }
+        }
+
+        // Show completion message (no auto-hide)
+        function showCompletion() {
+            checklistItems.style.display = 'none';
+            completionMessage.classList.add('show');
+        }
+
+        // Add click handlers for redirects
+        items.forEach(item => {
+            item.addEventListener('click', function() {
+                const url = this.getAttribute('data-url');
+                if (url) {
+                    window.location.href = url;
+                }
+            });
+            
+            // Keep cursor pointer for clickable items
+            item.style.cursor = 'pointer';
+        });
+
+        // Initialize
+        updateChecklistFromDatabase();
+
+        // Refresh periodically in case data loads asynchronously
+        setTimeout(updateChecklistFromDatabase, 500);
+        setTimeout(updateChecklistFromDatabase, 1000);
+        setTimeout(updateChecklistFromDatabase, 2000);
+
+        // Expose refresh function for manual triggering
+        window.briefleeChecklist = {
+            refresh: function() {
+                updateChecklistFromDatabase();
+            },
+            showDebug: function() {
+                debugInfo.style.display = 'block';
+            }
+        };
+    </script>
