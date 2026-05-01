@@ -13,10 +13,10 @@ Fill-in tables for every CTA URL and image asset referenced across Brieflee emai
 | `cta_thresholds` | Quality thresholds settings page | `https://www.brieflee.co/settings#tab4` | bl-features-day-04-quality-settings, bl-trial-set-quality-settings |
 | `cta_review_mode` | AI review mode picker (Auto/Hybrid/Manual) | `https://www.brieflee.co/settings#tab1` | bl-features-day-05-review-content, bl-trial-pick-review-mode |
 | `cta_swipe_files` | Swipe files library | `https://www.brieflee.co/videos` | bl-features-day-03-swipe-videos |
-| `cta_quick_review` | Start a quick review / submission | `https://www.brieflee.co/videos?modal=%2Freview&modalSize=undefined&modalPlacement=end` | bl-trial-first-review |
+| `cta_quick_review` | Start a quick review / submission | `https://www.brieflee.co/videos?modal=%2Freview` | bl-trial-first-review |
 | `cta_briefs` | Briefs list | `https://www.brieflee.co/project` | bl-features-day-08-create-brief, bl-features-day-06-remix-content |
 | `cta_campaigns` | Campaigns list | `https://www.brieflee.co/project` | bl-features-day-07-create-campaign |
-| `cta_team_invite` | Team invite page | `https://www.brieflee.co/settings/settings#tab3` | bl-features-day-09-invite-team |
+| `cta_team_invite` | Team invite page | `https://www.brieflee.co/settings#tab3` | bl-features-day-09-invite-team |
 | `cta_members` | Members management | `https://www.brieflee.co/settings/projects` | bl-features-day-10-invite-members |
 | `cta_invite_creators` | Creator invite flow | `https://www.brieflee.co/projects` | bl-features-day-11-invite-creators |
 | `cta_bulk_briefs` | Bulk import briefs | `https://www.brieflee.co/briefs` | bl-features-day-12-bulk-upload-briefs |
