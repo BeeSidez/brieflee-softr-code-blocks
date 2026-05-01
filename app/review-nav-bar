@@ -1,0 +1,55 @@
+import { Button } from "@/components/ui/button";
+import { ArrowRight } from "lucide-react";
+
+// Keyframes for the rotating gradient border animation
+const styles = `
+  @keyframes rotate-gradient {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+`;
+
+export default function Block() {
+  return (
+    <>
+      <style>{styles}</style>
+      <div 
+        className="w-full border-b fixed top-0 left-0 right-0 z-50"
+        style={{
+          backgroundColor: '#fafbff',
+        }}
+      >
+        <div className="container py-4">
+          <div className="content flex justify-end">
+            <div
+              className="relative inline-block p-[2px] rounded-md"
+              style={{
+                background: 'linear-gradient(90deg, #ffffff, #001364, #ffffff, #001364)',
+                backgroundSize: '300% 300%',
+                animation: 'rotate-gradient 3s linear infinite',
+              }}
+            >
+              <Button
+                asChild
+                className="text-white hover:opacity-90 relative flex items-center gap-2"
+                style={{ backgroundColor: '#879CF7' }}
+              >
+                <a href="/plan">
+                  Continue to Brieflee
+                  <ArrowRight className="w-4 h-4" />
+                </a>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
