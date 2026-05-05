@@ -28,8 +28,40 @@ import { toast } from "sonner";
 const CLD = "https://res.cloudinary.com/dchroynzv/image/upload";
 const LOGO_WORDMARK   = `${CLD}/brieflee_logo_brieflee-wordmark-deep-blue-with-periwinkle-lee-and-smile_2025-03.png`;
 const LOGO_COMPACT    = `${CLD}/brieflee_app-icon_app-icon-blue-gradient-smiley-mark-v5_2025-04.png`;
-const STICKER_SEARCH   = `${CLD}/brieflee_icon_sticker-blue-magnifying-glass-search-zoom_2026-03.png`;
-const STICKER_MEGAPHONE = `${CLD}/brieflee_icon_sticker-blue-megaphone-bullhorn-announcement_2026-03.png`;
+
+// Personalize card icons
+const ICON_FOLDER_BAG = `${CLD}/v1777998709/brieflee_icon_simple-lined-file-folder-bag-transparent_2026-05.png`;
+const ICON_MEGAPHONE  = `${CLD}/brieflee_icon_sticker-blue-megaphone-bullhorn-announcement_2026-03.png`;
+
+// Feature row icons (8) — transparent PNGs from Bev's manifest
+const FEAT_ICONS = {
+  aiReview:    `${CLD}/v1777998690/brieflee_help-icon_faq-big-cartoon-eyes-curious-looking-transparent_2026-05.png`,
+  briefs:      `${CLD}/v1777998696/brieflee_icon_docs-file-icon-transparent_2026-05.png`,
+  qa:          `${CLD}/v1777998697/brieflee_icon_document-approval-illustration-transparent_2026-05.png`,
+  storyboard:  `${CLD}/v1777998691/brieflee_help-icon_projects-isometric-window-with-folder-grid-transparent_2026-05.png`,
+  remix:       `${CLD}/v1777998705/brieflee_icon_remix-vinyl-player-console-icon-transparent_2026-05.png`,
+  revisions:   `${CLD}/v1777998714/brieflee_icon_trendy-flat-pencil-sticker-transparent_2026-05.png`,
+  seats:       `${CLD}/v1777998692/brieflee_help-icon_team-id-badge-card-with-profile-photo-transparent_2026-05.png`,
+  workspaces:  `${CLD}/v1777998709/brieflee_icon_simple-lined-file-folder-bag-transparent_2026-05.png`,
+};
+
+// Trust strip — grey 3D engravings
+const TRUST_ICONS = {
+  daysFree:     `${CLD}/v1777622911/brieflee_engraving_party-popper-confetti-streamers-celebration-grey_2026-03.png`,
+  moneyBack:    `${CLD}/v1777622976/brieflee_engraving_wallet-overflowing-cash-bills-coins-money-grey_2026-03.png`,
+  stripeSecure: `${CLD}/v1777622954/brieflee_engraving_shop-now-cta-button-3d-engraved-grey_2026-03.png`,
+  instantSetup: `${CLD}/v1777622954/brieflee_engraving_hand-pressing-light-switch-button-grey-3d_2026-03.png`,
+};
+
+// Customer logo strip
+const CUSTOMER_LOGOS = [
+  { name: "Shopify",  url: `${CLD}/brieflee_customer-logo_shopify-wordmark-with-bag-icon-grey_2026-05.png` },
+  { name: "Shark",    url: `${CLD}/brieflee_customer-logo_shark-wordmark-black_2026-05.png` },
+  { name: "Halara",   url: `${CLD}/brieflee_customer-logo_halara-wordmark-black_2026-05.png` },
+  { name: "Cosrx",    url: `${CLD}/brieflee_customer-logo_cosrx-wordmark-black_2026-05.png` },
+  { name: "Indeed",   url: `${CLD}/brieflee_customer-logo_indeed-wordmark-grey_2026-05.png` },
+  { name: "Grubhub",  url: `${CLD}/brieflee_customer-logo_grubhub-wordmark-with-house-fork-grey_2026-05.png` },
+];
 
 // ─── Field map (USERS table) ────────────────────────────────────────
 const select = q.select({
@@ -75,7 +107,6 @@ const PLANS = [
     id: "MOFJ50J3sX5cQ4", tier: "Creator", interval: "Monthly", price: 59,
     desc: "For solos and freelancers reviewing their own UGC.",
     maxVideos: 30, maxWorkspaces: 1, maxUsers: 1,
-    extras: ["Slack & email support"],
     stripePriceId: "price_1SGHuzIG1gGY9y21517vrys7",
     trialPaymentLink: "https://buy.stripe.com/7sI9Et7yk3fCeVGbII",
   },
@@ -83,7 +114,6 @@ const PLANS = [
     id: "efLCArKogDzBco", tier: "Creator", interval: "Yearly", price: 588,
     desc: "For solos and freelancers reviewing their own UGC.",
     maxVideos: 30, maxWorkspaces: 1, maxUsers: 1,
-    extras: ["Slack & email support"],
     stripePriceId: "price_1SGHvdIG1gGY9y21twF3H7NU",
     trialPaymentLink: "https://buy.stripe.com/cN25odcSE4jG8xi8wx",
   },
@@ -91,7 +121,6 @@ const PLANS = [
     id: "3DudH4fLuqChIr", tier: "Crew", interval: "Monthly", price: 99,
     desc: "The winning ad workflow for growing brands and small teams.",
     maxVideos: 100, maxWorkspaces: 5, maxUsers: 5,
-    extras: ["Priority support", "Shared brief library"],
     stripePriceId: "price_1SGI2CIG1gGY9y21tuEFZgut",
     trialPaymentLink: "https://buy.stripe.com/cN24k97yk5nK14QeUX",
     popular: true,
@@ -100,7 +129,6 @@ const PLANS = [
     id: "QHonFLGNkspIop", tier: "Crew", interval: "Yearly", price: 1068,
     desc: "The winning ad workflow for growing brands and small teams.",
     maxVideos: 100, maxWorkspaces: 5, maxUsers: 5,
-    extras: ["Priority support", "Shared brief library"],
     stripePriceId: "price_1SGI31IG1gGY9y21vH0AifOz",
     trialPaymentLink: "https://buy.stripe.com/7sI6sh9Gs7vS6pa3ce",
     popular: true,
@@ -109,7 +137,6 @@ const PLANS = [
     id: "AQI1eTOfZOYM5h", tier: "Studio", interval: "Monthly", price: 249,
     desc: "Scaled review for agencies running multiple brand accounts.",
     maxVideos: 500, maxWorkspaces: 10, maxUsers: 10,
-    extras: ["Dedicated CSM", "API access", "SSO & audit log"],
     stripePriceId: "price_1SGI3iIG1gGY9y21ITPStmgR",
     trialPaymentLink: "https://buy.stripe.com/00gdUJ2e07vS9BmaEJ",
   },
@@ -117,7 +144,6 @@ const PLANS = [
     id: "KHrjkggVIoUOze", tier: "Studio", interval: "Yearly", price: 2388,
     desc: "Scaled review for agencies running multiple brand accounts.",
     maxVideos: 500, maxWorkspaces: 10, maxUsers: 10,
-    extras: ["Dedicated CSM", "API access", "SSO & audit log"],
     stripePriceId: "price_1SGI4HIG1gGY9y21oftkiARJ",
     trialPaymentLink: "https://buy.stripe.com/fZe9Et19W4jG28U6os",
   },
@@ -181,26 +207,25 @@ const I = {
   Layers:      (p) => <Svg {...p}><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" /><path d="m6.08 9.5-3.5 1.6a1 1 0 0 0 0 1.81l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9a1 1 0 0 0 0-1.83l-3.5-1.59" /><path d="m6.08 14.5-3.5 1.6a1 1 0 0 0 0 1.81l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9a1 1 0 0 0 0-1.83l-3.5-1.59" /></Svg>,
 };
 
-// ─── Feature rows (icon + label + per-plan amount) ──────────────────
+// ─── Feature rows (image icon + label + per-plan amount) ────────────
 const FEATURE_ROWS = (plan) => [
-  { Icon: I.Eye,        label: "AI video review",    amount: `${plan.maxVideos}/mo` },
-  { Icon: I.FileText,   label: "Briefs & checklists",amount: "Unlimited" },
-  { Icon: I.BadgeCheck, label: "26-item QA scoring", amount: "Yes" },
-  { Icon: I.LayoutGrid, label: "Storyboard view",    amount: "Yes" },
-  { Icon: I.Shuffle,    label: "Remix & revisions",  amount: "Yes" },
-  { Icon: I.Users,      label: "Seats",              amount: `${plan.maxUsers}` },
-  { Icon: I.Layers,     label: "Workspaces",         amount: `${plan.maxWorkspaces}` },
+  { iconUrl: FEAT_ICONS.aiReview,   label: "AI video review",    amount: `${plan.maxVideos}/mo` },
+  { iconUrl: FEAT_ICONS.briefs,     label: "Briefs & checklists",amount: "Unlimited" },
+  { iconUrl: FEAT_ICONS.qa,         label: "AI QA Checklist",    amount: "26 items" },
+  { iconUrl: FEAT_ICONS.storyboard, label: "Storyboard view",    amount: "Yes" },
+  { iconUrl: FEAT_ICONS.remix,      label: "Remix",              amount: "Yes" },
+  { iconUrl: FEAT_ICONS.revisions,  label: "Revisions",          amount: "Unlimited" },
+  { iconUrl: FEAT_ICONS.seats,      label: "Seats",              amount: `${plan.maxUsers}` },
+  { iconUrl: FEAT_ICONS.workspaces, label: "Workspaces",         amount: `${plan.maxWorkspaces}` },
 ];
 
-// ─── Trust strip items (lucide icons that match the labels) ─────────
+// ─── Trust strip items (grey 3D engravings) ─────────────────────────
 const TRUST_ITEMS = [
-  { Icon: I.Calendar,  title: `${TRIAL_DAYS} days free`,    body: "Full access. Cancel anytime." },
-  { Icon: I.RotateCcw, title: "Money back",                 body: "15-day refund guarantee." },
-  { Icon: I.Lock,      title: "Stripe-secure",              body: "We never store card details." },
-  { Icon: I.Zap,       title: "Instant setup",              body: "Reviewing in under 5 minutes." },
+  { iconUrl: TRUST_ICONS.daysFree,     title: `${TRIAL_DAYS} days free`, body: "Full access. Cancel anytime." },
+  { iconUrl: TRUST_ICONS.moneyBack,    title: "Money back",              body: "15-day refund guarantee." },
+  { iconUrl: TRUST_ICONS.stripeSecure, title: "Stripe-secure",           body: "We never store card details." },
+  { iconUrl: TRUST_ICONS.instantSetup, title: "Instant setup",           body: "Reviewing in under 5 minutes." },
 ];
-
-const SOCIAL_LOGOS = ["VAYNERMEDIA", "ClickFunnels", "True Classic", "Hello Bello", "Canva", "Jellysmack"];
 
 // ═══════════════════════════════════════════════════════════════════
 // Main Block
@@ -317,7 +342,7 @@ export default function Block() {
               <img src={LOGO_WORDMARK} alt="Brieflee" className="gs-logo" />
             </a>
             <div className="gs-stepper-wrap"><Stepper currentId={step} /></div>
-            <div className="gs-help">Need help? <a href="mailto:hi@brieflee.co">Contact us</a></div>
+            <div className="gs-help">Need help? <a href="/book-a-demo">Contact us</a></div>
           </div>
         </header>
 
@@ -470,7 +495,7 @@ function PersonalizeStep({ workTypeId, setWorkTypeId, heardAboutUsId, setHeardAb
 
       <div className="personalize-grid">
         <PersonalizeCard
-          icon={STICKER_SEARCH}
+          icon={ICON_FOLDER_BAG}
           title="Your work"
           subtitle="What best describes you?"
           options={WORK_TYPE_OPTIONS}
@@ -478,7 +503,7 @@ function PersonalizeStep({ workTypeId, setWorkTypeId, heardAboutUsId, setHeardAb
           onSelect={setWorkTypeId}
         />
         <PersonalizeCard
-          icon={STICKER_MEGAPHONE}
+          icon={ICON_MEGAPHONE}
           title="How did you find us?"
           subtitle="Helps us know what's working."
           options={HEARD_FROM_OPTIONS}
@@ -580,16 +605,9 @@ function PricingStep({ billingInterval, setBillingInterval, selectedPlanId, setS
               <ul className="plan-feature-list">
                 {FEATURE_ROWS(p).map((f) => (
                   <li key={f.label}>
-                    <span className="plan-feat-icon"><f.Icon size={13} /></span>
+                    <img src={f.iconUrl} alt="" className="plan-feat-icon-img" />
                     <span className="plan-feat-label">{f.label}</span>
                     <span className="plan-feat-amount">{f.amount}</span>
-                  </li>
-                ))}
-                {p.extras.map((x) => (
-                  <li key={x} className="plan-extra">
-                    <span className="plan-feat-icon plan-feat-icon-extra"><I.Sparkles size={11} /></span>
-                    <span className="plan-feat-label">{x}</span>
-                    <span className="plan-feat-amount">Yes</span>
                   </li>
                 ))}
               </ul>
@@ -607,7 +625,7 @@ function PricingStep({ billingInterval, setBillingInterval, selectedPlanId, setS
       <div className="trust-strip">
         {TRUST_ITEMS.map((t) => (
           <div className="trust-item" key={t.title}>
-            <span className="trust-icon"><t.Icon size={16} /></span>
+            <img src={t.iconUrl} alt="" className="trust-icon-img" />
             <div className="trust-text">
               <strong>{t.title}</strong>
               {t.body}
@@ -618,10 +636,12 @@ function PricingStep({ billingInterval, setBillingInterval, selectedPlanId, setS
 
       <div className="text-center mt-10">
         <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: "#555", fontWeight: 700 }}>
-          Trusted by 10,000+ growth teams and agencies
+          Trusted by top D2C growth teams and agencies
         </div>
         <div className="logo-strip">
-          {SOCIAL_LOGOS.map((l) => <span key={l}>{l}</span>)}
+          {CUSTOMER_LOGOS.map((l) => (
+            <img key={l.name} src={l.url} alt={l.name} className="customer-logo" />
+          ))}
         </div>
       </div>
 
@@ -630,11 +650,13 @@ function PricingStep({ billingInterval, setBillingInterval, selectedPlanId, setS
           <button className="bl-btn bl-btn-ghost" onClick={onBack} disabled={saving}>
             <I.ArrowLeft size={14} /> Back
           </button>
-          <div style={{ fontSize: 13, color: "#555" }}>
-            {selectedPlan
-              ? <><strong style={{ color: "#001364" }}>{selectedPlan.tier}</strong> · ${selectedPlan.interval === "Yearly" ? Math.round(selectedPlan.price / 12) : selectedPlan.price}/mo · {TRIAL_DAYS} days free</>
-              : <>Pick a plan to continue · You won't be charged today</>}
-          </div>
+          {selectedPlan ? (
+            <div className="plan-summary-flash">
+              <strong>{selectedPlan.tier}</strong> · ${selectedPlan.interval === "Yearly" ? Math.round(selectedPlan.price / 12) : selectedPlan.price}/mo · {TRIAL_DAYS} days free
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: "#555" }}>Pick a plan to continue · You won't be charged today</div>
+          )}
         </div>
         <button className={"bl-btn bl-btn-primary" + (canNext ? " pulse" : "")} onClick={onNext} disabled={!canNext || saving}>
           {saving ? "Saving…" : <>Continue to checkout <I.ArrowRight size={14} /></>}
@@ -894,16 +916,24 @@ function BlockStyles() {
       }
       .gs-topbar-inner {
         max-width: 1200px; margin: 0 auto;
-        display: flex; align-items: center; gap: 24px;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center; gap: 24px;
         padding: 16px 24px;
       }
-      .gs-logo { height: 26px; display: block; }
-      .gs-stepper-wrap { flex: 1; display: flex; justify-content: center; }
-      .gs-help { color: var(--bl-fg-muted); font-size: 14px; }
+      .gs-logo { height: 26px; display: block; justify-self: start; }
+      .gs-stepper-wrap { display: flex; justify-content: center; }
+      .gs-help { color: var(--bl-fg-muted); font-size: 14px; justify-self: end; }
       .gs-help a { font-weight: 600; color: var(--bl-blue); text-decoration: none; }
-      @media (max-width: 720px) {
+      @media (max-width: 820px) {
+        .gs-topbar-inner { grid-template-columns: auto 1fr; gap: 12px; }
+        .gs-stepper-wrap { display: none; }
+        .gs-help { justify-self: end; }
+      }
+      @media (max-width: 520px) {
         .gs-help { display: none; }
-        .gs-topbar-inner { gap: 12px; }
+        .gs-topbar-inner { grid-template-columns: 1fr; justify-items: center; }
+        .gs-logo { justify-self: center; }
       }
 
       .gs-page {
@@ -957,7 +987,7 @@ function BlockStyles() {
         font-size: 11px; font-weight: 700; color: var(--bl-fg-muted);
       }
       .step-pill.done { color: var(--bl-fg); }
-      .step-pill.done .step-dot { background: var(--bl-blue-5); border-color: var(--bl-blue-5); color: #fff; }
+      .step-pill.done .step-dot { background: var(--bl-success); border-color: var(--bl-success); color: #fff; }
       .step-pill.active { background: #fff; color: var(--bl-fg); box-shadow: 0 1px 3px rgba(0,19,100,0.08); }
       .step-pill.active .step-dot { background: var(--bl-blue); border-color: var(--bl-blue); color: #fff; }
       .step-sep { display: inline-block; width: 16px; height: 1px; background: var(--bl-border); margin: 0 4px; }
@@ -1074,15 +1104,11 @@ function BlockStyles() {
         display: flex; align-items: center; gap: 10px;
         font-size: 14px; line-height: 1.4; color: var(--bl-fg-body);
       }
-      .plan-feat-icon {
-        width: 24px; height: 24px;
-        border-radius: 8px;
-        background: var(--bl-light-2);
-        color: var(--bl-blue);
-        display: inline-flex; align-items: center; justify-content: center;
+      .plan-feat-icon-img {
+        width: 28px; height: 28px;
         flex-shrink: 0;
+        object-fit: contain;
       }
-      .plan-feat-icon-extra { background: var(--bl-periwinkle); }
       .plan-feat-label { flex: 1; min-width: 0; }
       .plan-feat-amount { color: var(--bl-fg); font-weight: 700; font-size: 13px; }
 
@@ -1135,11 +1161,10 @@ function BlockStyles() {
         border: 1px solid var(--bl-border);
         border-radius: var(--bl-radius);
       }
-      .trust-icon {
-        width: 28px; height: 28px; border-radius: 8px;
-        background: var(--bl-periwinkle); color: var(--bl-blue);
-        display: inline-flex; align-items: center; justify-content: center;
+      .trust-icon-img {
+        width: 44px; height: 44px;
         flex-shrink: 0;
+        object-fit: contain;
       }
       .trust-text { font-size: 13px; line-height: 1.4; color: var(--bl-fg-body); }
       .trust-text strong { color: var(--bl-fg); display: block; font-weight: 700; margin-bottom: 2px; }
@@ -1156,12 +1181,16 @@ function BlockStyles() {
       .logo-strip {
         display: flex; flex-wrap: wrap;
         align-items: center; justify-content: center;
-        gap: 32px; opacity: 0.7; margin-top: 18px;
+        gap: 36px; margin-top: 22px;
       }
-      .logo-strip span {
-        font-weight: 700; font-size: 14px;
-        letter-spacing: 0.02em; color: var(--bl-fg-muted);
+      .customer-logo {
+        height: 22px;
+        width: auto;
+        opacity: 0.7;
+        filter: grayscale(1);
+        transition: opacity var(--bl-dur) var(--bl-ease);
       }
+      .customer-logo:hover { opacity: 1; }
 
       /* Personalize layout */
       .personalize-grid {
@@ -1174,6 +1203,9 @@ function BlockStyles() {
         border: 1px solid var(--bl-border);
         border-radius: var(--bl-radius-lg);
         padding: 24px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
       }
 
       /* Team hero — was eyes, now Brieflee logo */
@@ -1294,6 +1326,30 @@ function BlockStyles() {
         50%      { box-shadow: 0 1px 0 0 rgba(255,255,255,0.4) inset, 0 8px 28px 0 rgba(135,156,247,0.7); }
       }
       .bl-btn-primary.pulse { animation: blPulse 2.4s var(--bl-ease) infinite; }
+
+      @keyframes blFlash {
+        0%, 100% {
+          background: rgba(217, 224, 255, 0.5);
+          box-shadow: 0 0 0 0 rgba(41,79,246,0.18);
+          transform: scale(1);
+        }
+        50% {
+          background: rgba(217, 224, 255, 0.9);
+          box-shadow: 0 0 0 6px rgba(41,79,246,0.10);
+          transform: scale(1.015);
+        }
+      }
+      .plan-summary-flash {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--bl-fg);
+        padding: 8px 14px;
+        border-radius: var(--bl-radius-pill);
+        border: 1.5px solid var(--bl-blue);
+        white-space: nowrap;
+        animation: blFlash 1.6s var(--bl-ease) infinite;
+      }
+      .plan-summary-flash strong { color: var(--bl-blue); font-weight: 800; }
     `}</style>
   );
 }
