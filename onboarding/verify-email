@@ -1,25 +1,36 @@
-import { useState, useEffect } from 'react';
-import { Mail } from 'lucide-react';
-import { useCurrentUser } from '@/lib/user';
+// Verify email — "Check Your Inbox" page after Softr signup.
+// Single Vibe Code block. Loaded on /verify-email.
+//
+// Hero is the Brieflee compact logo (smiley with the "lee"), not a Mail icon.
+// Resend handler stubbed pending Softr workflow + EmailIt template bl-tx-email-activation.
+
+import { useState, useEffect } from "react";
+import { useCurrentUser } from "@/lib/user";
+import { Button } from "@/components/ui/button";
 
 const RESEND_COOLDOWN_SECONDS = 120;
 
+const ASSETS = "https://raw.githubusercontent.com/BeeSidez/brieflee-softr-code-blocks/main/brieflee-design-system/project/assets";
+const LOGO_COMPACT = `${ASSETS}/logos/brieflee-compact.png`;
+const LOGO_WORDMARK = `${ASSETS}/logos/brieflee-wordmark.png`;
+
 const PROVIDERS = [
-  { name: 'Gmail',   urlFor: (e) => `https://mail.google.com/mail/u/?authuser=${encodeURIComponent(e)}`, favicon: 'https://www.google.com/s2/favicons?domain=gmail.com&sz=32' },
-  { name: 'Outlook', urlFor: ()  => 'https://outlook.live.com/mail/0/inbox',                              favicon: 'https://www.google.com/s2/favicons?domain=outlook.com&sz=32' },
-  { name: 'Yahoo',   urlFor: ()  => 'https://mail.yahoo.com/d/folders/1',                                 favicon: 'https://www.google.com/s2/favicons?domain=yahoo.com&sz=32' },
-  { name: 'Proton',  urlFor: ()  => 'https://mail.proton.me/u/0/inbox',                                   favicon: 'https://www.google.com/s2/favicons?domain=proton.me&sz=32' },
-  { name: 'iCloud',  urlFor: ()  => 'https://www.icloud.com/mail',                                        favicon: 'https://www.google.com/s2/favicons?domain=icloud.com&sz=32' },
+  { name: "Gmail",   urlFor: (e) => `https://mail.google.com/mail/u/?authuser=${encodeURIComponent(e)}`, icon: "https://www.google.com/s2/favicons?domain=gmail.com&sz=32" },
+  { name: "Outlook", urlFor: ()  => "https://outlook.live.com/mail/0/inbox", icon: "https://www.google.com/s2/favicons?domain=outlook.com&sz=32" },
+  { name: "Yahoo",   urlFor: ()  => "https://mail.yahoo.com/d/folders/1",    icon: "https://www.google.com/s2/favicons?domain=yahoo.com&sz=32" },
+  { name: "Proton",  urlFor: ()  => "https://mail.proton.me/u/0/inbox",      icon: "https://www.google.com/s2/favicons?domain=proton.me&sz=32" },
+  { name: "iCloud",  urlFor: ()  => "https://www.icloud.com/mail",           icon: "https://www.google.com/s2/favicons?domain=icloud.com&sz=32" },
 ];
+
+const TEAM_RESEND_WORKFLOW_URL = ""; // TODO: paste Softr workflow URL that POSTs to EmailIt for bl-tx-email-activation
 
 export default function Block() {
   const user = useCurrentUser();
-  const email = user?.email || '';
-
+  const email = user?.email || "";
   const [countdown, setCountdown] = useState(RESEND_COOLDOWN_SECONDS);
-  const [isResending, setIsResending] = useState(false);
-  const [resendError, setResendError] = useState(null);
-  const [resendNotice, setResendNotice] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (countdown <= 0) return;
@@ -27,141 +38,224 @@ export default function Block() {
     return () => clearInterval(t);
   }, [countdown]);
 
-  const formatTime = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+  const formatTime = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
   const handleResend = async () => {
-    if (countdown > 0 || isResending) return;
-    setIsResending(true);
-    setResendError(null);
-    setResendNotice(null);
+    if (countdown > 0 || sending) return;
+    setSending(true);
+    setError(null);
+    setNotice(null);
     try {
-      // TODO: wire to a Softr workflow that calls EmailIt with template alias `bl-tx-email-activation`.
-      //       Until that workflow + email exist, this is a no-op that just resets the cooldown for UX testing.
-      // const res = await fetch('<SOFTR_WORKFLOW_TRIGGER_URL>', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ email }),
-      // });
-      // if (!res.ok) throw new Error('resend failed');
-      await new Promise((r) => setTimeout(r, 500));
+      if (TEAM_RESEND_WORKFLOW_URL) {
+        const res = await fetch(TEAM_RESEND_WORKFLOW_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        if (!res.ok) throw new Error(`resend ${res.status}`);
+      }
       setCountdown(RESEND_COOLDOWN_SECONDS);
-      setResendNotice('Activation email sent again. Check your inbox.');
+      setNotice("Activation email sent again. Check your inbox.");
     } catch (e) {
-      setResendError('Could not resend right now — try again in a moment.');
+      setError("Couldn't resend right now — try again in a moment.");
     } finally {
-      setIsResending(false);
+      setSending(false);
     }
   };
 
-  const primary = PROVIDERS[0];
-  const others = PROVIDERS.slice(1);
-
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: '#FAFBFF' }}>
+    <div className="ve-root">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;500;800&display=swap');
-        * { font-family: 'League Spartan', sans-serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        .ve-root, .ve-root * { font-family: 'Plus Jakarta Sans', sans-serif; }
+
+        .ve-shell {
+          min-height: 100vh;
+          background: #fafbff;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .ve-topbar {
+          padding: 20px 24px;
+          border-bottom: 1px solid #d6defc;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .ve-topbar img { height: 26px; }
+
+        .ve-page {
+          flex: 1;
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+          padding: 64px 24px;
+        }
+
+        .ve-card {
+          width: 100%;
+          max-width: 480px;
+          text-align: center;
+        }
+
+        .ve-hero {
+          width: 96px;
+          height: 96px;
+          margin: 0 auto 28px;
+          border-radius: 24px;
+          background: linear-gradient(180deg, #ecf0ff 0%, rgba(135,156,247,0.45) 100%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 12px 32px -10px rgba(135,156,247,0.45);
+        }
+        .ve-hero img { width: 64px; height: 64px; object-fit: contain; }
+
+        .ve-eyebrow {
+          font-size: 12px;
+          letter-spacing: 0.08em;
+          font-weight: 700;
+          text-transform: uppercase;
+          color: #879cf7;
+          margin-bottom: 12px;
+        }
+
+        .ve-title {
+          font-size: 36px;
+          line-height: 1.08;
+          letter-spacing: -0.02em;
+          font-weight: 800;
+          color: #001364;
+          margin: 0 0 12px;
+        }
+
+        .ve-sub {
+          font-size: 15px;
+          line-height: 1.55;
+          color: #555;
+          margin: 0 0 28px;
+        }
+        .ve-sub strong { color: #001364; }
+
+        .ve-resend {
+          background: transparent;
+          border: none;
+          color: #294ff6;
+          font-size: 14px;
+          font-weight: 600;
+          padding: 8px 12px;
+          cursor: pointer;
+          transition: opacity 200ms cubic-bezier(0.32, 0.72, 0, 1);
+        }
+        .ve-resend[disabled] { color: #555; opacity: 0.55; cursor: default; }
+
+        .ve-status { font-size: 12px; margin-top: 6px; min-height: 18px; }
+        .ve-status.ok { color: #166534; }
+        .ve-status.err { color: #b91c1c; }
+
+        .ve-divider {
+          margin: 32px 0 20px;
+          font-size: 11px;
+          letter-spacing: 0.08em;
+          font-weight: 700;
+          text-transform: uppercase;
+          color: #555;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .ve-divider:before, .ve-divider:after {
+          content: ""; flex: 1; height: 1px; background: #d6defc;
+        }
+
+        .ve-providers { display: flex; flex-direction: column; gap: 10px; }
+        .ve-providers .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+        .ve-provider {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          padding: 14px 16px;
+          border-radius: 12px;
+          background: #fff;
+          border: 1.5px solid #d6defc;
+          color: #001364;
+          font-weight: 600;
+          font-size: 14px;
+          text-decoration: none;
+          transition: all 200ms cubic-bezier(0.32, 0.72, 0, 1);
+        }
+        .ve-provider:hover {
+          border-color: #879cf7;
+          background: #f8fbff;
+          transform: translateY(-1px);
+        }
+        .ve-provider img { width: 18px; height: 18px; }
+
+        .ve-back {
+          display: inline-block;
+          margin-top: 32px;
+          color: #555;
+          font-size: 13px;
+          text-decoration: none;
+          font-weight: 500;
+        }
+        .ve-back:hover { color: #294ff6; text-decoration: underline; }
       `}</style>
 
-      <div className="px-6 py-10 max-w-md w-full text-center">
-        <img
-          src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_logo_brieflee-wordmark-deep-blue-with-periwinkle-lee-and-smile_2025-03.png"
-          alt="Brieflee"
-          className="h-8 mx-auto mb-12"
-        />
+      <div className="ve-shell">
+        <header className="ve-topbar">
+          <img src={LOGO_WORDMARK} alt="Brieflee" />
+        </header>
 
-        <div className="mb-6 flex justify-center">
-          <div
-            className="w-16 h-16 rounded-2xl flex items-center justify-center"
-            style={{ background: '#ECF0FF' }}
-          >
-            <Mail className="w-7 h-7" style={{ color: '#001364' }} strokeWidth={1.8} />
-          </div>
-        </div>
+        <div className="ve-page">
+          <div className="ve-card">
+            <div className="ve-hero">
+              <img src={LOGO_COMPACT} alt="" />
+            </div>
 
-        <h1 className="text-2xl mb-3" style={{ color: '#001364', fontWeight: 800 }}>
-          Check Your Inbox
-        </h1>
+            <div className="ve-eyebrow">Almost there</div>
+            <h1 className="ve-title">Check your inbox</h1>
+            <p className="ve-sub">
+              We sent an activation link {email && <>to <strong>{email}</strong></>}. Click it to verify your account, then come back to start your trial.
+            </p>
 
-        <p className="mb-6 text-sm leading-relaxed" style={{ color: '#333333' }}>
-          We sent an activation link {email && <>to <strong style={{ color: '#001364' }}>{email}</strong></>}. Please check your spam folder or use the shortcuts below.
-        </p>
+            <button
+              className="ve-resend"
+              onClick={handleResend}
+              disabled={countdown > 0 || sending}
+            >
+              {sending
+                ? "Resending…"
+                : countdown > 0
+                  ? `Resend in ${formatTime(countdown)}`
+                  : "Resend activation email"}
+            </button>
+            {notice && <div className="ve-status ok">{notice}</div>}
+            {error && <div className="ve-status err">{error}</div>}
 
-        <button
-          onClick={handleResend}
-          disabled={countdown > 0 || isResending}
-          className="text-sm underline transition-opacity"
-          style={{
-            color: '#001364',
-            opacity: countdown > 0 || isResending ? 0.4 : 1,
-            cursor: countdown > 0 || isResending ? 'not-allowed' : 'pointer',
-            background: 'transparent',
-            border: 'none',
-          }}
-        >
-          {isResending
-            ? 'Resending…'
-            : countdown > 0
-              ? `Resend verification in ${formatTime(countdown)}`
-              : 'Resend verification'}
-        </button>
+            <div className="ve-divider">Or open your inbox</div>
 
-        {resendNotice && (
-          <p className="mt-2 text-xs" style={{ color: '#38A169' }}>{resendNotice}</p>
-        )}
-        {resendError && (
-          <p className="mt-2 text-xs" style={{ color: '#D32F2F' }}>{resendError}</p>
-        )}
-
-        <div className="mt-10 space-y-2">
-          <a
-            href={primary.urlFor(email)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl"
-            style={{
-              background: '#FFFFFF',
-              color: '#001364',
-              border: '1px solid #D6DEFC',
-              fontWeight: 500,
-              textDecoration: 'none',
-            }}
-          >
-            <img src={primary.favicon} alt="" className="w-4 h-4" />
-            Open {primary.name}
-          </a>
-
-          <div className="grid grid-cols-2 gap-2">
-            {others.map((p) => (
-              <a
-                key={p.name}
-                href={p.urlFor(email)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl"
-                style={{
-                  background: '#FFFFFF',
-                  color: '#001364',
-                  border: '1px solid #D6DEFC',
-                  fontWeight: 500,
-                  fontSize: '0.875rem',
-                  textDecoration: 'none',
-                }}
-              >
-                <img src={p.favicon} alt="" className="w-4 h-4" />
-                Open {p.name}
+            <div className="ve-providers">
+              <a className="ve-provider" href={PROVIDERS[0].urlFor(email)} target="_blank" rel="noopener noreferrer">
+                <img src={PROVIDERS[0].icon} alt="" />
+                Open {PROVIDERS[0].name}
               </a>
-            ))}
+              <div className="grid">
+                {PROVIDERS.slice(1).map((p) => (
+                  <a key={p.name} className="ve-provider" href={p.urlFor(email)} target="_blank" rel="noopener noreferrer">
+                    <img src={p.icon} alt="" />
+                    {p.name}
+                  </a>
+                ))}
+              </div>
+            </div>
+
+            <a className="ve-back" href="/sign-in">← Back to sign in</a>
           </div>
         </div>
-
-        <a
-          href="/sign-in"
-          className="mt-8 inline-block text-sm"
-          style={{ color: '#555555', textDecoration: 'underline' }}
-        >
-          Go back to Sign In
-        </a>
       </div>
     </div>
   );

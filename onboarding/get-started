@@ -1,40 +1,33 @@
-// Get Started — single multi-step Vibe Code block on /get-started.
+// Get Started — multi-step Vibe Code block at /get-started.
 // Steps: Team → Personalize → Plan → Checkout. One Softr page, internal step state.
 //
-// SOFTR CONFIG REQUIRED:
-//   Source tab: bind to USERS table (database "brieflee beta"), filter to logged-in user.
-//   Actions tab: auto-populated from q.select aliases below.
+// Ports brieflee-design-system/project/onboarding/Get Started.html into a
+// production Vibe Code block. Tokens / classes preserved (bl-input, plan-card,
+// etc.). Eyes/Mail icons replaced with the Brieflee compact logo.
+// Trust strip uses lucide icons that actually match their labels.
 //
-// Cross-table caveat: the team step writes to ACCOUNTS via a workflow trigger URL set in
-// TEAM_UPDATE_WORKFLOW_URL. Until that workflow exists, team save is a no-op (logged).
+// SOFTR CONFIG REQUIRED:
+//   Source: bind to USERS table in "brieflee beta", filter to logged-in user.
+//   Actions: auto-populated from q.select aliases below.
+//
+// Cross-table caveat: team save targets ACCOUNTS — needs a Softr workflow.
+// Until TEAM_UPDATE_WORKFLOW_URL is wired, team data is collected and the
+// user advances without persisting (logged to console).
+//
+// Checkout: the visual matches the design. The "Pay $0 and start trial"
+// button opens the matching Stripe Payment Link (with 7-day trial baked in)
+// in a new tab. For inline-iframe Stripe Embedded Checkout we'd need a
+// backend endpoint that creates Sessions — not built yet.
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRecordUpdate, useLinkedRecords, q } from "@/lib/datasource";
 import { useCurrentUser } from "@/lib/user";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Check, Shuffle, Eye, BadgeCheck, FileText, LayoutGrid } from "lucide-react";
 
-// ─── Brand palette (from docs/brand-guidelines.md) ──────────────────
-const BL = {
-  blue: "#294ff6",       // primary CTAs, accents
-  blue2: "#4466f8",
-  blue4: "#7a93ff",
-  blue5: "#879cf7",      // soft hero accent
-  navy: "#000f4d",       // headings, dark CTAs
-  navy2: "#001364",      // secondary dark
-  ice: "#ccedff",        // soft tint
-  light1: "#f8fbff",     // page bg
-  light2: "#eef4fd",     // input bg, chart tracks
-  lavender: "#d8d8ff",
-  periwinkle: "#d9e0ff", // pill badges, soft accents
-  body: "#1a1a2e",
-  muted: "#6b7280",
-  border: "#eef4fd",
-};
+// ─── Asset URLs (GitHub raw — swap to Cloudinary for prod speed) ────
+const ASSETS = "https://raw.githubusercontent.com/BeeSidez/brieflee-softr-code-blocks/main/brieflee-design-system/project/assets";
+const LOGO_WORDMARK  = `${ASSETS}/logos/brieflee-wordmark.png`;
+const LOGO_COMPACT   = `${ASSETS}/logos/brieflee-compact.png`;
 
 // ─── Field map (USERS table) ────────────────────────────────────────
 const select = q.select({
@@ -43,10 +36,10 @@ const select = q.select({
   workType: "Xqhif",
   heardAboutUs: "B8uMy",
   plan: "Ux1pf",      // LINKED_RECORD → pricing
-  accounts: "Nz6VX",  // LINKED_RECORD → accounts (read only here)
+  accounts: "Nz6VX",  // LINKED_RECORD → accounts (read only)
 });
 
-// ─── SELECT option UUIDs (captured at field creation, 2026-05-05) ───
+// ─── SELECT option UUIDs (captured at field creation 2026-05-05) ────
 const WORK_TYPE_OPTIONS = [
   { id: "fa51d9c6-6184-4828-a57c-27ffe18a2333", label: "Agency" },
   { id: "ba6276a5-770f-4520-a0dc-078fc22c607b", label: "Brand" },
@@ -73,30 +66,62 @@ const HEARD_FROM_OPTIONS = [
   { id: "ae23e323-f577-44af-ad79-7cf75f48a623", label: "Other" },
 ];
 
-// ─── Product features (icons rendered on every pricing card) ────────
-const FEATURES = [
-  { key: "remix",      label: "Remix",      Icon: Shuffle },
-  { key: "review",     label: "AI Review",  Icon: Eye },
-  { key: "qa",         label: "QA",         Icon: BadgeCheck },
-  { key: "briefs",     label: "Briefs",     Icon: FileText },
-  { key: "storyboard", label: "Storyboard", Icon: LayoutGrid },
-];
-
-// ─── Pricing rows (the 6 canonical, hardcoded) ──────────────────────
-// softrCheckoutEmbedSlug → Softr block slug for the native checkout embed.
-// Bev creates one Softr checkout block per plan; until they exist they all
-// fall back to the Creator Monthly placeholder.
-const SOFTR_CHECKOUT_PAGE_ID = "31bbd318-c437-4b2c-8b46-2dce22863829";
-const SOFTR_CHECKOUT_PLACEHOLDER = "creator-monthly-59"; // TODO: swap per plan once Bev creates them
-
+// ─── Pricing rows (the 6 canonical) — hardcoded so the picker has full data
+//     (useLinkedRecords only returns { id, title } so we can't surface tier/price/feature counts) ──
 const PLANS = [
-  { id: "MOFJ50J3sX5cQ4", tier: "Creator", interval: "Monthly", price: 59,   stripePriceId: "price_1SGHuzIG1gGY9y21517vrys7", maxVideos: 30,  maxWorkspaces: 1,  maxUsers: 1,  softrCheckoutEmbedSlug: "creator-monthly-59" },
-  { id: "efLCArKogDzBco", tier: "Creator", interval: "Yearly",  price: 588,  stripePriceId: "price_1SGHvdIG1gGY9y21twF3H7NU", maxVideos: 30,  maxWorkspaces: 1,  maxUsers: 1,  softrCheckoutEmbedSlug: SOFTR_CHECKOUT_PLACEHOLDER },
-  { id: "3DudH4fLuqChIr", tier: "Crew",    interval: "Monthly", price: 99,   stripePriceId: "price_1SGI2CIG1gGY9y21tuEFZgut", maxVideos: 100, maxWorkspaces: 5,  maxUsers: 5,  softrCheckoutEmbedSlug: SOFTR_CHECKOUT_PLACEHOLDER, popular: true },
-  { id: "QHonFLGNkspIop", tier: "Crew",    interval: "Yearly",  price: 1068, stripePriceId: "price_1SGI31IG1gGY9y21vH0AifOz", maxVideos: 100, maxWorkspaces: 5,  maxUsers: 5,  softrCheckoutEmbedSlug: SOFTR_CHECKOUT_PLACEHOLDER, popular: true },
-  { id: "AQI1eTOfZOYM5h", tier: "Studio",  interval: "Monthly", price: 249,  stripePriceId: "price_1SGI3iIG1gGY9y21ITPStmgR", maxVideos: 500, maxWorkspaces: 10, maxUsers: 10, softrCheckoutEmbedSlug: SOFTR_CHECKOUT_PLACEHOLDER },
-  { id: "KHrjkggVIoUOze", tier: "Studio",  interval: "Yearly",  price: 2388, stripePriceId: "price_1SGI4HIG1gGY9y21oftkiARJ", maxVideos: 500, maxWorkspaces: 10, maxUsers: 10, softrCheckoutEmbedSlug: SOFTR_CHECKOUT_PLACEHOLDER },
+  {
+    id: "MOFJ50J3sX5cQ4", tier: "Creator", interval: "Monthly", price: 59,
+    desc: "For solos and freelancers reviewing their own UGC.",
+    maxVideos: 30, maxWorkspaces: 1, maxUsers: 1,
+    extras: ["Slack & email support"],
+    stripePriceId: "price_1SGHuzIG1gGY9y21517vrys7",
+    trialPaymentLink: "https://buy.stripe.com/7sI9Et7yk3fCeVGbII",
+  },
+  {
+    id: "efLCArKogDzBco", tier: "Creator", interval: "Yearly", price: 588,
+    desc: "For solos and freelancers reviewing their own UGC.",
+    maxVideos: 30, maxWorkspaces: 1, maxUsers: 1,
+    extras: ["Slack & email support"],
+    stripePriceId: "price_1SGHvdIG1gGY9y21twF3H7NU",
+    trialPaymentLink: "https://buy.stripe.com/cN25odcSE4jG8xi8wx",
+  },
+  {
+    id: "3DudH4fLuqChIr", tier: "Crew", interval: "Monthly", price: 99,
+    desc: "The winning ad workflow for growing brands and small teams.",
+    maxVideos: 100, maxWorkspaces: 5, maxUsers: 5,
+    extras: ["Priority support", "Shared brief library"],
+    stripePriceId: "price_1SGI2CIG1gGY9y21tuEFZgut",
+    trialPaymentLink: "https://buy.stripe.com/cN24k97yk5nK14QeUX",
+    popular: true,
+  },
+  {
+    id: "QHonFLGNkspIop", tier: "Crew", interval: "Yearly", price: 1068,
+    desc: "The winning ad workflow for growing brands and small teams.",
+    maxVideos: 100, maxWorkspaces: 5, maxUsers: 5,
+    extras: ["Priority support", "Shared brief library"],
+    stripePriceId: "price_1SGI31IG1gGY9y21vH0AifOz",
+    trialPaymentLink: "https://buy.stripe.com/7sI6sh9Gs7vS6pa3ce",
+    popular: true,
+  },
+  {
+    id: "AQI1eTOfZOYM5h", tier: "Studio", interval: "Monthly", price: 249,
+    desc: "Scaled review for agencies running multiple brand accounts.",
+    maxVideos: 500, maxWorkspaces: 10, maxUsers: 10,
+    extras: ["Dedicated CSM", "API access", "SSO & audit log"],
+    stripePriceId: "price_1SGI3iIG1gGY9y21ITPStmgR",
+    trialPaymentLink: "https://buy.stripe.com/00gdUJ2e07vS9BmaEJ",
+  },
+  {
+    id: "KHrjkggVIoUOze", tier: "Studio", interval: "Yearly", price: 2388,
+    desc: "Scaled review for agencies running multiple brand accounts.",
+    maxVideos: 500, maxWorkspaces: 10, maxUsers: 10,
+    extras: ["Dedicated CSM", "API access", "SSO & audit log"],
+    stripePriceId: "price_1SGI4HIG1gGY9y21oftkiARJ",
+    trialPaymentLink: "https://buy.stripe.com/fZe9Et19W4jG28U6os",
+  },
 ];
+
+const TRIAL_DAYS = 7;
 
 const STEPS = [
   { id: "team",        label: "Team" },
@@ -105,7 +130,15 @@ const STEPS = [
   { id: "checkout",    label: "Checkout" },
 ];
 
-const TEAM_UPDATE_WORKFLOW_URL = ""; // TODO: paste Softr workflow trigger URL here
+const TEAM_UPDATE_WORKFLOW_URL = ""; // TODO: paste Softr workflow URL that updates accounts
+
+const yearlySavingsPct = (tier) => {
+  const m = PLANS.find((p) => p.tier === tier && p.interval === "Monthly");
+  const y = PLANS.find((p) => p.tier === tier && p.interval === "Yearly");
+  if (!m || !y) return 0;
+  return Math.round(((m.price * 12 - y.price) / (m.price * 12)) * 100);
+};
+const MAX_YEARLY_SAVINGS = Math.max(...["Creator", "Crew", "Studio"].map(yearlySavingsPct));
 
 const toIdLabel = (options, id) => {
   if (!id) return null;
@@ -113,15 +146,63 @@ const toIdLabel = (options, id) => {
   return opt ? { id: opt.id, label: opt.label } : null;
 };
 
-const yearlySavingsPct = (tier) => {
-  const m = PLANS.find((p) => p.tier === tier && p.interval === "Monthly");
-  const y = PLANS.find((p) => p.tier === tier && p.interval === "Yearly");
-  if (!m || !y) return 0;
-  const fullYear = m.price * 12;
-  return Math.round(((fullYear - y.price) / fullYear) * 100);
+// ─── Inline lucide-style SVG icons (matches design system) ──────────
+const Svg = ({ size = 16, children, ...rest }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+    {...rest}
+  >{children}</svg>
+);
+const I = {
+  Check:       (p) => <Svg {...p}><polyline points="20 6 9 17 4 12" /></Svg>,
+  ArrowRight:  (p) => <Svg {...p}><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></Svg>,
+  ArrowLeft:   (p) => <Svg {...p}><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></Svg>,
+  X:           (p) => <Svg {...p}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></Svg>,
+  Plus:        (p) => <Svg {...p}><path d="M5 12h14" /><path d="M12 5v14" /></Svg>,
+  Mail:        (p) => <Svg {...p}><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></Svg>,
+  Send:        (p) => <Svg {...p}><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" /><path d="m21.854 2.147-10.94 10.939" /></Svg>,
+  Sparkles:    (p) => <Svg {...p}><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" /><path d="M20 3v4" /><path d="M22 5h-4" /></Svg>,
+  Shield:      (p) => <Svg {...p}><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="m9 12 2 2 4-4" /></Svg>,
+  Lock:        (p) => <Svg {...p}><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></Svg>,
+  RotateCcw:   (p) => <Svg {...p}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></Svg>,
+  Calendar:    (p) => <Svg {...p}><path d="M8 2v4" /><path d="M16 2v4" /><rect width="18" height="18" x="3" y="4" rx="2" /><path d="M3 10h18" /></Svg>,
+  Zap:         (p) => <Svg {...p}><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" /></Svg>,
+  Eye:         (p) => <Svg {...p}><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></Svg>,
+  FileText:    (p) => <Svg {...p}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></Svg>,
+  LayoutGrid:  (p) => <Svg {...p}><rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" /><rect width="7" height="7" x="14" y="14" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" /></Svg>,
+  BadgeCheck:  (p) => <Svg {...p}><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" /><path d="m9 12 2 2 4-4" /></Svg>,
+  Shuffle:     (p) => <Svg {...p}><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22" /><path d="m18 2 4 4-4 4" /><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2" /><path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8" /><path d="m18 14 4 4-4 4" /></Svg>,
+  Star:        (p) => <Svg {...p}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></Svg>,
+  Users:       (p) => <Svg {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></Svg>,
+  Layers:      (p) => <Svg {...p}><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" /><path d="m6.08 9.5-3.5 1.6a1 1 0 0 0 0 1.81l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9a1 1 0 0 0 0-1.83l-3.5-1.59" /><path d="m6.08 14.5-3.5 1.6a1 1 0 0 0 0 1.81l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9a1 1 0 0 0 0-1.83l-3.5-1.59" /></Svg>,
 };
-const MAX_YEARLY_SAVINGS = Math.max(...["Creator", "Crew", "Studio"].map(yearlySavingsPct));
 
+// ─── Feature rows (icon + label + per-plan amount) ──────────────────
+const FEATURE_ROWS = (plan) => [
+  { Icon: I.Eye,        label: "AI video review",    amount: `${plan.maxVideos}/mo` },
+  { Icon: I.FileText,   label: "Briefs & checklists",amount: "Unlimited" },
+  { Icon: I.BadgeCheck, label: "26-item QA scoring", amount: "Yes" },
+  { Icon: I.LayoutGrid, label: "Storyboard view",    amount: "Yes" },
+  { Icon: I.Shuffle,    label: "Remix & revisions",  amount: "Yes" },
+  { Icon: I.Users,      label: "Seats",              amount: `${plan.maxUsers}` },
+  { Icon: I.Layers,     label: "Workspaces",         amount: `${plan.maxWorkspaces}` },
+];
+
+// ─── Trust strip items (lucide icons that match the labels) ─────────
+const TRUST_ITEMS = [
+  { Icon: I.Calendar,  title: `${TRIAL_DAYS} days free`,    body: "Full access. Cancel anytime." },
+  { Icon: I.RotateCcw, title: "Money back",                 body: "15-day refund guarantee." },
+  { Icon: I.Lock,      title: "Stripe-secure",              body: "We never store card details." },
+  { Icon: I.Zap,       title: "Instant setup",              body: "Reviewing in under 5 minutes." },
+];
+
+const SOCIAL_LOGOS = ["VAYNERMEDIA", "ClickFunnels", "True Classic", "Hello Bello", "Canva", "Jellysmack"];
+
+// ═══════════════════════════════════════════════════════════════════
+// Main Block
+// ═══════════════════════════════════════════════════════════════════
 export default function Block() {
   const user = useCurrentUser();
   const [step, setStep] = useState("team");
@@ -129,17 +210,13 @@ export default function Block() {
 
   const [teamName, setTeamName] = useState("");
   const [teamEmails, setTeamEmails] = useState(["", "", ""]);
-
   const [workTypeId, setWorkTypeId] = useState(null);
   const [heardAboutUsId, setHeardAboutUsId] = useState(null);
-
   const [billingInterval, setBillingInterval] = useState("Yearly");
   const [selectedPlanId, setSelectedPlanId] = useState(null);
 
   const { data: accountData } = useLinkedRecords({
-    select,
-    field: "accounts",
-    count: 1,
+    select, field: "accounts", count: 1,
   });
   const userAccount = accountData?.pages.flatMap((p) => p.items)[0] ?? null;
 
@@ -151,9 +228,7 @@ export default function Block() {
     fields: select,
     onError(err) {
       console.error("=== get-started save error:", err);
-      toast.error("Save failed", {
-        description: err?.message || "Open the browser console for details.",
-      });
+      toast.error("Save failed", { description: err?.message || "Open the console for details." });
       setSaving(false);
     },
   });
@@ -162,6 +237,12 @@ export default function Block() {
     const i = STEPS.findIndex((s) => s.id === step);
     if (i < STEPS.length - 1) setStep(STEPS[i + 1].id);
     setSaving(false);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const goBack = () => {
+    const i = STEPS.findIndex((s) => s.id === step);
+    if (i > 0) setStep(STEPS[i - 1].id);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleTeamNext = async ({ skip }) => {
@@ -196,7 +277,7 @@ export default function Block() {
   const handlePersonalizeNext = () => {
     if (!user?.id) { toast.error("Not signed in"); return; }
     if (updateRecord.enabled === false) {
-      toast.error("Saving is disabled — check the block's Visibility / permissions in Softr.");
+      toast.error("Saving is disabled — check Visibility / permissions in Softr.");
       return;
     }
     if (!workTypeId || !heardAboutUsId) return;
@@ -223,256 +304,215 @@ export default function Block() {
     );
   };
 
-  const goBack = () => {
-    const i = STEPS.findIndex((s) => s.id === step);
-    if (i > 0) setStep(STEPS[i - 1].id);
-  };
-
   return (
-    <div className="min-h-screen w-full" style={{ background: BL.light1 }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;700;800&display=swap');
-        .gs-root, .gs-root * { font-family: 'League Spartan', sans-serif; }
-        .gs-root code { font-family: ui-monospace, SFMono-Regular, monospace; }
-      `}</style>
-
-      <div className="gs-root">
-        <Stepper currentId={step} />
-
-        {/* Centered container for every step */}
-        <div className="w-full flex justify-center">
-          <div className="w-full max-w-5xl px-4 sm:px-6 pb-24">
-            {step === "team" && (
-              <TeamStep
-                teamName={teamName}
-                setTeamName={setTeamName}
-                teamEmails={teamEmails}
-                setTeamEmails={setTeamEmails}
-                onNext={() => handleTeamNext({ skip: false })}
-                onSkip={() => handleTeamNext({ skip: true })}
-                saving={saving}
-              />
-            )}
-            {step === "personalize" && (
-              <PersonalizeStep
-                workTypeId={workTypeId}
-                setWorkTypeId={setWorkTypeId}
-                heardAboutUsId={heardAboutUsId}
-                setHeardAboutUsId={setHeardAboutUsId}
-                onNext={handlePersonalizeNext}
-                onBack={goBack}
-                saving={saving}
-              />
-            )}
-            {step === "pricing" && (
-              <PricingStep
-                billingInterval={billingInterval}
-                setBillingInterval={setBillingInterval}
-                selectedPlanId={selectedPlanId}
-                setSelectedPlanId={setSelectedPlanId}
-                onNext={handlePlanNext}
-                onBack={goBack}
-                saving={saving}
-              />
-            )}
-            {step === "checkout" && (
-              <CheckoutStep
-                selectedPlanId={selectedPlanId}
-                onBack={goBack}
-              />
-            )}
+    <div className="gs-root">
+      <BlockStyles />
+      <div className="gs-shell">
+        {/* Topbar */}
+        <header className="gs-topbar">
+          <div className="gs-topbar-inner">
+            <a href="/" aria-label="Brieflee">
+              <img src={LOGO_WORDMARK} alt="Brieflee" className="gs-logo" />
+            </a>
+            <div className="gs-stepper-wrap"><Stepper currentId={step} /></div>
+            <div className="gs-help">Need help? <a href="mailto:hi@brieflee.co">Contact us</a></div>
           </div>
-        </div>
+        </header>
+
+        {step === "team" && (
+          <TeamStep
+            teamName={teamName} setTeamName={setTeamName}
+            teamEmails={teamEmails} setTeamEmails={setTeamEmails}
+            onNext={() => handleTeamNext({ skip: false })}
+            onSkip={() => handleTeamNext({ skip: true })}
+            saving={saving}
+          />
+        )}
+        {step === "personalize" && (
+          <PersonalizeStep
+            workTypeId={workTypeId} setWorkTypeId={setWorkTypeId}
+            heardAboutUsId={heardAboutUsId} setHeardAboutUsId={setHeardAboutUsId}
+            onNext={handlePersonalizeNext} onBack={goBack}
+            saving={saving}
+          />
+        )}
+        {step === "pricing" && (
+          <PricingStep
+            billingInterval={billingInterval} setBillingInterval={setBillingInterval}
+            selectedPlanId={selectedPlanId} setSelectedPlanId={setSelectedPlanId}
+            onNext={handlePlanNext} onBack={goBack}
+            saving={saving}
+          />
+        )}
+        {step === "checkout" && (
+          <CheckoutStep
+            selectedPlanId={selectedPlanId} billingInterval={billingInterval}
+            user={user} onBack={goBack}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-// ─── Stepper ────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+// Stepper (pill-style, top-of-page)
+// ═══════════════════════════════════════════════════════════════════
 function Stepper({ currentId }) {
   const idx = STEPS.findIndex((s) => s.id === currentId);
   return (
-    <div className="w-full flex justify-center">
-      <div className="flex flex-wrap items-center justify-center gap-3 py-8 px-4 text-sm">
-        {STEPS.map((s, i) => {
-          const done = i < idx;
-          const active = i === idx;
-          const reached = done || active;
-          return (
-            <div key={s.id} className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <div
-                  className="w-5 h-5 rounded-full flex items-center justify-center"
-                  style={{
-                    background: reached ? BL.blue : "transparent",
-                    border: reached ? "none" : `1.5px solid ${BL.border}`,
-                  }}
-                >
-                  {done && <Check className="w-3 h-3" style={{ color: "#fff" }} strokeWidth={3} />}
-                </div>
-                <span style={{ color: reached ? BL.navy : BL.muted, fontWeight: active ? 700 : 500 }}>
-                  {s.label}
-                </span>
-              </div>
-              {i < STEPS.length - 1 && (
-                <div className="w-12 h-px" style={{ background: BL.border }} />
-              )}
-            </div>
-          );
-        })}
-      </div>
+    <div className="step-row">
+      {STEPS.map((s, i) => {
+        const done = i < idx;
+        const active = i === idx;
+        const klass = active ? "step-pill active" : done ? "step-pill done" : "step-pill";
+        return (
+          <span key={s.id} style={{ display: "inline-flex", alignItems: "center" }}>
+            <span className={klass}>
+              <span className="step-dot">
+                {done ? <I.Check size={11} strokeWidth={3} /> : i + 1}
+              </span>
+              <span>{s.label}</span>
+            </span>
+            {i < STEPS.length - 1 && <span className="step-sep" />}
+          </span>
+        );
+      })}
     </div>
   );
 }
 
-// ─── Team Step ──────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+// Team Step
+// ═══════════════════════════════════════════════════════════════════
 function TeamStep({ teamName, setTeamName, teamEmails, setTeamEmails, onNext, onSkip, saving }) {
-  const setEmail = (i, val) => setTeamEmails(teamEmails.map((e, k) => (k === i ? val : e)));
-  const hasAnyInvite = teamEmails.some((e) => e.trim().length > 0);
+  const setEmail = (i, v) => setTeamEmails(teamEmails.map((e, k) => (k === i ? v : e)));
+  const addEmail = () => setTeamEmails([...teamEmails, ""]);
+  const removeEmail = (i) => setTeamEmails(teamEmails.filter((_, k) => k !== i));
+  const inviteCount = teamEmails.filter((e) => e.trim()).length;
   const canNext = teamName.trim().length > 0;
 
   return (
-    <div className="w-full max-w-md mx-auto text-center">
-      <h1 className="text-3xl mb-3" style={{ color: BL.navy, fontWeight: 800 }}>
-        Create your team
-      </h1>
-      <p className="text-sm leading-relaxed mb-10" style={{ color: BL.body }}>
-        Brieflee is better with friends — invite teammates to join your trial.
-      </p>
-
-      <div className="text-left">
-        <Label htmlFor="team-name" className="text-sm" style={{ color: BL.navy, fontWeight: 600 }}>
-          Team name
-        </Label>
-        <Input
-          id="team-name"
-          className="mt-2 mb-6"
-          placeholder="Ad Rockstars"
-          value={teamName}
-          onChange={(e) => setTeamName(e.target.value)}
-          style={{ borderColor: BL.border, background: "#fff", color: BL.navy }}
-        />
-
-        <div
-          className="rounded-xl px-4 py-3 mb-3 text-sm text-center"
-          style={{ background: BL.periwinkle, color: BL.blue, fontWeight: 500 }}
-        >
-          Enter email addresses to invite your team
+    <div className="gs-page gs-page-narrow">
+      <div className="text-center mb-6">
+        <div className="team-hero">
+          <img src={LOGO_COMPACT} alt="" />
         </div>
+        <span className="gs-eyebrow">Step 1 of 4 · Set up your workspace</span>
+        <h1 className="gs-headline">Name your team and invite your crew</h1>
+        <p className="gs-sub">Brieflee is built for review across briefs, brands and teammates. You can always add more people later.</p>
+      </div>
 
-        <div className="space-y-2 mb-6">
-          {teamEmails.map((val, i) => (
-            <Input
-              key={i}
-              type="email"
-              placeholder="name@example.com"
-              value={val}
-              onChange={(e) => setEmail(i, e.target.value)}
-              style={{ borderColor: BL.border, background: "#fff", color: BL.navy }}
-            />
-          ))}
+      <div className="bl-card" style={{ padding: 28 }}>
+        <label className="field-label" htmlFor="team-name">Team name</label>
+        <input id="team-name" className="bl-input" placeholder="e.g. Ad Rockstars"
+          value={teamName} onChange={(e) => setTeamName(e.target.value)} />
+        <div className="field-help">This becomes your workspace title across Brieflee.</div>
+
+        <div className="mt-6">
+          <label className="field-label">
+            <span className="row gap-2">
+              <I.Mail size={14} /> <span>Invite teammates</span>
+              <span style={{ color: "#bbb", fontWeight: 500 }}>· optional</span>
+            </span>
+          </label>
+          <div className="stack gap-2">
+            {teamEmails.map((val, i) => (
+              <div key={i} className="row gap-2">
+                <input className="bl-input" type="email" placeholder="name@company.com"
+                  value={val} onChange={(e) => setEmail(i, e.target.value)} />
+                {teamEmails.length > 1 && (
+                  <button type="button" onClick={() => removeEmail(i)} aria-label="Remove" className="ic-btn">
+                    <I.X size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={addEmail} className="row gap-2 mt-3 link-btn">
+            <I.Plus size={14} /> Add another teammate
+          </button>
         </div>
       </div>
 
-      <Button
-        onClick={onNext}
-        disabled={!canNext || saving}
-        className="w-full py-6 rounded-xl text-base"
-        style={{
-          background: BL.blue,
-          color: "#fff",
-          opacity: canNext && !saving ? 1 : 0.4,
-          fontWeight: 600,
-        }}
-      >
-        {saving ? "Saving…" : hasAnyInvite ? "Send invites" : "Next"}
-      </Button>
+      <div className="nav-row">
+        <button className="bl-btn bl-btn-ghost" onClick={onSkip} disabled={saving}>Skip for now</button>
+        <button className="bl-btn bl-btn-primary" onClick={onNext} disabled={!canNext || saving}>
+          {saving
+            ? "Saving…"
+            : inviteCount > 0
+              ? <><I.Send size={14} /> Send {inviteCount} invite{inviteCount > 1 ? "s" : ""} & continue</>
+              : <>Continue <I.ArrowRight size={14} /></>}
+        </button>
+      </div>
 
-      <button
-        onClick={onSkip}
-        disabled={saving}
-        className="mt-3 text-sm bg-transparent border-0 cursor-pointer"
-        style={{ color: BL.navy, fontWeight: 600 }}
-      >
-        Skip
-      </button>
+      <p className="text-center mt-6" style={{ fontSize: 12, color: "#bbb" }}>
+        Teammates get a free seat under your trial. No card needed for them.
+      </p>
     </div>
   );
 }
 
-// ─── Personalize Step ───────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+// Personalize Step
+// ═══════════════════════════════════════════════════════════════════
 function PersonalizeStep({ workTypeId, setWorkTypeId, heardAboutUsId, setHeardAboutUsId, onNext, onBack, saving }) {
   const canNext = Boolean(workTypeId && heardAboutUsId);
   return (
-    <div className="w-full max-w-2xl mx-auto text-center">
-      <h1 className="text-3xl mb-3" style={{ color: BL.navy, fontWeight: 800 }}>
-        Personalize your Experience
-      </h1>
-      <p className="text-sm leading-relaxed max-w-md mx-auto mb-10" style={{ color: BL.body }}>
-        Tell us a bit about your work and how you found us — we'll tune Brieflee to fit.
-      </p>
+    <div className="gs-page gs-page-medium">
+      <div className="text-center mb-6">
+        <span className="gs-eyebrow">Step 2 of 4 · Personalize</span>
+        <h1 className="gs-headline">Tell us about your work</h1>
+        <p className="gs-sub">We'll tune Brieflee's review thresholds, brief templates and onboarding examples to fit how you work.</p>
+      </div>
 
-      <Question
-        label="What best describes your work?"
-        options={WORK_TYPE_OPTIONS}
-        valueId={workTypeId}
-        onSelect={setWorkTypeId}
-      />
-      <Question
-        label="Where did you hear about us?"
-        options={HEARD_FROM_OPTIONS}
-        valueId={heardAboutUsId}
-        onSelect={setHeardAboutUsId}
-      />
+      <div className="personalize-grid">
+        <PersonalizeCard
+          icon={LOGO_COMPACT}
+          title="Your work"
+          subtitle="What best describes you?"
+          options={WORK_TYPE_OPTIONS}
+          valueId={workTypeId}
+          onSelect={setWorkTypeId}
+        />
+        <PersonalizeCard
+          icon={LOGO_COMPACT}
+          title="How did you find us?"
+          subtitle="Helps us know what's working."
+          options={HEARD_FROM_OPTIONS}
+          valueId={heardAboutUsId}
+          onSelect={setHeardAboutUsId}
+        />
+      </div>
 
-      <div className="flex items-center justify-center gap-3 mt-2">
-        <button
-          onClick={onBack}
-          className="px-4 py-2 text-sm bg-transparent border-0 cursor-pointer"
-          style={{ color: BL.muted, fontWeight: 500 }}
-        >
-          Back
+      <div className="nav-row">
+        <button className="bl-btn bl-btn-ghost" onClick={onBack} disabled={saving}>
+          <I.ArrowLeft size={14} /> Back
         </button>
-        <Button
-          onClick={onNext}
-          disabled={!canNext || saving}
-          className="px-12 py-6 rounded-xl text-base"
-          style={{
-            background: BL.blue,
-            color: "#fff",
-            opacity: canNext && !saving ? 1 : 0.4,
-            fontWeight: 600,
-          }}
-        >
-          {saving ? "Saving…" : "Next"}
-        </Button>
+        <button className={"bl-btn bl-btn-primary" + (canNext ? " pulse" : "")} onClick={onNext} disabled={!canNext || saving}>
+          {saving ? "Saving…" : <>Continue <I.ArrowRight size={14} /></>}
+        </button>
       </div>
     </div>
   );
 }
 
-function Question({ label, options, valueId, onSelect }) {
+function PersonalizeCard({ icon, title, subtitle, options, valueId, onSelect }) {
   return (
-    <div className="mb-10">
-      <p className="mb-5 text-sm" style={{ color: BL.navy, fontWeight: 600 }}>
-        {label} <span style={{ color: BL.blue }}>*</span>
-      </p>
-      <div className="flex flex-wrap justify-center gap-2">
+    <div className="personalize-card">
+      <div className="row gap-3 mb-4" style={{ alignItems: "center" }}>
+        <img src={icon} alt="" style={{ width: 36, height: 36, flexShrink: 0 }} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, color: "#001364" }}>{title}</div>
+          <div style={{ fontSize: 12, color: "#555" }}>{subtitle}</div>
+        </div>
+      </div>
+      <div className="row gap-2" style={{ flexWrap: "wrap" }}>
         {options.map((opt) => {
-          const selected = valueId === opt.id;
+          const sel = valueId === opt.id;
           return (
-            <button
-              key={opt.id}
-              onClick={() => onSelect(opt.id)}
-              className="px-4 py-2 rounded-lg text-sm flex items-center gap-2 cursor-pointer"
-              style={{
-                background: selected ? BL.blue : "#fff",
-                color: selected ? "#fff" : BL.navy,
-                border: selected ? `1px solid ${BL.blue}` : `1px solid ${BL.border}`,
-                fontWeight: 500,
-              }}
-            >
-              {selected && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+            <button key={opt.id} className={"opt-chip" + (sel ? " selected" : "")} onClick={() => onSelect(opt.id)}>
+              {sel && <I.Check size={12} strokeWidth={3} />}
               {opt.label}
             </button>
           );
@@ -482,182 +522,136 @@ function Question({ label, options, valueId, onSelect }) {
   );
 }
 
-// ─── Pricing Step ───────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+// Pricing Step
+// ═══════════════════════════════════════════════════════════════════
 function PricingStep({ billingInterval, setBillingInterval, selectedPlanId, setSelectedPlanId, onNext, onBack, saving }) {
   const visiblePlans = useMemo(
     () => PLANS.filter((p) => p.interval === billingInterval),
     [billingInterval],
   );
+  const selectedPlan = PLANS.find((p) => p.id === selectedPlanId);
   const canNext = Boolean(selectedPlanId);
 
   return (
-    <div className="w-full">
-      <div className="text-center mb-2">
-        <h1 className="text-3xl mb-3" style={{ color: BL.navy, fontWeight: 800 }}>
-          Try one plan free for 7 days
-        </h1>
-        <p className="text-sm leading-relaxed max-w-md mx-auto mb-6" style={{ color: BL.body }}>
-          Cancel anytime. No charge until your trial ends.
-        </p>
-        <IntervalToggle value={billingInterval} onChange={setBillingInterval} maxSavings={MAX_YEARLY_SAVINGS} />
+    <div className="gs-page">
+      <div className="text-center mb-6">
+        <div className="trial-banner">
+          <span className="trial-dot"></span>
+          {TRIAL_DAYS} days free · No charge until your trial ends
+        </div>
+        <h1 className="gs-headline">Pick the plan that fits your team</h1>
+        <p className="gs-sub">All plans include the full Brieflee toolkit. Cancel any time during your trial with one click.</p>
+        <div className="mt-6">
+          <IntervalToggle value={billingInterval} onChange={setBillingInterval} maxSavings={MAX_YEARLY_SAVINGS} />
+        </div>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-5 mt-10">
+      <div className="plan-grid mt-8">
         {visiblePlans.map((p) => {
           const selected = selectedPlanId === p.id;
-          const isPopular = !!p.popular;
-          const monthlyEquivalent = p.interval === "Yearly" ? Math.round(p.price / 12) : p.price;
-          const subLabel = p.interval === "Yearly" ? `Billed $${p.price.toLocaleString()} per year` : "Billed monthly";
-          const savings = p.interval === "Yearly" ? yearlySavingsPct(p.tier) : 0;
+          const isYearly = p.interval === "Yearly";
+          const monthlyEquivalent = isYearly ? Math.round(p.price / 12) : p.price;
+          const billNote = isYearly ? `Billed $${p.price.toLocaleString()} per year` : "Billed monthly";
+          const savings = isYearly ? yearlySavingsPct(p.tier) : 0;
+          const cls = "plan-card" + (p.popular ? " popular" : "") + (selected ? " selected" : "");
 
           return (
-            <div
-              key={p.id}
-              className="relative rounded-2xl cursor-pointer transition-shadow"
-              onClick={() => setSelectedPlanId(p.id)}
-              style={{
-                background: "#fff",
-                border: selected ? `2px solid ${BL.blue}` : `1px solid ${BL.border}`,
-                boxShadow: isPopular ? "0 8px 24px rgba(41,79,246,0.10)" : "0 2px 8px rgba(0,15,77,0.04)",
-                overflow: "hidden",
-              }}
-            >
-              {isPopular && (
-                <div
-                  className="text-xs uppercase tracking-wider text-center py-2"
-                  style={{ background: BL.blue, color: "#fff", fontWeight: 700 }}
-                >
-                  Most popular
-                </div>
-              )}
-              <div className="p-6">
-                <div
-                  className="inline-block text-xs uppercase tracking-wide px-2.5 py-1 rounded-full mb-3"
-                  style={{ background: BL.periwinkle, color: BL.blue, fontWeight: 700 }}
-                >
-                  {p.tier}
-                </div>
-                <div className="flex items-baseline gap-1 mb-1">
-                  <span className="text-4xl" style={{ color: BL.navy, fontWeight: 800 }}>
-                    ${monthlyEquivalent}
-                  </span>
-                  <span className="text-sm" style={{ color: BL.muted, fontWeight: 500 }}>/mo</span>
-                </div>
-                <div className="text-xs mb-1" style={{ color: BL.muted }}>{subLabel}</div>
-                {savings > 0 && (
-                  <div className="text-xs mb-5" style={{ color: BL.blue, fontWeight: 700 }}>
-                    Save {savings}% vs monthly
-                  </div>
-                )}
-                {savings === 0 && <div className="mb-5" />}
+            <div key={p.id} className={cls} onClick={() => setSelectedPlanId(p.id)}>
+              {p.popular && <div className="plan-popular-tag">Most popular</div>}
 
-                <ul className="space-y-2.5 text-sm mb-6" style={{ color: BL.body }}>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 flex-shrink-0" style={{ color: BL.blue }} strokeWidth={3} />
-                    <span><strong>{p.maxVideos}</strong> videos / mo</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 flex-shrink-0" style={{ color: BL.blue }} strokeWidth={3} />
-                    <span><strong>{p.maxWorkspaces}</strong> {p.maxWorkspaces === 1 ? "workspace" : "workspaces"}</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 flex-shrink-0" style={{ color: BL.blue }} strokeWidth={3} />
-                    <span><strong>{p.maxUsers}</strong> {p.maxUsers === 1 ? "seat" : "seats"}</span>
-                  </li>
-                </ul>
+              <div className="plan-tier">{p.tier}</div>
+              <div className="plan-name">For {p.tier === "Creator" ? "solos" : p.tier === "Crew" ? "growing teams" : "agencies"}</div>
+              <div className="plan-desc">{p.desc}</div>
 
-                <div className="border-t pt-4 mb-5" style={{ borderColor: BL.border }}>
-                  <div className="text-xs uppercase tracking-wide mb-3" style={{ color: BL.muted, fontWeight: 700 }}>
-                    Everything in Brieflee
-                  </div>
-                  <ul className="space-y-2 text-sm" style={{ color: BL.body }}>
-                    {FEATURES.map((f) => (
-                      <li key={f.key} className="flex items-center gap-2">
-                        <span
-                          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                          style={{ background: BL.light2 }}
-                        >
-                          <f.Icon className="w-4 h-4" style={{ color: BL.blue }} strokeWidth={2} />
-                        </span>
-                        {f.label}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+              <div className="plan-price-row">
+                <span className="plan-price">${monthlyEquivalent}</span>
+                <span className="plan-price-suffix">/mo</span>
+              </div>
+              <div className="plan-bill-note">{billNote}</div>
+              {savings > 0
+                ? <span className="plan-savings"><I.Zap size={11} /> Save {savings}% vs monthly</span>
+                : <span style={{ display: "inline-block", height: 22 }} />}
 
-                <div
-                  className="text-center py-2.5 rounded-lg text-sm"
-                  style={{
-                    background: selected ? BL.blue : (isPopular ? BL.navy : BL.light2),
-                    color: selected || isPopular ? "#fff" : BL.navy,
-                    fontWeight: 600,
-                  }}
-                >
-                  {selected ? "Selected" : "Choose plan"}
-                </div>
+              <div className="plan-divider"></div>
+
+              <ul className="plan-feature-list">
+                {FEATURE_ROWS(p).map((f) => (
+                  <li key={f.label}>
+                    <span className="plan-feat-icon"><f.Icon size={13} /></span>
+                    <span className="plan-feat-label">{f.label}</span>
+                    <span className="plan-feat-amount">{f.amount}</span>
+                  </li>
+                ))}
+                {p.extras.map((x) => (
+                  <li key={x} className="plan-extra">
+                    <span className="plan-feat-icon plan-feat-icon-extra"><I.Sparkles size={11} /></span>
+                    <span className="plan-feat-label">{x}</span>
+                    <span className="plan-feat-amount">Yes</span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="plan-cta">
+                {selected
+                  ? <><I.Check size={14} strokeWidth={3} /> &nbsp;Selected</>
+                  : `Start ${TRIAL_DAYS}-day free trial`}
               </div>
             </div>
           );
         })}
       </div>
 
-      <div className="flex items-center justify-center gap-3 mt-10">
-        <button
-          onClick={onBack}
-          className="px-4 py-2 text-sm bg-transparent border-0 cursor-pointer"
-          style={{ color: BL.muted, fontWeight: 500 }}
-        >
-          Back
-        </button>
-        <Button
-          onClick={onNext}
-          disabled={!canNext || saving}
-          className="px-12 py-6 rounded-xl text-base"
-          style={{
-            background: BL.blue,
-            color: "#fff",
-            opacity: canNext && !saving ? 1 : 0.4,
-            fontWeight: 600,
-          }}
-        >
-          {saving ? "Saving…" : "Continue to checkout"}
-        </Button>
+      <div className="trust-strip">
+        {TRUST_ITEMS.map((t) => (
+          <div className="trust-item" key={t.title}>
+            <span className="trust-icon"><t.Icon size={16} /></span>
+            <div className="trust-text">
+              <strong>{t.title}</strong>
+              {t.body}
+            </div>
+          </div>
+        ))}
       </div>
 
-      <p className="text-center text-xs mt-6" style={{ color: BL.muted }}>
-        $0 today · Cancel anytime · Powered by Stripe
-      </p>
+      <div className="text-center mt-10">
+        <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: "#555", fontWeight: 700 }}>
+          Trusted by 10,000+ growth teams and agencies
+        </div>
+        <div className="logo-strip">
+          {SOCIAL_LOGOS.map((l) => <span key={l}>{l}</span>)}
+        </div>
+      </div>
+
+      <div className="sticky-cta">
+        <div className="row gap-3">
+          <button className="bl-btn bl-btn-ghost" onClick={onBack} disabled={saving}>
+            <I.ArrowLeft size={14} /> Back
+          </button>
+          <div style={{ fontSize: 13, color: "#555" }}>
+            {selectedPlan
+              ? <><strong style={{ color: "#001364" }}>{selectedPlan.tier}</strong> · ${selectedPlan.interval === "Yearly" ? Math.round(selectedPlan.price / 12) : selectedPlan.price}/mo · {TRIAL_DAYS} days free</>
+              : <>Pick a plan to continue · You won't be charged today</>}
+          </div>
+        </div>
+        <button className={"bl-btn bl-btn-primary" + (canNext ? " pulse" : "")} onClick={onNext} disabled={!canNext || saving}>
+          {saving ? "Saving…" : <>Continue to checkout <I.ArrowRight size={14} /></>}
+        </button>
+      </div>
     </div>
   );
 }
 
 function IntervalToggle({ value, onChange, maxSavings }) {
-  const options = ["Monthly", "Yearly"];
+  const opts = ["Monthly", "Yearly"];
   return (
-    <div className="inline-flex p-1 rounded-full" style={{ background: BL.light2 }}>
-      {options.map((o) => {
+    <div className="interval-toggle">
+      {opts.map((o) => {
         const active = value === o;
         return (
-          <button
-            key={o}
-            onClick={() => onChange(o)}
-            className="px-5 py-1.5 rounded-full text-sm flex items-center gap-2 cursor-pointer border-0"
-            style={{
-              background: active ? "#fff" : "transparent",
-              color: BL.navy,
-              fontWeight: active ? 700 : 500,
-              boxShadow: active ? "0 1px 2px rgba(0,15,77,0.08)" : "none",
-            }}
-          >
+          <button key={o} className={active ? "active" : ""} onClick={() => onChange(o)}>
             {o}
-            {o === "Yearly" && maxSavings > 0 && (
-              <span
-                className="text-xs px-1.5 py-0.5 rounded"
-                style={{ background: BL.blue, color: "#fff", fontWeight: 700 }}
-              >
-                Save {maxSavings}%
-              </span>
-            )}
+            {o === "Yearly" && maxSavings > 0 && <span className="save-pill">Save {maxSavings}%</span>}
           </button>
         );
       })}
@@ -665,164 +659,639 @@ function IntervalToggle({ value, onChange, maxSavings }) {
   );
 }
 
-// ─── Checkout Step (uses Softr's native checkout block via iframe) ──
-function CheckoutStep({ selectedPlanId, onBack }) {
+// ═══════════════════════════════════════════════════════════════════
+// Checkout Step — order summary + Stripe Payment Link redirect.
+// (Stripe hosts the actual card form; trial logic + payment baked into the link.)
+// ═══════════════════════════════════════════════════════════════════
+function CheckoutStep({ selectedPlanId, billingInterval, user, onBack }) {
   const plan = PLANS.find((p) => p.id === selectedPlanId);
-  const iframeId = useMemo(
-    () => plan ? `softr-${SOFTR_CHECKOUT_PAGE_ID}-${plan.softrCheckoutEmbedSlug}` : null,
-    [plan],
-  );
-
-  // Load iframe-resizer once, then resize the embedded Softr checkout iframe.
-  useEffect(() => {
-    if (!iframeId) return;
-    const SCRIPT_SRC = "https://cdnjs.cloudflare.com/ajax/libs/iframe-resizer/4.2.11/iframeResizer.min.js";
-
-    const init = () => {
-      try {
-        if (typeof window.iFrameResize === "function") {
-          window.iFrameResize({ checkOrigin: false, log: false }, `#${iframeId}`);
-        }
-      } catch (e) {
-        console.warn("iFrameResize init failed", e);
-      }
-    };
-
-    if (typeof window.iFrameResize === "function") {
-      // small delay so iframe is in DOM
-      const t = setTimeout(init, 50);
-      return () => clearTimeout(t);
-    }
-
-    let script = document.querySelector(`script[src="${SCRIPT_SRC}"]`);
-    if (!script) {
-      script = document.createElement("script");
-      script.src = SCRIPT_SRC;
-      script.async = true;
-      document.body.appendChild(script);
-    }
-    script.addEventListener("load", init);
-    return () => script.removeEventListener("load", init);
-  }, [iframeId]);
-
   if (!plan) {
     return (
-      <div className="text-center py-20">
-        <p style={{ color: BL.muted }}>Pick a plan first.</p>
-        <button
-          onClick={onBack}
-          className="mt-4 text-sm bg-transparent border-0 cursor-pointer"
-          style={{ color: BL.blue, fontWeight: 600 }}
-        >
-          Back to plans
+      <div className="gs-page text-center">
+        <p className="gs-sub">Pick a plan first.</p>
+        <button className="bl-btn bl-btn-secondary mt-6" onClick={onBack}>
+          <I.ArrowLeft size={14} /> Back to plans
         </button>
       </div>
     );
   }
 
-  const usingPlaceholder = plan.softrCheckoutEmbedSlug === SOFTR_CHECKOUT_PLACEHOLDER && plan.tier !== "Creator";
-  const iframeSrc = `https://www.brieflee.co/embed/pages/${SOFTR_CHECKOUT_PAGE_ID}/blocks/${plan.softrCheckoutEmbedSlug}`;
+  const isYearly = plan.interval === "Yearly";
+  const price = plan.price;
+  const monthlyEquivalent = isYearly ? Math.round(plan.price / 12) : plan.price;
+  const savings = isYearly ? yearlySavingsPct(plan.tier) : 0;
+  const savedDollars = isYearly
+    ? (PLANS.find((p) => p.tier === plan.tier && p.interval === "Monthly")?.price || 0) * 12 - plan.price
+    : 0;
+  const trialEnds = new Date(Date.now() + TRIAL_DAYS * 86400000)
+    .toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+  const emailParam = user?.email ? `?prefilled_email=${encodeURIComponent(user.email)}` : "";
+  const paymentLinkUrl = `${plan.trialPaymentLink}${emailParam}`;
+
+  const handlePay = () => {
+    window.open(paymentLinkUrl, "_blank", "noopener,noreferrer");
+  };
 
   return (
-    <div className="w-full">
-      <div className="text-center mb-8">
-        <h1 className="text-3xl mb-2" style={{ color: BL.navy, fontWeight: 800 }}>
-          Enter card details to start your trial
-        </h1>
-        <p className="text-sm" style={{ color: BL.body }}>
-          You won't be charged until your 7-day trial ends. Cancel anytime.
-        </p>
+    <div className="gs-page">
+      <div className="text-center mb-6">
+        <div className="trial-banner">
+          <span className="trial-dot"></span>
+          You won't be charged today · Trial starts now
+        </div>
+        <h1 className="gs-headline">Activate your {TRIAL_DAYS}-day free trial</h1>
+        <p className="gs-sub">Add a payment method so we can keep you in Brieflee after your trial. Cancel any time, in one click.</p>
       </div>
 
-      <div className="grid md:grid-cols-5 gap-6">
-        {/* Order summary (left, 2 cols) */}
-        <div className="md:col-span-2">
-          <Card style={{ background: "#fff", border: `1px solid ${BL.border}` }}>
-            <CardContent className="p-6">
-              <div
-                className="inline-block text-xs uppercase tracking-wide px-2.5 py-1 rounded-full mb-3"
-                style={{ background: BL.periwinkle, color: BL.blue, fontWeight: 700 }}
-              >
-                {plan.tier} · {plan.interval}
+      <div className="checkout-grid">
+        {/* Order summary */}
+        <div className="stack gap-4">
+          <div className="bl-card summary-card">
+            <div className="row-between mb-4">
+              <div>
+                <div className="plan-tier">{plan.tier} plan</div>
+                <div style={{ fontFamily: "var(--gs-font)", fontSize: 22, fontWeight: 700, color: "#001364", letterSpacing: "-0.01em" }}>
+                  Brieflee {plan.tier} · {plan.interval}
+                </div>
               </div>
-              <div className="text-3xl mb-1" style={{ color: BL.navy, fontWeight: 800 }}>
-                ${plan.price.toLocaleString()}
-                <span className="text-sm ml-1" style={{ color: BL.muted, fontWeight: 500 }}>
-                  /{plan.interval === "Yearly" ? "yr" : "mo"}
-                </span>
-              </div>
-
-              <ul className="space-y-2 text-sm mb-6 mt-4" style={{ color: BL.body }}>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4" style={{ color: BL.blue }} strokeWidth={3} />
-                  {plan.maxVideos} videos / mo
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4" style={{ color: BL.blue }} strokeWidth={3} />
-                  {plan.maxWorkspaces} {plan.maxWorkspaces === 1 ? "workspace" : "workspaces"}
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4" style={{ color: BL.blue }} strokeWidth={3} />
-                  {plan.maxUsers} {plan.maxUsers === 1 ? "seat" : "seats"}
-                </li>
-                {FEATURES.map((f) => (
-                  <li key={f.key} className="flex items-center gap-2">
-                    <f.Icon className="w-4 h-4 flex-shrink-0" style={{ color: BL.blue }} strokeWidth={2} />
-                    {f.label}
-                  </li>
-                ))}
-              </ul>
-
-              <button
-                onClick={onBack}
-                className="text-sm bg-transparent border-0 cursor-pointer"
-                style={{ color: BL.blue, fontWeight: 600 }}
-              >
-                ← Choose a different plan
+              <button onClick={onBack} className="bl-btn bl-btn-secondary" style={{ padding: "8px 12px", fontSize: 13 }}>
+                Change
               </button>
-            </CardContent>
-          </Card>
-
-          <div className="mt-4 text-xs space-y-2" style={{ color: BL.muted }}>
-            <div>✓ $0 today — your 7-day trial starts now</div>
-            <div>✓ Cancel anytime in settings</div>
-            <div>✓ Powered by Stripe</div>
-          </div>
-        </div>
-
-        {/* Softr native checkout iframe (right, 3 cols) */}
-        <div className="md:col-span-3">
-          {usingPlaceholder && (
-            <div
-              className="text-xs px-3 py-2 mb-3 rounded-lg"
-              style={{ background: BL.periwinkle, color: BL.blue }}
-            >
-              <strong>Placeholder:</strong> showing the Creator Monthly checkout block.
-              Bev — once you create the {plan.tier} {plan.interval} block in Softr, update
-              <code style={{ background: "rgba(255,255,255,0.6)", padding: "0 4px", margin: "0 2px", borderRadius: 4 }}>
-                softrCheckoutEmbedSlug
-              </code>
-              for this plan in PLANS.
             </div>
-          )}
-          <div
-            className="rounded-2xl overflow-hidden"
-            style={{ background: "#fff", border: `1px solid ${BL.border}` }}
-          >
-            <iframe
-              key={iframeId}
-              id={iframeId}
-              title={`Checkout — ${plan.tier} ${plan.interval}`}
-              src={iframeSrc}
-              width="100%"
-              height="1000"
-              scrolling="no"
-              frameBorder="0"
-              style={{ border: "none", display: "block", width: "100%" }}
-            />
+
+            <ul className="plan-feature-list" style={{ marginBottom: 0 }}>
+              {FEATURE_ROWS(plan).slice(0, 5).map((f) => (
+                <li key={f.label}>
+                  <span className="plan-feat-icon"><f.Icon size={13} /></span>
+                  <span className="plan-feat-label">{f.label}</span>
+                  <span className="plan-feat-amount">{f.amount}</span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="summary-divider" />
+
+            <div className="stack gap-2">
+              <div className="price-row">
+                <span>{plan.interval} subscription</span>
+                <span>${price.toLocaleString()}</span>
+              </div>
+              <div className="price-row">
+                <span>{TRIAL_DAYS}-day trial discount</span>
+                <span style={{ color: "#166534", fontWeight: 600 }}>−${price.toLocaleString()}</span>
+              </div>
+              {savedDollars > 0 && (
+                <div className="price-row" style={{ color: "#166534" }}>
+                  <span>Annual savings</span>
+                  <span style={{ fontWeight: 600 }}>−${savedDollars.toLocaleString()} ({savings}% off)</span>
+                </div>
+              )}
+              <div className="price-row total">
+                <span>Due today</span>
+                <span>$0.00</span>
+              </div>
+              <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>
+                On {trialEnds} you'll be charged ${price.toLocaleString()}{isYearly ? " for the year" : " for the month"}. Cancel any time before then.
+              </div>
+            </div>
+          </div>
+
+          <div className="bl-card" style={{ padding: 18 }}>
+            <div className="stack gap-3">
+              <div className="row gap-3" style={{ alignItems: "flex-start" }}>
+                <span className="rtb-icon"><I.RotateCcw size={14} /></span>
+                <div style={{ fontSize: 13, lineHeight: 1.4 }}>
+                  <strong style={{ color: "#001364" }}>15-day money-back guarantee</strong><br />
+                  <span style={{ color: "#555" }}>Full refund within 15 days, no questions asked.</span>
+                </div>
+              </div>
+              <div className="row gap-3" style={{ alignItems: "flex-start" }}>
+                <span className="rtb-icon"><I.X size={14} /></span>
+                <div style={{ fontSize: 13, lineHeight: 1.4 }}>
+                  <strong style={{ color: "#001364" }}>Cancel any time</strong><br />
+                  <span style={{ color: "#555" }}>One click in settings. No emails, no friction.</span>
+                </div>
+              </div>
+              <div className="row gap-3" style={{ alignItems: "flex-start" }}>
+                <span className="rtb-icon"><I.Lock size={14} /></span>
+                <div style={{ fontSize: 13, lineHeight: 1.4 }}>
+                  <strong style={{ color: "#001364" }}>Secure checkout</strong><br />
+                  <span style={{ color: "#555" }}>Powered by Stripe. We never see your card.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="testimonial">
+            <div className="row gap-2 mb-3" style={{ color: "#f5b301" }}>
+              {[1, 2, 3, 4, 5].map((i) => <I.Star key={i} size={14} fill="currentColor" stroke="currentColor" />)}
+            </div>
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: "#001364" }}>
+              "Brieflee cut our UGC review queue from a full afternoon to 12 minutes. The 26-item QA score is the part our brand managers won't shut up about."
+            </p>
+            <div className="row gap-3 mt-4">
+              <div style={{ width: 36, height: 36, borderRadius: 999, background: "#d9e0ff", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#294ff6", fontWeight: 700, fontSize: 14 }}>MR</div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#001364" }}>Maya Reyes</div>
+                <div style={{ fontSize: 12, color: "#555" }}>Head of Creator Ops · Hello Bello</div>
+              </div>
+            </div>
           </div>
         </div>
+
+        {/* Pay panel — single big CTA that opens Stripe Payment Link with 7-day trial */}
+        <div className="bl-card pay-panel">
+          <div className="row gap-2 mb-3">
+            <I.Lock size={16} />
+            <span style={{ fontWeight: 700, color: "#001364" }}>Continue to secure checkout</span>
+          </div>
+          <p style={{ fontSize: 14, color: "#333", lineHeight: 1.55, margin: "0 0 20px" }}>
+            We'll send you to Stripe's secure checkout page to enter your card. Your {TRIAL_DAYS}-day free trial starts immediately — you won't be charged until {trialEnds}.
+          </p>
+
+          <div className="pay-trust-grid">
+            <div className="pay-trust"><I.Lock size={14} /> 256-bit TLS</div>
+            <div className="pay-trust"><I.Shield size={14} /> PCI-DSS compliant</div>
+            <div className="pay-trust"><I.Sparkles size={14} /> Powered by Stripe</div>
+          </div>
+
+          <button className="bl-btn bl-btn-primary pulse pay-cta" onClick={handlePay}>
+            Pay $0 and start your {TRIAL_DAYS}-day trial <I.ArrowRight size={14} />
+          </button>
+
+          <p className="text-center mt-4" style={{ fontSize: 12, color: "#555", lineHeight: 1.55 }}>
+            By starting your trial you agree to Brieflee's <a href="https://www.brieflee.co/terms">Terms</a> and <a href="https://www.brieflee.co/privacy">Privacy</a>.
+            You won't be charged during the {TRIAL_DAYS}-day trial. End your subscription at any time with one click.
+          </p>
+        </div>
+      </div>
+
+      <div className="text-center mt-10">
+        <button className="bl-btn bl-btn-ghost" onClick={onBack}>
+          <I.ArrowLeft size={14} /> Choose a different plan
+        </button>
       </div>
     </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Inline styles (ports of brieflee-tokens.css + Get Started.html block CSS)
+// ═══════════════════════════════════════════════════════════════════
+function BlockStyles() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+      .gs-root {
+        --bl-blue:        #294ff6;
+        --bl-blue-2:      #4466f8;
+        --bl-blue-4:      #7a93ff;
+        --bl-blue-5:      #879cf7;
+        --bl-navy:        #000f4d;
+        --bl-fg:          #001364;
+        --bl-fg-body:     #333;
+        --bl-fg-muted:    #555;
+        --bl-fg-quiet:    #bbb;
+        --bl-page:        #fafbff;
+        --bl-card:        #fff;
+        --bl-container:   #ecf0ff;
+        --bl-light-1:     #f8fbff;
+        --bl-light-2:     #eef4fd;
+        --bl-periwinkle:  #d9e0ff;
+        --bl-border:      #d6defc;
+        --bl-success:     #38a169;
+        --bl-success-bg:  #f0fff4;
+        --bl-success-fg:  #166534;
+        --bl-radius:      10px;
+        --bl-radius-md:   12px;
+        --bl-radius-lg:   16px;
+        --bl-radius-pill: 999px;
+        --bl-shadow:      0 4px 14px -2px rgba(41,79,246,0.10), 0 2px 6px -2px rgba(0,19,100,0.06);
+        --bl-shadow-glow: 0 0 0 4px rgba(135,156,247,0.20);
+        --bl-ease:        cubic-bezier(0.32, 0.72, 0, 1);
+        --bl-dur:         200ms;
+        --gs-font:        'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: var(--gs-font);
+        color: var(--bl-fg-body);
+        background: var(--bl-page);
+        min-height: 100vh;
+      }
+      .gs-root *, .gs-root *::before, .gs-root *::after { box-sizing: border-box; }
+      .gs-root, .gs-root * { font-family: var(--gs-font); }
+
+      .gs-shell { min-height: 100vh; }
+
+      .gs-topbar {
+        position: sticky; top: 0; z-index: 10;
+        background: rgba(250,251,255,0.86);
+        backdrop-filter: saturate(140%) blur(10px);
+        -webkit-backdrop-filter: saturate(140%) blur(10px);
+        border-bottom: 1px solid var(--bl-border);
+      }
+      .gs-topbar-inner {
+        max-width: 1200px; margin: 0 auto;
+        display: flex; align-items: center; gap: 24px;
+        padding: 16px 24px;
+      }
+      .gs-logo { height: 26px; display: block; }
+      .gs-stepper-wrap { flex: 1; display: flex; justify-content: center; }
+      .gs-help { color: var(--bl-fg-muted); font-size: 14px; }
+      .gs-help a { font-weight: 600; color: var(--bl-blue); text-decoration: none; }
+      @media (max-width: 720px) {
+        .gs-help { display: none; }
+        .gs-topbar-inner { gap: 12px; }
+      }
+
+      .gs-page {
+        max-width: 1120px; margin: 0 auto;
+        padding: 48px 24px 96px;
+      }
+      .gs-page-narrow { max-width: 560px; }
+      .gs-page-medium { max-width: 760px; }
+
+      .gs-headline {
+        font-size: 40px; line-height: 1.08; letter-spacing: -0.02em;
+        font-weight: 800; color: var(--bl-fg);
+        margin: 0 0 12px;
+      }
+      .gs-sub {
+        color: var(--bl-fg-muted);
+        font-size: 16px; line-height: 1.55;
+        margin: 0 auto;
+        max-width: 560px;
+      }
+      .gs-eyebrow {
+        font-size: 12px; letter-spacing: 0.08em;
+        font-weight: 700; text-transform: uppercase;
+        color: var(--bl-blue-5);
+        margin-bottom: 14px;
+        display: block;
+      }
+
+      /* Stepper */
+      .step-row {
+        display: inline-flex; align-items: center; gap: 0;
+        padding: 6px 8px;
+        background: rgba(216,216,255,0.35);
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius-pill);
+      }
+      .step-pill {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 6px 12px;
+        border-radius: var(--bl-radius-pill);
+        font-size: 13px; font-weight: 600;
+        color: var(--bl-fg-muted);
+        transition: all var(--bl-dur) var(--bl-ease);
+      }
+      .step-pill .step-dot {
+        width: 18px; height: 18px;
+        border-radius: 999px;
+        background: transparent;
+        border: 1.5px solid var(--bl-border);
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 11px; font-weight: 700; color: var(--bl-fg-muted);
+      }
+      .step-pill.done { color: var(--bl-fg); }
+      .step-pill.done .step-dot { background: var(--bl-blue-5); border-color: var(--bl-blue-5); color: #fff; }
+      .step-pill.active { background: #fff; color: var(--bl-fg); box-shadow: 0 1px 3px rgba(0,19,100,0.08); }
+      .step-pill.active .step-dot { background: var(--bl-blue); border-color: var(--bl-blue); color: #fff; }
+      .step-sep { display: inline-block; width: 16px; height: 1px; background: var(--bl-border); margin: 0 4px; }
+
+      /* Inputs */
+      .bl-input {
+        width: 100%; font: inherit; font-size: 15px;
+        color: var(--bl-fg); background: var(--bl-card);
+        border: 1.5px solid var(--bl-border);
+        border-radius: var(--bl-radius);
+        padding: 12px 14px; outline: none;
+        transition: border-color var(--bl-dur) var(--bl-ease), box-shadow var(--bl-dur) var(--bl-ease);
+      }
+      .bl-input::placeholder { color: var(--bl-fg-quiet); }
+      .bl-input:focus { border-color: var(--bl-blue-5); box-shadow: var(--bl-shadow-glow); }
+
+      /* Buttons */
+      .bl-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        gap: 8px; font: inherit; font-weight: 600; font-size: 15px;
+        padding: 14px 24px; border-radius: var(--bl-radius);
+        border: none; cursor: pointer;
+        transition: transform var(--bl-dur) var(--bl-ease), box-shadow var(--bl-dur) var(--bl-ease), background var(--bl-dur) var(--bl-ease), opacity var(--bl-dur) var(--bl-ease);
+      }
+      .bl-btn[disabled] { cursor: not-allowed; opacity: 0.45; }
+      .bl-btn-primary {
+        background: var(--bl-blue-5); color: #fff;
+        box-shadow: 0 1px 0 0 rgba(255,255,255,0.4) inset, 0 4px 14px -2px rgba(135,156,247,0.45);
+      }
+      .bl-btn-primary:hover:not([disabled]) {
+        background: var(--bl-blue-4); transform: translateY(-1px);
+        box-shadow: 0 1px 0 0 rgba(255,255,255,0.4) inset, 0 8px 20px -2px rgba(135,156,247,0.55);
+      }
+      .bl-btn-ghost { background: transparent; color: var(--bl-fg-muted); font-weight: 500; }
+      .bl-btn-ghost:hover:not([disabled]) { color: var(--bl-fg); }
+      .bl-btn-secondary { background: var(--bl-card); color: var(--bl-fg); border: 1.5px solid var(--bl-border); }
+      .bl-btn-secondary:hover:not([disabled]) { border-color: var(--bl-blue-5); background: #fff; }
+
+      /* Card */
+      .bl-card {
+        background: var(--bl-card);
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius-lg);
+      }
+
+      /* Field labels */
+      .field-label {
+        display: block; font-size: 13px; font-weight: 600;
+        color: var(--bl-fg); margin-bottom: 8px;
+      }
+      .field-help { font-size: 12px; color: var(--bl-fg-muted); margin-top: 6px; }
+
+      /* Option chip */
+      .opt-chip {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 10px 16px; border-radius: var(--bl-radius-pill);
+        background: #fff; border: 1.5px solid var(--bl-border);
+        color: var(--bl-fg); font: inherit;
+        font-size: 14px; font-weight: 500; cursor: pointer;
+        transition: all var(--bl-dur) var(--bl-ease);
+      }
+      .opt-chip:hover { border-color: var(--bl-blue-5); background: var(--bl-light-1); }
+      .opt-chip.selected {
+        background: var(--bl-blue-5); border-color: var(--bl-blue-5); color: #fff;
+        box-shadow: 0 4px 14px -2px rgba(135,156,247,0.45);
+      }
+
+      /* Plan grid + cards */
+      .plan-grid {
+        display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px;
+      }
+      @media (max-width: 900px) { .plan-grid { grid-template-columns: 1fr; } }
+
+      .plan-card {
+        position: relative; background: var(--bl-card);
+        border: 1.5px solid var(--bl-border);
+        border-radius: var(--bl-radius-lg);
+        padding: 28px 24px 24px;
+        cursor: pointer;
+        transition: all var(--bl-dur) var(--bl-ease);
+        display: flex; flex-direction: column;
+      }
+      .plan-card:hover { transform: translateY(-2px); border-color: var(--bl-blue-4); box-shadow: var(--bl-shadow); }
+      .plan-card.popular {
+        border-color: var(--bl-blue-5);
+        box-shadow: 0 12px 32px -10px rgba(135,156,247,0.45);
+        transform: translateY(-4px);
+      }
+      .plan-card.selected { border-color: var(--bl-blue); box-shadow: 0 0 0 3px rgba(41,79,246,0.12), var(--bl-shadow); }
+      .plan-popular-tag {
+        position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+        background: var(--bl-blue); color: #fff;
+        font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+        padding: 5px 12px; border-radius: var(--bl-radius-pill); white-space: nowrap;
+      }
+      .plan-tier { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--bl-fg-muted); }
+      .plan-name { font-size: 22px; font-weight: 700; color: var(--bl-fg); letter-spacing: -0.01em; margin: 4px 0 6px; }
+      .plan-desc { font-size: 13px; color: var(--bl-fg-muted); line-height: 1.45; min-height: 38px; }
+      .plan-price-row { display: flex; align-items: baseline; gap: 6px; margin: 18px 0 4px; }
+      .plan-price { font-size: 44px; font-weight: 800; letter-spacing: -0.025em; color: var(--bl-fg); line-height: 1; }
+      .plan-price-suffix { font-size: 14px; color: var(--bl-fg-muted); font-weight: 500; }
+      .plan-bill-note { font-size: 12px; color: var(--bl-fg-muted); min-height: 18px; }
+      .plan-savings {
+        display: inline-flex; align-items: center; gap: 4px;
+        font-size: 11px; font-weight: 700;
+        background: var(--bl-success-bg); color: var(--bl-success-fg);
+        padding: 3px 8px; border-radius: var(--bl-radius-pill); margin-top: 4px;
+      }
+      .plan-divider { height: 1px; background: var(--bl-border); margin: 18px 0 16px; }
+
+      /* Feature row: icon + label + amount on right (Foreplay-style) */
+      .plan-feature-list { list-style: none; padding: 0; margin: 0 0 22px; display: flex; flex-direction: column; gap: 10px; }
+      .plan-feature-list li {
+        display: flex; align-items: center; gap: 10px;
+        font-size: 14px; line-height: 1.4; color: var(--bl-fg-body);
+      }
+      .plan-feat-icon {
+        width: 24px; height: 24px;
+        border-radius: 8px;
+        background: var(--bl-light-2);
+        color: var(--bl-blue);
+        display: inline-flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+      }
+      .plan-feat-icon-extra { background: var(--bl-periwinkle); }
+      .plan-feat-label { flex: 1; min-width: 0; }
+      .plan-feat-amount { color: var(--bl-fg); font-weight: 700; font-size: 13px; }
+
+      .plan-cta {
+        margin-top: auto; text-align: center;
+        padding: 12px 16px; border-radius: var(--bl-radius);
+        font-size: 14px; font-weight: 600;
+        background: var(--bl-light-2); color: var(--bl-fg);
+        border: 1.5px solid transparent;
+        display: flex; align-items: center; justify-content: center; gap: 6px;
+      }
+      .plan-card.popular .plan-cta { background: var(--bl-blue-5); color: #fff; }
+      .plan-card.selected .plan-cta { background: var(--bl-blue); color: #fff; }
+
+      /* Interval toggle */
+      .interval-toggle {
+        display: inline-flex; padding: 4px;
+        background: rgba(216,216,255,0.4);
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius-pill);
+        position: relative;
+      }
+      .interval-toggle button {
+        position: relative; z-index: 1;
+        font: inherit; font-size: 14px; font-weight: 600;
+        color: var(--bl-fg-muted);
+        background: transparent; border: none;
+        padding: 8px 18px; border-radius: var(--bl-radius-pill);
+        cursor: pointer;
+        display: inline-flex; align-items: center; gap: 8px;
+        transition: color var(--bl-dur) var(--bl-ease);
+        white-space: nowrap;
+      }
+      .interval-toggle button.active { color: var(--bl-fg); background: #fff; box-shadow: 0 1px 3px rgba(0,19,100,0.08); }
+      .save-pill {
+        font-size: 10px; font-weight: 700;
+        background: var(--bl-success-bg); color: var(--bl-success-fg);
+        padding: 2px 6px; border-radius: var(--bl-radius-pill); white-space: nowrap;
+      }
+
+      /* Trust strip */
+      .trust-strip {
+        display: grid; grid-template-columns: repeat(4, 1fr);
+        gap: 16px; margin-top: 32px;
+      }
+      @media (max-width: 800px) { .trust-strip { grid-template-columns: repeat(2,1fr); } }
+      .trust-item {
+        display: flex; gap: 12px; align-items: flex-start;
+        padding: 14px 16px; background: rgba(255,255,255,0.6);
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius);
+      }
+      .trust-icon {
+        width: 28px; height: 28px; border-radius: 8px;
+        background: var(--bl-periwinkle); color: var(--bl-blue);
+        display: inline-flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+      }
+      .trust-text { font-size: 13px; line-height: 1.4; color: var(--bl-fg-body); }
+      .trust-text strong { color: var(--bl-fg); display: block; font-weight: 700; margin-bottom: 2px; }
+
+      /* Reasons-to-believe icon (checkout left column) */
+      .rtb-icon {
+        width: 32px; height: 32px; border-radius: 10px;
+        background: var(--bl-light-2); color: var(--bl-blue);
+        display: inline-flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+      }
+
+      /* Logo strip */
+      .logo-strip {
+        display: flex; flex-wrap: wrap;
+        align-items: center; justify-content: center;
+        gap: 32px; opacity: 0.7; margin-top: 18px;
+      }
+      .logo-strip span {
+        font-weight: 700; font-size: 14px;
+        letter-spacing: 0.02em; color: var(--bl-fg-muted);
+      }
+
+      /* Personalize layout */
+      .personalize-grid {
+        display: grid; grid-template-columns: 1fr 1fr;
+        gap: 32px; margin-top: 32px; text-align: left;
+      }
+      @media (max-width: 800px) { .personalize-grid { grid-template-columns: 1fr; } }
+      .personalize-card {
+        background: var(--bl-card);
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius-lg);
+        padding: 24px;
+      }
+
+      /* Team hero — was eyes, now Brieflee logo */
+      .team-hero {
+        display: flex; align-items: center; justify-content: center;
+        margin-bottom: 28px;
+      }
+      .team-hero img {
+        width: 72px; height: 72px;
+        border-radius: 20px;
+        background: linear-gradient(180deg, #ecf0ff 0%, rgba(135,156,247,0.45) 100%);
+        padding: 12px;
+        box-shadow: 0 12px 32px -10px rgba(135,156,247,0.45);
+      }
+
+      /* Trial banner */
+      .trial-banner {
+        display: inline-flex; align-items: center; gap: 10px;
+        padding: 8px 14px;
+        background: var(--bl-success-bg); color: var(--bl-success-fg);
+        border: 1px solid #c6f0d6;
+        border-radius: var(--bl-radius-pill);
+        font-size: 13px; font-weight: 600;
+        margin-bottom: 18px; white-space: nowrap;
+        max-width: 100%;
+      }
+      .trial-dot {
+        width: 8px; height: 8px; border-radius: 999px;
+        background: var(--bl-success);
+        box-shadow: 0 0 0 4px rgba(56,161,105,0.18);
+      }
+
+      /* Sticky CTA */
+      .sticky-cta {
+        position: sticky; bottom: 16px; margin-top: 28px;
+        background: rgba(255,255,255,0.92);
+        backdrop-filter: saturate(140%) blur(10px);
+        -webkit-backdrop-filter: saturate(140%) blur(10px);
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius-lg);
+        padding: 14px 18px;
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 14px; box-shadow: var(--bl-shadow);
+      }
+      @media (max-width: 700px) { .sticky-cta { flex-direction: column; align-items: stretch; } }
+
+      /* Checkout layout */
+      .checkout-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+        gap: 28px; align-items: start;
+      }
+      @media (max-width: 900px) { .checkout-grid { grid-template-columns: 1fr; } }
+
+      .summary-card { padding: 24px; }
+      .summary-divider { height: 1px; background: var(--bl-border); margin: 18px 0; }
+
+      .price-row {
+        display: flex; justify-content: space-between;
+        font-size: 14px; color: var(--bl-fg-body);
+        padding: 4px 0;
+      }
+      .price-row.total {
+        font-weight: 700; font-size: 18px; color: var(--bl-fg);
+        padding-top: 12px;
+        border-top: 1px dashed var(--bl-border);
+      }
+
+      .testimonial {
+        background: linear-gradient(180deg, var(--bl-container) 0%, #fff 100%);
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius-lg);
+        padding: 22px 24px; position: relative;
+      }
+
+      .pay-panel { padding: 28px; }
+      .pay-trust-grid {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+        margin-bottom: 24px;
+      }
+      .pay-trust {
+        display: inline-flex; align-items: center; justify-content: center;
+        gap: 6px; padding: 10px 12px;
+        background: var(--bl-light-2); color: var(--bl-fg);
+        border-radius: var(--bl-radius);
+        font-size: 12px; font-weight: 600;
+      }
+      .pay-cta { width: 100%; padding: 18px 24px; font-size: 16px; }
+
+      /* Helpers */
+      .text-center { text-align: center; }
+      .row { display: flex; align-items: center; gap: 12px; }
+      .row-between { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .stack { display: flex; flex-direction: column; }
+      .gap-2 { gap: 8px; } .gap-3 { gap: 12px; } .gap-4 { gap: 16px; }
+      .mt-2 { margin-top: 8px; } .mt-3 { margin-top: 12px; } .mt-4 { margin-top: 16px; }
+      .mt-6 { margin-top: 24px; } .mt-8 { margin-top: 32px; } .mt-10 { margin-top: 40px; }
+      .mb-3 { margin-bottom: 12px; } .mb-4 { margin-bottom: 16px; } .mb-6 { margin-bottom: 24px; }
+
+      .nav-row { display: flex; align-items: center; justify-content: space-between; margin-top: 28px; }
+
+      .ic-btn {
+        flex-shrink: 0; width: 40px; height: 40px;
+        border-radius: 10px;
+        background: transparent; border: 1.5px solid var(--bl-border);
+        color: var(--bl-fg-muted); cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+      }
+      .ic-btn:hover { color: var(--bl-fg); border-color: var(--bl-blue-5); }
+
+      .link-btn {
+        background: transparent; border: none; padding: 0; cursor: pointer;
+        color: var(--bl-blue); font-weight: 600; font-size: 13px;
+      }
+
+      @keyframes blPulse {
+        0%, 100% { box-shadow: 0 1px 0 0 rgba(255,255,255,0.4) inset, 0 4px 14px -2px rgba(135,156,247,0.45); }
+        50%      { box-shadow: 0 1px 0 0 rgba(255,255,255,0.4) inset, 0 8px 28px 0 rgba(135,156,247,0.7); }
+      }
+      .bl-btn-primary.pulse { animation: blPulse 2.4s var(--bl-ease) infinite; }
+    `}</style>
   );
 }
