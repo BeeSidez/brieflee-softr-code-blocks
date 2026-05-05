@@ -1,0 +1,168 @@
+import { useState, useEffect } from 'react';
+import { Mail } from 'lucide-react';
+import { useCurrentUser } from '@/lib/user';
+
+const RESEND_COOLDOWN_SECONDS = 120;
+
+const PROVIDERS = [
+  { name: 'Gmail',   urlFor: (e) => `https://mail.google.com/mail/u/?authuser=${encodeURIComponent(e)}`, favicon: 'https://www.google.com/s2/favicons?domain=gmail.com&sz=32' },
+  { name: 'Outlook', urlFor: ()  => 'https://outlook.live.com/mail/0/inbox',                              favicon: 'https://www.google.com/s2/favicons?domain=outlook.com&sz=32' },
+  { name: 'Yahoo',   urlFor: ()  => 'https://mail.yahoo.com/d/folders/1',                                 favicon: 'https://www.google.com/s2/favicons?domain=yahoo.com&sz=32' },
+  { name: 'Proton',  urlFor: ()  => 'https://mail.proton.me/u/0/inbox',                                   favicon: 'https://www.google.com/s2/favicons?domain=proton.me&sz=32' },
+  { name: 'iCloud',  urlFor: ()  => 'https://www.icloud.com/mail',                                        favicon: 'https://www.google.com/s2/favicons?domain=icloud.com&sz=32' },
+];
+
+export default function Block() {
+  const user = useCurrentUser();
+  const email = user?.email || '';
+
+  const [countdown, setCountdown] = useState(RESEND_COOLDOWN_SECONDS);
+  const [isResending, setIsResending] = useState(false);
+  const [resendError, setResendError] = useState(null);
+  const [resendNotice, setResendNotice] = useState(null);
+
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const t = setInterval(() => setCountdown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [countdown]);
+
+  const formatTime = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+
+  const handleResend = async () => {
+    if (countdown > 0 || isResending) return;
+    setIsResending(true);
+    setResendError(null);
+    setResendNotice(null);
+    try {
+      // TODO: wire to a Softr workflow that calls EmailIt with template alias `bl-tx-email-activation`.
+      //       Until that workflow + email exist, this is a no-op that just resets the cooldown for UX testing.
+      // const res = await fetch('<SOFTR_WORKFLOW_TRIGGER_URL>', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ email }),
+      // });
+      // if (!res.ok) throw new Error('resend failed');
+      await new Promise((r) => setTimeout(r, 500));
+      setCountdown(RESEND_COOLDOWN_SECONDS);
+      setResendNotice('Activation email sent again. Check your inbox.');
+    } catch (e) {
+      setResendError('Could not resend right now — try again in a moment.');
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  const primary = PROVIDERS[0];
+  const others = PROVIDERS.slice(1);
+
+  return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: '#FAFBFF' }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;500;800&display=swap');
+        * { font-family: 'League Spartan', sans-serif; }
+      `}</style>
+
+      <div className="px-6 py-10 max-w-md w-full text-center">
+        <img
+          src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_logo_brieflee-wordmark-deep-blue-with-periwinkle-lee-and-smile_2025-03.png"
+          alt="Brieflee"
+          className="h-8 mx-auto mb-12"
+        />
+
+        <div className="mb-6 flex justify-center">
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center"
+            style={{ background: '#ECF0FF' }}
+          >
+            <Mail className="w-7 h-7" style={{ color: '#001364' }} strokeWidth={1.8} />
+          </div>
+        </div>
+
+        <h1 className="text-2xl mb-3" style={{ color: '#001364', fontWeight: 800 }}>
+          Check Your Inbox
+        </h1>
+
+        <p className="mb-6 text-sm leading-relaxed" style={{ color: '#333333' }}>
+          We sent an activation link {email && <>to <strong style={{ color: '#001364' }}>{email}</strong></>}. Please check your spam folder or use the shortcuts below.
+        </p>
+
+        <button
+          onClick={handleResend}
+          disabled={countdown > 0 || isResending}
+          className="text-sm underline transition-opacity"
+          style={{
+            color: '#001364',
+            opacity: countdown > 0 || isResending ? 0.4 : 1,
+            cursor: countdown > 0 || isResending ? 'not-allowed' : 'pointer',
+            background: 'transparent',
+            border: 'none',
+          }}
+        >
+          {isResending
+            ? 'Resending…'
+            : countdown > 0
+              ? `Resend verification in ${formatTime(countdown)}`
+              : 'Resend verification'}
+        </button>
+
+        {resendNotice && (
+          <p className="mt-2 text-xs" style={{ color: '#38A169' }}>{resendNotice}</p>
+        )}
+        {resendError && (
+          <p className="mt-2 text-xs" style={{ color: '#D32F2F' }}>{resendError}</p>
+        )}
+
+        <div className="mt-10 space-y-2">
+          <a
+            href={primary.urlFor(email)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl"
+            style={{
+              background: '#FFFFFF',
+              color: '#001364',
+              border: '1px solid #D6DEFC',
+              fontWeight: 500,
+              textDecoration: 'none',
+            }}
+          >
+            <img src={primary.favicon} alt="" className="w-4 h-4" />
+            Open {primary.name}
+          </a>
+
+          <div className="grid grid-cols-2 gap-2">
+            {others.map((p) => (
+              <a
+                key={p.name}
+                href={p.urlFor(email)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl"
+                style={{
+                  background: '#FFFFFF',
+                  color: '#001364',
+                  border: '1px solid #D6DEFC',
+                  fontWeight: 500,
+                  fontSize: '0.875rem',
+                  textDecoration: 'none',
+                }}
+              >
+                <img src={p.favicon} alt="" className="w-4 h-4" />
+                Open {p.name}
+              </a>
+            ))}
+          </div>
+        </div>
+
+        <a
+          href="/sign-in"
+          className="mt-8 inline-block text-sm"
+          style={{ color: '#555555', textDecoration: 'underline' }}
+        >
+          Go back to Sign In
+        </a>
+      </div>
+    </div>
+  );
+}
