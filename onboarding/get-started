@@ -719,7 +719,7 @@ function CheckoutStep({ selectedPlanId, billingInterval, user, onBack }) {
   const paymentLinkUrl = `${plan.trialPaymentLink}${emailParam}`;
 
   const handlePay = () => {
-    window.open(paymentLinkUrl, "_blank", "noopener,noreferrer");
+    window.location.href = paymentLinkUrl;
   };
 
   return (
@@ -734,58 +734,76 @@ function CheckoutStep({ selectedPlanId, billingInterval, user, onBack }) {
       </div>
 
       <div className="checkout-grid">
-        {/* LEFT: order summary only */}
-        <div className="bl-card summary-card">
-          <div className="row-between mb-4">
-            <div>
-              <div className="plan-tier">{plan.tier} plan</div>
-              <div style={{ fontFamily: "var(--gs-font)", fontSize: 22, fontWeight: 700, color: "#001364", letterSpacing: "-0.01em" }}>
-                Brieflee {plan.tier} · {plan.interval}
+        {/* LEFT: order summary + testimonial (balances the right column height) */}
+        <div className="stack gap-4">
+          <div className="bl-card summary-card">
+            <div className="row-between mb-4">
+              <div>
+                <div className="plan-tier">{plan.tier} plan</div>
+                <div style={{ fontFamily: "var(--gs-font)", fontSize: 22, fontWeight: 700, color: "#001364", letterSpacing: "-0.01em" }}>
+                  Brieflee {plan.tier} · {plan.interval}
+                </div>
+              </div>
+              <button onClick={onBack} className="bl-btn bl-btn-secondary" style={{ padding: "8px 12px", fontSize: 13 }}>
+                Change
+              </button>
+            </div>
+
+            <ul className="plan-feature-list" style={{ marginBottom: 0 }}>
+              {FEATURE_ROWS(plan).slice(0, 5).map((f) => (
+                <li key={f.label}>
+                  <img src={f.iconUrl} alt="" className="plan-feat-icon-img" />
+                  <span className="plan-feat-label">{f.label}</span>
+                  <span className="plan-feat-amount">{f.amount}</span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="summary-divider" />
+
+            <div className="stack gap-2">
+              <div className="price-row">
+                <span>{plan.interval} subscription</span>
+                <span>${price.toLocaleString()}</span>
+              </div>
+              <div className="price-row">
+                <span>{TRIAL_DAYS}-day trial discount</span>
+                <span style={{ color: "#166534", fontWeight: 600 }}>−${price.toLocaleString()}</span>
+              </div>
+              {savedDollars > 0 && (
+                <div className="price-row" style={{ color: "#166534" }}>
+                  <span>Annual savings</span>
+                  <span style={{ fontWeight: 600 }}>−${savedDollars.toLocaleString()} ({savings}% off)</span>
+                </div>
+              )}
+              <div className="price-row total">
+                <span>Due today</span>
+                <span>$0.00</span>
+              </div>
+              <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>
+                On {trialEnds} you'll be charged ${price.toLocaleString()}{isYearly ? " for the year" : " for the month"}. Cancel any time before then.
               </div>
             </div>
-            <button onClick={onBack} className="bl-btn bl-btn-secondary" style={{ padding: "8px 12px", fontSize: 13 }}>
-              Change
-            </button>
           </div>
 
-          <ul className="plan-feature-list" style={{ marginBottom: 0 }}>
-            {FEATURE_ROWS(plan).slice(0, 5).map((f) => (
-              <li key={f.label}>
-                <img src={f.iconUrl} alt="" className="plan-feat-icon-img" />
-                <span className="plan-feat-label">{f.label}</span>
-                <span className="plan-feat-amount">{f.amount}</span>
-              </li>
-            ))}
-          </ul>
-
-          <div className="summary-divider" />
-
-          <div className="stack gap-2">
-            <div className="price-row">
-              <span>{plan.interval} subscription</span>
-              <span>${price.toLocaleString()}</span>
+          <div className="testimonial">
+            <div className="row gap-2 mb-3" style={{ color: "#f5b301" }}>
+              {[1, 2, 3, 4, 5].map((i) => <I.Star key={i} size={14} fill="currentColor" stroke="currentColor" />)}
             </div>
-            <div className="price-row">
-              <span>{TRIAL_DAYS}-day trial discount</span>
-              <span style={{ color: "#166534", fontWeight: 600 }}>−${price.toLocaleString()}</span>
-            </div>
-            {savedDollars > 0 && (
-              <div className="price-row" style={{ color: "#166534" }}>
-                <span>Annual savings</span>
-                <span style={{ fontWeight: 600 }}>−${savedDollars.toLocaleString()} ({savings}% off)</span>
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: "#001364" }}>
+              "Brieflee cut our UGC review queue from a full afternoon to 12 minutes. The 26-item QA score is the part our brand managers won't shut up about."
+            </p>
+            <div className="row gap-3 mt-4">
+              <div style={{ width: 36, height: 36, borderRadius: 999, background: "#d9e0ff", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#294ff6", fontWeight: 700, fontSize: 14 }}>MR</div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#001364" }}>Maya Reyes</div>
+                <div style={{ fontSize: 12, color: "#555" }}>Head of Creator Ops · Hello Bello</div>
               </div>
-            )}
-            <div className="price-row total">
-              <span>Due today</span>
-              <span>$0.00</span>
-            </div>
-            <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>
-              On {trialEnds} you'll be charged ${price.toLocaleString()}{isYearly ? " for the year" : " for the month"}. Cancel any time before then.
             </div>
           </div>
         </div>
 
-        {/* RIGHT: pay CTA on top, trust + testimonial directly underneath so no dead space */}
+        {/* RIGHT: pay CTA + trust card */}
         <div className="stack gap-4">
           <div className="bl-card pay-panel">
             <div className="row gap-2 mb-3">
@@ -828,22 +846,6 @@ function CheckoutStep({ selectedPlanId, billingInterval, user, onBack }) {
                   <strong style={{ color: "#001364" }}>Secure checkout</strong><br />
                   <span style={{ color: "#555" }}>Powered by Stripe. We never see your card.</span>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="testimonial">
-            <div className="row gap-2 mb-3" style={{ color: "#f5b301" }}>
-              {[1, 2, 3, 4, 5].map((i) => <I.Star key={i} size={14} fill="currentColor" stroke="currentColor" />)}
-            </div>
-            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: "#001364" }}>
-              "Brieflee cut our UGC review queue from a full afternoon to 12 minutes. The 26-item QA score is the part our brand managers won't shut up about."
-            </p>
-            <div className="row gap-3 mt-4">
-              <div style={{ width: 36, height: 36, borderRadius: 999, background: "#d9e0ff", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#294ff6", fontWeight: 700, fontSize: 14 }}>MR</div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#001364" }}>Maya Reyes</div>
-                <div style={{ fontSize: 12, color: "#555" }}>Head of Creator Ops · Hello Bello</div>
               </div>
             </div>
           </div>
