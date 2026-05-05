@@ -10,9 +10,10 @@ import { Button } from "@/components/ui/button";
 
 const RESEND_COOLDOWN_SECONDS = 120;
 
-const ASSETS = "https://raw.githubusercontent.com/BeeSidez/brieflee-softr-code-blocks/main/brieflee-design-system/project/assets";
-const LOGO_COMPACT = `${ASSETS}/logos/brieflee-compact.png`;
-const LOGO_WORDMARK = `${ASSETS}/logos/brieflee-wordmark.png`;
+// Cloudinary cloud `dchroynzv`. URLs from docs/assets-images-gifs-videos.csv.
+const CLD = "https://res.cloudinary.com/dchroynzv/image/upload";
+const LOGO_COMPACT = `${CLD}/brieflee_app-icon_app-icon-blue-gradient-smiley-mark-v5_2025-04.png`;
+const LOGO_WORDMARK = `${CLD}/brieflee_logo_brieflee-wordmark-deep-blue-with-periwinkle-lee-and-smile_2025-03.png`;
 
 const PROVIDERS = [
   { name: "Gmail",   urlFor: (e) => `https://mail.google.com/mail/u/?authuser=${encodeURIComponent(e)}`, icon: "https://www.google.com/s2/favicons?domain=gmail.com&sz=32" },

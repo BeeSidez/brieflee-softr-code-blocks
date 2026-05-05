@@ -24,10 +24,12 @@ import { useRecordUpdate, useLinkedRecords, q } from "@/lib/datasource";
 import { useCurrentUser } from "@/lib/user";
 import { toast } from "sonner";
 
-// ─── Asset URLs (GitHub raw — swap to Cloudinary for prod speed) ────
-const ASSETS = "https://raw.githubusercontent.com/BeeSidez/brieflee-softr-code-blocks/main/brieflee-design-system/project/assets";
-const LOGO_WORDMARK  = `${ASSETS}/logos/brieflee-wordmark.png`;
-const LOGO_COMPACT   = `${ASSETS}/logos/brieflee-compact.png`;
+// ─── Cloudinary asset URLs (docs/assets-images-gifs-videos.csv) ─────
+const CLD = "https://res.cloudinary.com/dchroynzv/image/upload";
+const LOGO_WORDMARK   = `${CLD}/brieflee_logo_brieflee-wordmark-deep-blue-with-periwinkle-lee-and-smile_2025-03.png`;
+const LOGO_COMPACT    = `${CLD}/brieflee_app-icon_app-icon-blue-gradient-smiley-mark-v5_2025-04.png`;
+const STICKER_SEARCH   = `${CLD}/brieflee_icon_sticker-blue-magnifying-glass-search-zoom_2026-03.png`;
+const STICKER_MEGAPHONE = `${CLD}/brieflee_icon_sticker-blue-megaphone-bullhorn-announcement_2026-03.png`;
 
 // ─── Field map (USERS table) ────────────────────────────────────────
 const select = q.select({
@@ -468,7 +470,7 @@ function PersonalizeStep({ workTypeId, setWorkTypeId, heardAboutUsId, setHeardAb
 
       <div className="personalize-grid">
         <PersonalizeCard
-          icon={LOGO_COMPACT}
+          icon={STICKER_SEARCH}
           title="Your work"
           subtitle="What best describes you?"
           options={WORK_TYPE_OPTIONS}
@@ -476,7 +478,7 @@ function PersonalizeStep({ workTypeId, setWorkTypeId, heardAboutUsId, setHeardAb
           onSelect={setWorkTypeId}
         />
         <PersonalizeCard
-          icon={LOGO_COMPACT}
+          icon={STICKER_MEGAPHONE}
           title="How did you find us?"
           subtitle="Helps us know what's working."
           options={HEARD_FROM_OPTIONS}
