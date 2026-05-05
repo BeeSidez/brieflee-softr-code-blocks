@@ -30,8 +30,15 @@ const LOGO_WORDMARK   = `${CLD}/brieflee_logo_brieflee-wordmark-deep-blue-with-p
 const LOGO_COMPACT    = `${CLD}/brieflee_app-icon_app-icon-blue-gradient-smiley-mark-v5_2025-04.png`;
 
 // Personalize card icons
-const ICON_FOLDER_BAG = `${CLD}/v1777998709/brieflee_icon_simple-lined-file-folder-bag-transparent_2026-05.png`;
-const ICON_MEGAPHONE  = `${CLD}/brieflee_icon_sticker-blue-megaphone-bullhorn-announcement_2026-03.png`;
+const ICON_BRIEFCASE_PERSONALIZE = `${CLD}/v1777998692/brieflee_help-icon_team-id-badge-card-with-profile-photo-transparent_2026-05.png`;
+const ICON_MEGAPHONE             = `${CLD}/v1777998691/brieflee_help-icon_notifications-megaphone-loudspeaker-blue-transparent_2026-05.png`;
+
+// Checkout trust badge icons (3) — match the pricing-step engraving treatment
+const CHECKOUT_TRUST_ICONS = {
+  guarantee: `${CLD}/v1777998694/brieflee_icon_banknotes-with-wings-flying-money-transparent_2026-05.png`,
+  cancel:    `${CLD}/v1777998711/brieflee_icon_trendy-cancel-sticker-transparent_2026-05.png`,
+  secure:    `${CLD}/v1778010104/brieflee_icon_padlock-sticker-blue-transparent_2026-05.png`,
+};
 
 // Feature row icons (8) — transparent PNGs from Bev's manifest
 const FEAT_ICONS = {
@@ -497,7 +504,7 @@ function PersonalizeStep({ workTypeId, setWorkTypeId, heardAboutUsId, setHeardAb
 
       <div className="personalize-grid">
         <PersonalizeCard
-          icon={ICON_FOLDER_BAG}
+          icon={ICON_BRIEFCASE_PERSONALIZE}
           title="Your work"
           subtitle="What best describes you?"
           options={WORK_TYPE_OPTIONS}
@@ -529,13 +536,9 @@ function PersonalizeStep({ workTypeId, setWorkTypeId, heardAboutUsId, setHeardAb
 function PersonalizeCard({ icon, title, subtitle, options, valueId, onSelect }) {
   return (
     <div className="personalize-card">
-      <div className="personalize-card-head">
-        <img src={icon} alt="" style={{ width: 36, height: 36, flexShrink: 0 }} />
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, color: "#001364" }}>{title}</div>
-          <div style={{ fontSize: 12, color: "#555" }}>{subtitle}</div>
-        </div>
-      </div>
+      <img src={icon} alt="" className="personalize-card-icon" />
+      <div className="personalize-card-title">{title}</div>
+      <div className="personalize-card-sub">{subtitle}</div>
       <div className="personalize-card-chips">
         {options.map((opt) => {
           const sel = valueId === opt.id;
@@ -731,76 +734,96 @@ function CheckoutStep({ selectedPlanId, billingInterval, user, onBack }) {
       </div>
 
       <div className="checkout-grid">
-        {/* Order summary */}
+        {/* LEFT: order summary only */}
+        <div className="bl-card summary-card">
+          <div className="row-between mb-4">
+            <div>
+              <div className="plan-tier">{plan.tier} plan</div>
+              <div style={{ fontFamily: "var(--gs-font)", fontSize: 22, fontWeight: 700, color: "#001364", letterSpacing: "-0.01em" }}>
+                Brieflee {plan.tier} · {plan.interval}
+              </div>
+            </div>
+            <button onClick={onBack} className="bl-btn bl-btn-secondary" style={{ padding: "8px 12px", fontSize: 13 }}>
+              Change
+            </button>
+          </div>
+
+          <ul className="plan-feature-list" style={{ marginBottom: 0 }}>
+            {FEATURE_ROWS(plan).slice(0, 5).map((f) => (
+              <li key={f.label}>
+                <img src={f.iconUrl} alt="" className="plan-feat-icon-img" />
+                <span className="plan-feat-label">{f.label}</span>
+                <span className="plan-feat-amount">{f.amount}</span>
+              </li>
+            ))}
+          </ul>
+
+          <div className="summary-divider" />
+
+          <div className="stack gap-2">
+            <div className="price-row">
+              <span>{plan.interval} subscription</span>
+              <span>${price.toLocaleString()}</span>
+            </div>
+            <div className="price-row">
+              <span>{TRIAL_DAYS}-day trial discount</span>
+              <span style={{ color: "#166534", fontWeight: 600 }}>−${price.toLocaleString()}</span>
+            </div>
+            {savedDollars > 0 && (
+              <div className="price-row" style={{ color: "#166534" }}>
+                <span>Annual savings</span>
+                <span style={{ fontWeight: 600 }}>−${savedDollars.toLocaleString()} ({savings}% off)</span>
+              </div>
+            )}
+            <div className="price-row total">
+              <span>Due today</span>
+              <span>$0.00</span>
+            </div>
+            <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>
+              On {trialEnds} you'll be charged ${price.toLocaleString()}{isYearly ? " for the year" : " for the month"}. Cancel any time before then.
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT: pay CTA on top, trust + testimonial directly underneath so no dead space */}
         <div className="stack gap-4">
-          <div className="bl-card summary-card">
-            <div className="row-between mb-4">
-              <div>
-                <div className="plan-tier">{plan.tier} plan</div>
-                <div style={{ fontFamily: "var(--gs-font)", fontSize: 22, fontWeight: 700, color: "#001364", letterSpacing: "-0.01em" }}>
-                  Brieflee {plan.tier} · {plan.interval}
-                </div>
-              </div>
-              <button onClick={onBack} className="bl-btn bl-btn-secondary" style={{ padding: "8px 12px", fontSize: 13 }}>
-                Change
-              </button>
+          <div className="bl-card pay-panel">
+            <div className="row gap-2 mb-3">
+              <I.Lock size={16} />
+              <span style={{ fontWeight: 700, color: "#001364" }}>Continue to secure checkout</span>
             </div>
+            <p style={{ fontSize: 14, color: "#333", lineHeight: 1.55, margin: "0 0 20px" }}>
+              We'll send you to Stripe's secure checkout page to enter your card. Your {TRIAL_DAYS}-day free trial starts immediately — you won't be charged until {trialEnds}.
+            </p>
 
-            <ul className="plan-feature-list" style={{ marginBottom: 0 }}>
-              {FEATURE_ROWS(plan).slice(0, 5).map((f) => (
-                <li key={f.label}>
-                  <img src={f.iconUrl} alt="" className="plan-feat-icon-img" />
-                  <span className="plan-feat-label">{f.label}</span>
-                  <span className="plan-feat-amount">{f.amount}</span>
-                </li>
-              ))}
-            </ul>
+            <button className="bl-btn bl-btn-primary pulse pay-cta" onClick={handlePay}>
+              Pay $0 and start your {TRIAL_DAYS}-day trial <I.ArrowRight size={14} />
+            </button>
 
-            <div className="summary-divider" />
-
-            <div className="stack gap-2">
-              <div className="price-row">
-                <span>{plan.interval} subscription</span>
-                <span>${price.toLocaleString()}</span>
-              </div>
-              <div className="price-row">
-                <span>{TRIAL_DAYS}-day trial discount</span>
-                <span style={{ color: "#166534", fontWeight: 600 }}>−${price.toLocaleString()}</span>
-              </div>
-              {savedDollars > 0 && (
-                <div className="price-row" style={{ color: "#166534" }}>
-                  <span>Annual savings</span>
-                  <span style={{ fontWeight: 600 }}>−${savedDollars.toLocaleString()} ({savings}% off)</span>
-                </div>
-              )}
-              <div className="price-row total">
-                <span>Due today</span>
-                <span>$0.00</span>
-              </div>
-              <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>
-                On {trialEnds} you'll be charged ${price.toLocaleString()}{isYearly ? " for the year" : " for the month"}. Cancel any time before then.
-              </div>
-            </div>
+            <p className="text-center mt-4" style={{ fontSize: 12, color: "#555", lineHeight: 1.55 }}>
+              By starting your trial you agree to Brieflee's <a href="https://www.brieflee.co/terms">Terms</a> and <a href="https://www.brieflee.co/privacy">Privacy</a>.
+              You won't be charged during the {TRIAL_DAYS}-day trial. End your subscription at any time with one click.
+            </p>
           </div>
 
           <div className="bl-card" style={{ padding: 18 }}>
             <div className="stack gap-3">
-              <div className="row gap-3" style={{ alignItems: "flex-start" }}>
-                <span className="rtb-icon"><I.RotateCcw size={14} /></span>
+              <div className="row gap-3" style={{ alignItems: "center" }}>
+                <img src={CHECKOUT_TRUST_ICONS.guarantee} alt="" className="checkout-trust-icon" />
                 <div style={{ fontSize: 13, lineHeight: 1.4 }}>
                   <strong style={{ color: "#001364" }}>15-day money-back guarantee</strong><br />
                   <span style={{ color: "#555" }}>Full refund within 15 days, no questions asked.</span>
                 </div>
               </div>
-              <div className="row gap-3" style={{ alignItems: "flex-start" }}>
-                <span className="rtb-icon"><I.X size={14} /></span>
+              <div className="row gap-3" style={{ alignItems: "center" }}>
+                <img src={CHECKOUT_TRUST_ICONS.cancel} alt="" className="checkout-trust-icon" />
                 <div style={{ fontSize: 13, lineHeight: 1.4 }}>
                   <strong style={{ color: "#001364" }}>Cancel any time</strong><br />
                   <span style={{ color: "#555" }}>One click in settings. No emails, no friction.</span>
                 </div>
               </div>
-              <div className="row gap-3" style={{ alignItems: "flex-start" }}>
-                <span className="rtb-icon"><I.Lock size={14} /></span>
+              <div className="row gap-3" style={{ alignItems: "center" }}>
+                <img src={CHECKOUT_TRUST_ICONS.secure} alt="" className="checkout-trust-icon" />
                 <div style={{ fontSize: 13, lineHeight: 1.4 }}>
                   <strong style={{ color: "#001364" }}>Secure checkout</strong><br />
                   <span style={{ color: "#555" }}>Powered by Stripe. We never see your card.</span>
@@ -824,32 +847,6 @@ function CheckoutStep({ selectedPlanId, billingInterval, user, onBack }) {
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Pay panel — single big CTA that opens Stripe Payment Link with 7-day trial */}
-        <div className="bl-card pay-panel">
-          <div className="row gap-2 mb-3">
-            <I.Lock size={16} />
-            <span style={{ fontWeight: 700, color: "#001364" }}>Continue to secure checkout</span>
-          </div>
-          <p style={{ fontSize: 14, color: "#333", lineHeight: 1.55, margin: "0 0 20px" }}>
-            We'll send you to Stripe's secure checkout page to enter your card. Your {TRIAL_DAYS}-day free trial starts immediately — you won't be charged until {trialEnds}.
-          </p>
-
-          <div className="pay-trust-grid">
-            <div className="pay-trust"><I.Lock size={14} /> 256-bit TLS</div>
-            <div className="pay-trust"><I.Shield size={14} /> PCI-DSS compliant</div>
-            <div className="pay-trust"><I.Sparkles size={14} /> Powered by Stripe</div>
-          </div>
-
-          <button className="bl-btn bl-btn-primary pulse pay-cta" onClick={handlePay}>
-            Pay $0 and start your {TRIAL_DAYS}-day trial <I.ArrowRight size={14} />
-          </button>
-
-          <p className="text-center mt-4" style={{ fontSize: 12, color: "#555", lineHeight: 1.55 }}>
-            By starting your trial you agree to Brieflee's <a href="https://www.brieflee.co/terms">Terms</a> and <a href="https://www.brieflee.co/privacy">Privacy</a>.
-            You won't be charged during the {TRIAL_DAYS}-day trial. End your subscription at any time with one click.
-          </p>
         </div>
       </div>
 
@@ -940,15 +937,15 @@ function BlockStyles() {
 
       .gs-page {
         max-width: 1120px; margin: 0 auto;
-        padding: 48px 24px 96px;
+        padding: 28px 24px 96px;
       }
       .gs-page-narrow { max-width: 560px; }
       .gs-page-medium { max-width: 760px; }
 
       .gs-headline {
-        font-size: 40px; line-height: 1.08; letter-spacing: -0.02em;
+        font-size: 32px; line-height: 1.1; letter-spacing: -0.02em;
         font-weight: 800; color: var(--bl-fg);
-        margin: 0 0 12px;
+        margin: 0 0 10px;
       }
       .gs-sub {
         color: var(--bl-fg-muted);
@@ -1194,31 +1191,44 @@ function BlockStyles() {
       }
       .customer-logo:hover { opacity: 1; }
 
-      /* Personalize layout */
+      /* Personalize layout — single column, content centered in each card */
       .personalize-grid {
-        display: grid; grid-template-columns: 1fr 1fr;
-        gap: 32px; margin-top: 32px; text-align: left;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        margin-top: 24px;
+        max-width: 640px;
+        margin-left: auto;
+        margin-right: auto;
       }
-      @media (max-width: 800px) { .personalize-grid { grid-template-columns: 1fr; } }
       .personalize-card {
         background: var(--bl-card);
         border: 1px solid var(--bl-border);
         border-radius: var(--bl-radius-lg);
-        padding: 24px;
+        padding: 28px 24px;
         display: flex;
         flex-direction: column;
+        align-items: center;
+        text-align: center;
       }
-      .personalize-card-head {
-        display: flex; align-items: center; gap: 12px;
-        margin-bottom: 20px;
+      .personalize-card-icon {
+        width: 56px; height: 56px;
+        object-fit: contain;
+        margin-bottom: 12px;
+      }
+      .personalize-card-title {
+        font-size: 18px; font-weight: 700; color: #001364;
+        margin-bottom: 4px;
+      }
+      .personalize-card-sub {
+        font-size: 13px; color: #555;
+        margin-bottom: 18px;
       }
       .personalize-card-chips {
-        flex: 1;
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
-        justify-content: center;   /* centers each line of chips horizontally */
-        align-content: center;     /* centers wrapped lines vertically in the available space */
+        justify-content: center;
       }
 
       /* Team hero — was eyes, now Brieflee logo */
@@ -1268,10 +1278,16 @@ function BlockStyles() {
       /* Checkout layout */
       .checkout-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
-        gap: 28px; align-items: start;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 24px; align-items: start;
       }
       @media (max-width: 900px) { .checkout-grid { grid-template-columns: 1fr; } }
+
+      .checkout-trust-icon {
+        width: 36px; height: 36px;
+        flex-shrink: 0;
+        object-fit: contain;
+      }
 
       .summary-card { padding: 24px; }
       .summary-divider { height: 1px; background: var(--bl-border); margin: 18px 0; }
