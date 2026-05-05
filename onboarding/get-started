@@ -38,11 +38,11 @@ const FEAT_ICONS = {
   aiReview:    `${CLD}/v1777998690/brieflee_help-icon_faq-big-cartoon-eyes-curious-looking-transparent_2026-05.png`,
   briefs:      `${CLD}/v1777998696/brieflee_icon_docs-file-icon-transparent_2026-05.png`,
   qa:          `${CLD}/v1777998697/brieflee_icon_document-approval-illustration-transparent_2026-05.png`,
-  storyboard:  `${CLD}/v1777998691/brieflee_help-icon_projects-isometric-window-with-folder-grid-transparent_2026-05.png`,
-  remix:       `${CLD}/v1777998705/brieflee_icon_remix-vinyl-player-console-icon-transparent_2026-05.png`,
-  revisions:   `${CLD}/v1777998714/brieflee_icon_trendy-flat-pencil-sticker-transparent_2026-05.png`,
-  seats:       `${CLD}/v1777998692/brieflee_help-icon_team-id-badge-card-with-profile-photo-transparent_2026-05.png`,
-  workspaces:  `${CLD}/v1777998709/brieflee_icon_simple-lined-file-folder-bag-transparent_2026-05.png`,
+  revisions:   `${CLD}/v1777998714/brieflee_icon_wax-seal-of-approval-stamp-transparent_2026-05.png`,
+  storyboard:  `${CLD}/v1777998703/brieflee_icon_movie-clapper-illustration-transparent_2026-05.png`,
+  remix:       `${CLD}/v1777998705/brieflee_icon_retro-cassette-tape-transparent_2026-05.png`,
+  seats:       `${CLD}/v1777998707/brieflee_icon_simple-bold-lined-id-badge-transparent_2026-05.png`,
+  workspaces:  `${CLD}/v1777998707/brieflee_icon_simple-bold-lined-computer-transparent_2026-05.png`,
 };
 
 // Trust strip — grey 3D engravings
@@ -208,13 +208,15 @@ const I = {
 };
 
 // ─── Feature rows (image icon + label + per-plan amount) ────────────
+// Order per Bev's 2026-05-05 note: AI features first, then content workflow,
+// then capacity. Icons swapped to her latest set.
 const FEATURE_ROWS = (plan) => [
   { iconUrl: FEAT_ICONS.aiReview,   label: "AI video review",    amount: `${plan.maxVideos}/mo` },
   { iconUrl: FEAT_ICONS.briefs,     label: "Briefs & checklists",amount: "Unlimited" },
   { iconUrl: FEAT_ICONS.qa,         label: "AI QA Checklist",    amount: "26 items" },
+  { iconUrl: FEAT_ICONS.revisions,  label: "Revisions",          amount: "Unlimited" },
   { iconUrl: FEAT_ICONS.storyboard, label: "Storyboard view",    amount: "Yes" },
   { iconUrl: FEAT_ICONS.remix,      label: "Remix",              amount: "Yes" },
-  { iconUrl: FEAT_ICONS.revisions,  label: "Revisions",          amount: "Unlimited" },
   { iconUrl: FEAT_ICONS.seats,      label: "Seats",              amount: `${plan.maxUsers}` },
   { iconUrl: FEAT_ICONS.workspaces, label: "Workspaces",         amount: `${plan.maxWorkspaces}` },
 ];
@@ -527,14 +529,14 @@ function PersonalizeStep({ workTypeId, setWorkTypeId, heardAboutUsId, setHeardAb
 function PersonalizeCard({ icon, title, subtitle, options, valueId, onSelect }) {
   return (
     <div className="personalize-card">
-      <div className="row gap-3 mb-4" style={{ alignItems: "center" }}>
+      <div className="personalize-card-head">
         <img src={icon} alt="" style={{ width: 36, height: 36, flexShrink: 0 }} />
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 700, color: "#001364" }}>{title}</div>
           <div style={{ fontSize: 12, color: "#555" }}>{subtitle}</div>
         </div>
       </div>
-      <div className="row gap-2" style={{ flexWrap: "wrap" }}>
+      <div className="personalize-card-chips">
         {options.map((opt) => {
           const sel = valueId === opt.id;
           return (
@@ -747,7 +749,7 @@ function CheckoutStep({ selectedPlanId, billingInterval, user, onBack }) {
             <ul className="plan-feature-list" style={{ marginBottom: 0 }}>
               {FEATURE_ROWS(plan).slice(0, 5).map((f) => (
                 <li key={f.label}>
-                  <span className="plan-feat-icon"><f.Icon size={13} /></span>
+                  <img src={f.iconUrl} alt="" className="plan-feat-icon-img" />
                   <span className="plan-feat-label">{f.label}</span>
                   <span className="plan-feat-amount">{f.amount}</span>
                 </li>
@@ -1205,7 +1207,18 @@ function BlockStyles() {
         padding: 24px;
         display: flex;
         flex-direction: column;
-        justify-content: center;
+      }
+      .personalize-card-head {
+        display: flex; align-items: center; gap: 12px;
+        margin-bottom: 20px;
+      }
+      .personalize-card-chips {
+        flex: 1;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;   /* centers each line of chips horizontally */
+        align-content: center;     /* centers wrapped lines vertically in the available space */
       }
 
       /* Team hero — was eyes, now Brieflee logo */
