@@ -3,16 +3,12 @@
 //
 // SOFTR CONFIG REQUIRED:
 //   Source tab: bind to USERS table (database "brieflee beta"), filter to logged-in user.
-//   Actions tab: auto-populated from q.select aliases below — Bev only needs to confirm
-//                visibility/permissions for the update action.
+//   Actions tab: auto-populated from q.select aliases below.
 //
-// Cross-table caveat: the team step writes to ACCOUNTS (account name + team_emails),
-// which a USERS-bound block can't do via useRecordUpdate. Until a Softr workflow exists
-// to handle that, the team save is stubbed — data is collected, save is a no-op, the
-// user advances. Plug TEAM_UPDATE_WORKFLOW_URL into a workflow that takes
-// { accountId, teamName, teamEmails } and writes to accounts.name + accounts.team_emails.
+// Cross-table caveat: the team step writes to ACCOUNTS via a workflow trigger URL set in
+// TEAM_UPDATE_WORKFLOW_URL. Until that workflow exists, team save is a no-op (logged).
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRecordUpdate, useLinkedRecords, q } from "@/lib/datasource";
 import { useCurrentUser } from "@/lib/user";
 import { Button } from "@/components/ui/button";
@@ -20,20 +16,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Check } from "lucide-react";
+import { Check, Shuffle, Eye, BadgeCheck, FileText, LayoutGrid } from "lucide-react";
 
-// ─── Brand palette (inline because they're not in the default Tailwind config) ──
+// ─── Brand palette (from docs/brand-guidelines.md) ──────────────────
 const BL = {
-  navy: "#001364",
-  periwinkle: "#879CF7",
-  light: "#ECF0FF",
-  border: "#D6DEFC",
-  bg: "#FAFBFF",
-  body: "#333333",
-  muted: "#555555",
+  blue: "#294ff6",       // primary CTAs, accents
+  blue2: "#4466f8",
+  blue4: "#7a93ff",
+  blue5: "#879cf7",      // soft hero accent
+  navy: "#000f4d",       // headings, dark CTAs
+  navy2: "#001364",      // secondary dark
+  ice: "#ccedff",        // soft tint
+  light1: "#f8fbff",     // page bg
+  light2: "#eef4fd",     // input bg, chart tracks
+  lavender: "#d8d8ff",
+  periwinkle: "#d9e0ff", // pill badges, soft accents
+  body: "#1a1a2e",
+  muted: "#6b7280",
+  border: "#eef4fd",
 };
 
-// ─── Field map (USERS table) — aliases are what we use in code, IDs are Softr's ──
+// ─── Field map (USERS table) ────────────────────────────────────────
 const select = q.select({
   fullName: "Pk6Tx",
   email: "PBrIP",
@@ -43,7 +46,7 @@ const select = q.select({
   accounts: "Nz6VX",  // LINKED_RECORD → accounts (read only here)
 });
 
-// ─── SELECT option UUIDs (captured at field creation, 2026-05-05) ──
+// ─── SELECT option UUIDs (captured at field creation, 2026-05-05) ───
 const WORK_TYPE_OPTIONS = [
   { id: "fa51d9c6-6184-4828-a57c-27ffe18a2333", label: "Agency" },
   { id: "ba6276a5-770f-4520-a0dc-078fc22c607b", label: "Brand" },
@@ -70,15 +73,29 @@ const HEARD_FROM_OPTIONS = [
   { id: "ae23e323-f577-44af-ad79-7cf75f48a623", label: "Other" },
 ];
 
-// ─── Pricing rows (the 6 canonical, hardcoded — useLinkedRecords only returns { id, title }
-//     so we can't get tier/price/feature data through it. Pricing rarely changes.) ──
+// ─── Product features (icons rendered on every pricing card) ────────
+const FEATURES = [
+  { key: "remix",      label: "Remix",      Icon: Shuffle },
+  { key: "review",     label: "AI Review",  Icon: Eye },
+  { key: "qa",         label: "QA",         Icon: BadgeCheck },
+  { key: "briefs",     label: "Briefs",     Icon: FileText },
+  { key: "storyboard", label: "Storyboard", Icon: LayoutGrid },
+];
+
+// ─── Pricing rows (the 6 canonical, hardcoded) ──────────────────────
+// softrCheckoutEmbedSlug → Softr block slug for the native checkout embed.
+// Bev creates one Softr checkout block per plan; until they exist they all
+// fall back to the Creator Monthly placeholder.
+const SOFTR_CHECKOUT_PAGE_ID = "31bbd318-c437-4b2c-8b46-2dce22863829";
+const SOFTR_CHECKOUT_PLACEHOLDER = "creator-monthly-59"; // TODO: swap per plan once Bev creates them
+
 const PLANS = [
-  { id: "MOFJ50J3sX5cQ4", tier: "Creator", interval: "Monthly", price: 59,   stripePriceId: "price_1SGHuzIG1gGY9y21517vrys7", maxVideos: 30,  maxWorkspaces: 1,  maxUsers: 1 },
-  { id: "efLCArKogDzBco", tier: "Creator", interval: "Yearly",  price: 588,  stripePriceId: "price_1SGHvdIG1gGY9y21twF3H7NU", maxVideos: 30,  maxWorkspaces: 1,  maxUsers: 1 },
-  { id: "3DudH4fLuqChIr", tier: "Crew",    interval: "Monthly", price: 99,   stripePriceId: "price_1SGI2CIG1gGY9y21tuEFZgut", maxVideos: 100, maxWorkspaces: 5,  maxUsers: 5 },
-  { id: "QHonFLGNkspIop", tier: "Crew",    interval: "Yearly",  price: 1068, stripePriceId: "price_1SGI31IG1gGY9y21vH0AifOz", maxVideos: 100, maxWorkspaces: 5,  maxUsers: 5 },
-  { id: "AQI1eTOfZOYM5h", tier: "Studio",  interval: "Monthly", price: 249,  stripePriceId: "price_1SGI3iIG1gGY9y21ITPStmgR", maxVideos: 500, maxWorkspaces: 10, maxUsers: 10 },
-  { id: "KHrjkggVIoUOze", tier: "Studio",  interval: "Yearly",  price: 2388, stripePriceId: "price_1SGI4HIG1gGY9y21oftkiARJ", maxVideos: 500, maxWorkspaces: 10, maxUsers: 10 },
+  { id: "MOFJ50J3sX5cQ4", tier: "Creator", interval: "Monthly", price: 59,   stripePriceId: "price_1SGHuzIG1gGY9y21517vrys7", maxVideos: 30,  maxWorkspaces: 1,  maxUsers: 1,  softrCheckoutEmbedSlug: "creator-monthly-59" },
+  { id: "efLCArKogDzBco", tier: "Creator", interval: "Yearly",  price: 588,  stripePriceId: "price_1SGHvdIG1gGY9y21twF3H7NU", maxVideos: 30,  maxWorkspaces: 1,  maxUsers: 1,  softrCheckoutEmbedSlug: SOFTR_CHECKOUT_PLACEHOLDER },
+  { id: "3DudH4fLuqChIr", tier: "Crew",    interval: "Monthly", price: 99,   stripePriceId: "price_1SGI2CIG1gGY9y21tuEFZgut", maxVideos: 100, maxWorkspaces: 5,  maxUsers: 5,  softrCheckoutEmbedSlug: SOFTR_CHECKOUT_PLACEHOLDER, popular: true },
+  { id: "QHonFLGNkspIop", tier: "Crew",    interval: "Yearly",  price: 1068, stripePriceId: "price_1SGI31IG1gGY9y21vH0AifOz", maxVideos: 100, maxWorkspaces: 5,  maxUsers: 5,  softrCheckoutEmbedSlug: SOFTR_CHECKOUT_PLACEHOLDER, popular: true },
+  { id: "AQI1eTOfZOYM5h", tier: "Studio",  interval: "Monthly", price: 249,  stripePriceId: "price_1SGI3iIG1gGY9y21ITPStmgR", maxVideos: 500, maxWorkspaces: 10, maxUsers: 10, softrCheckoutEmbedSlug: SOFTR_CHECKOUT_PLACEHOLDER },
+  { id: "KHrjkggVIoUOze", tier: "Studio",  interval: "Yearly",  price: 2388, stripePriceId: "price_1SGI4HIG1gGY9y21oftkiARJ", maxVideos: 500, maxWorkspaces: 10, maxUsers: 10, softrCheckoutEmbedSlug: SOFTR_CHECKOUT_PLACEHOLDER },
 ];
 
 const STEPS = [
@@ -96,6 +113,15 @@ const toIdLabel = (options, id) => {
   return opt ? { id: opt.id, label: opt.label } : null;
 };
 
+const yearlySavingsPct = (tier) => {
+  const m = PLANS.find((p) => p.tier === tier && p.interval === "Monthly");
+  const y = PLANS.find((p) => p.tier === tier && p.interval === "Yearly");
+  if (!m || !y) return 0;
+  const fullYear = m.price * 12;
+  return Math.round(((fullYear - y.price) / fullYear) * 100);
+};
+const MAX_YEARLY_SAVINGS = Math.max(...["Creator", "Crew", "Studio"].map(yearlySavingsPct));
+
 export default function Block() {
   const user = useCurrentUser();
   const [step, setStep] = useState("team");
@@ -110,7 +136,6 @@ export default function Block() {
   const [billingInterval, setBillingInterval] = useState("Yearly");
   const [selectedPlanId, setSelectedPlanId] = useState(null);
 
-  // Read the user's linked account (gives us id + title = current account name)
   const { data: accountData } = useLinkedRecords({
     select,
     field: "accounts",
@@ -118,11 +143,8 @@ export default function Block() {
   });
   const userAccount = accountData?.pages.flatMap((p) => p.items)[0] ?? null;
 
-  // Pre-fill team name from existing account name
   useEffect(() => {
-    if (userAccount?.title && !teamName) {
-      setTeamName(userAccount.title);
-    }
+    if (userAccount?.title && !teamName) setTeamName(userAccount.title);
   }, [userAccount]); // eslint-disable-line
 
   const updateRecord = useRecordUpdate({
@@ -142,18 +164,10 @@ export default function Block() {
     setSaving(false);
   };
 
-  // Step 1: Team — saves to ACCOUNTS via a workflow (since this block is bound to USERS).
   const handleTeamNext = async ({ skip }) => {
-    if (skip) {
-      goNext();
-      return;
-    }
-    if (!userAccount?.id) {
-      goNext();
-      return;
-    }
+    if (skip) { goNext(); return; }
+    if (!userAccount?.id) { goNext(); return; }
     if (!TEAM_UPDATE_WORKFLOW_URL) {
-      // Workflow not wired yet — collect data, advance, leave save for the workflow.
       console.warn("=== TEAM_UPDATE_WORKFLOW_URL is empty; team data not persisted to accounts");
       goNext();
       return;
@@ -179,37 +193,29 @@ export default function Block() {
     }
   };
 
-  // Step 2: Personalize — writes USERS.work_type + USERS.heard_about_us.
   const handlePersonalizeNext = () => {
-    if (!user?.id) {
-      toast.error("Not signed in");
-      return;
-    }
+    if (!user?.id) { toast.error("Not signed in"); return; }
     if (updateRecord.enabled === false) {
       toast.error("Saving is disabled — check the block's Visibility / permissions in Softr.");
       return;
     }
     if (!workTypeId || !heardAboutUsId) return;
-
     setSaving(true);
-    const updates = {
-      workType: toIdLabel(WORK_TYPE_OPTIONS, workTypeId),
-      heardAboutUs: toIdLabel(HEARD_FROM_OPTIONS, heardAboutUsId),
-    };
     updateRecord.mutate(
-      { recordId: user.id, fields: updates },
+      {
+        recordId: user.id,
+        fields: {
+          workType: toIdLabel(WORK_TYPE_OPTIONS, workTypeId),
+          heardAboutUs: toIdLabel(HEARD_FROM_OPTIONS, heardAboutUsId),
+        },
+      },
       { onSuccess: goNext },
     );
   };
 
-  // Step 3: Plan — writes USERS.plan as a linked record [{ id }].
   const handlePlanNext = () => {
-    if (!user?.id) {
-      toast.error("Not signed in");
-      return;
-    }
+    if (!user?.id) { toast.error("Not signed in"); return; }
     if (!selectedPlanId) return;
-
     setSaving(true);
     updateRecord.mutate(
       { recordId: user.id, fields: { plan: [{ id: selectedPlanId }] } },
@@ -217,56 +223,65 @@ export default function Block() {
     );
   };
 
+  const goBack = () => {
+    const i = STEPS.findIndex((s) => s.id === step);
+    if (i > 0) setStep(STEPS[i - 1].id);
+  };
+
   return (
-    <div className="min-h-screen" style={{ background: BL.bg }}>
+    <div className="min-h-screen w-full" style={{ background: BL.light1 }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;500;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;700;800&display=swap');
         .gs-root, .gs-root * { font-family: 'League Spartan', sans-serif; }
+        .gs-root code { font-family: ui-monospace, SFMono-Regular, monospace; }
       `}</style>
+
       <div className="gs-root">
         <Stepper currentId={step} />
 
-        <div className="container py-6 pb-20" style={{ maxWidth: 720 }}>
-          {step === "team" && (
-            <TeamStep
-              teamName={teamName}
-              setTeamName={setTeamName}
-              teamEmails={teamEmails}
-              setTeamEmails={setTeamEmails}
-              onNext={() => handleTeamNext({ skip: false })}
-              onSkip={() => handleTeamNext({ skip: true })}
-              saving={saving}
-            />
-          )}
-
-          {step === "personalize" && (
-            <PersonalizeStep
-              workTypeId={workTypeId}
-              setWorkTypeId={setWorkTypeId}
-              heardAboutUsId={heardAboutUsId}
-              setHeardAboutUsId={setHeardAboutUsId}
-              onNext={handlePersonalizeNext}
-              saving={saving}
-            />
-          )}
-
-          {step === "pricing" && (
-            <PricingStep
-              billingInterval={billingInterval}
-              setBillingInterval={setBillingInterval}
-              selectedPlanId={selectedPlanId}
-              setSelectedPlanId={setSelectedPlanId}
-              onNext={handlePlanNext}
-              saving={saving}
-            />
-          )}
-
-          {step === "checkout" && (
-            <CheckoutStep
-              selectedPlanId={selectedPlanId}
-              user={user}
-            />
-          )}
+        {/* Centered container for every step */}
+        <div className="w-full flex justify-center">
+          <div className="w-full max-w-5xl px-4 sm:px-6 pb-24">
+            {step === "team" && (
+              <TeamStep
+                teamName={teamName}
+                setTeamName={setTeamName}
+                teamEmails={teamEmails}
+                setTeamEmails={setTeamEmails}
+                onNext={() => handleTeamNext({ skip: false })}
+                onSkip={() => handleTeamNext({ skip: true })}
+                saving={saving}
+              />
+            )}
+            {step === "personalize" && (
+              <PersonalizeStep
+                workTypeId={workTypeId}
+                setWorkTypeId={setWorkTypeId}
+                heardAboutUsId={heardAboutUsId}
+                setHeardAboutUsId={setHeardAboutUsId}
+                onNext={handlePersonalizeNext}
+                onBack={goBack}
+                saving={saving}
+              />
+            )}
+            {step === "pricing" && (
+              <PricingStep
+                billingInterval={billingInterval}
+                setBillingInterval={setBillingInterval}
+                selectedPlanId={selectedPlanId}
+                setSelectedPlanId={setSelectedPlanId}
+                onNext={handlePlanNext}
+                onBack={goBack}
+                saving={saving}
+              />
+            )}
+            {step === "checkout" && (
+              <CheckoutStep
+                selectedPlanId={selectedPlanId}
+                onBack={goBack}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -277,33 +292,35 @@ export default function Block() {
 function Stepper({ currentId }) {
   const idx = STEPS.findIndex((s) => s.id === currentId);
   return (
-    <div className="flex flex-wrap items-center justify-center gap-3 py-8 px-4 text-sm">
-      {STEPS.map((s, i) => {
-        const done = i < idx;
-        const active = i === idx;
-        const reached = done || active;
-        return (
-          <div key={s.id} className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <div
-                className="w-5 h-5 rounded-full flex items-center justify-center"
-                style={{
-                  background: reached ? BL.periwinkle : "transparent",
-                  border: reached ? "none" : `1.5px solid ${BL.border}`,
-                }}
-              >
-                {done && <Check className="w-3 h-3" style={{ color: "#fff" }} strokeWidth={3} />}
+    <div className="w-full flex justify-center">
+      <div className="flex flex-wrap items-center justify-center gap-3 py-8 px-4 text-sm">
+        {STEPS.map((s, i) => {
+          const done = i < idx;
+          const active = i === idx;
+          const reached = done || active;
+          return (
+            <div key={s.id} className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-5 h-5 rounded-full flex items-center justify-center"
+                  style={{
+                    background: reached ? BL.blue : "transparent",
+                    border: reached ? "none" : `1.5px solid ${BL.border}`,
+                  }}
+                >
+                  {done && <Check className="w-3 h-3" style={{ color: "#fff" }} strokeWidth={3} />}
+                </div>
+                <span style={{ color: reached ? BL.navy : BL.muted, fontWeight: active ? 700 : 500 }}>
+                  {s.label}
+                </span>
               </div>
-              <span style={{ color: reached ? BL.navy : BL.muted, fontWeight: active ? 700 : 500 }}>
-                {s.label}
-              </span>
+              {i < STEPS.length - 1 && (
+                <div className="w-12 h-px" style={{ background: BL.border }} />
+              )}
             </div>
-            {i < STEPS.length - 1 && (
-              <div className="w-12 h-px" style={{ background: BL.border }} />
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -315,15 +332,15 @@ function TeamStep({ teamName, setTeamName, teamEmails, setTeamEmails, onNext, on
   const canNext = teamName.trim().length > 0;
 
   return (
-    <div className="text-center">
+    <div className="w-full max-w-md mx-auto text-center">
       <h1 className="text-3xl mb-3" style={{ color: BL.navy, fontWeight: 800 }}>
         Create your team
       </h1>
-      <p className="text-sm leading-relaxed max-w-md mx-auto mb-10" style={{ color: BL.body }}>
+      <p className="text-sm leading-relaxed mb-10" style={{ color: BL.body }}>
         Brieflee is better with friends — invite teammates to join your trial.
       </p>
 
-      <div className="max-w-md mx-auto text-left">
+      <div className="text-left">
         <Label htmlFor="team-name" className="text-sm" style={{ color: BL.navy, fontWeight: 600 }}>
           Team name
         </Label>
@@ -333,12 +350,12 @@ function TeamStep({ teamName, setTeamName, teamEmails, setTeamEmails, onNext, on
           placeholder="Ad Rockstars"
           value={teamName}
           onChange={(e) => setTeamName(e.target.value)}
-          style={{ borderColor: BL.border, color: BL.navy }}
+          style={{ borderColor: BL.border, background: "#fff", color: BL.navy }}
         />
 
         <div
           className="rounded-xl px-4 py-3 mb-3 text-sm text-center"
-          style={{ background: BL.light, color: BL.navy, fontWeight: 500 }}
+          style={{ background: BL.periwinkle, color: BL.blue, fontWeight: 500 }}
         >
           Enter email addresses to invite your team
         </div>
@@ -351,7 +368,7 @@ function TeamStep({ teamName, setTeamName, teamEmails, setTeamEmails, onNext, on
               placeholder="name@example.com"
               value={val}
               onChange={(e) => setEmail(i, e.target.value)}
-              style={{ borderColor: BL.border, color: BL.navy }}
+              style={{ borderColor: BL.border, background: "#fff", color: BL.navy }}
             />
           ))}
         </div>
@@ -360,9 +377,9 @@ function TeamStep({ teamName, setTeamName, teamEmails, setTeamEmails, onNext, on
       <Button
         onClick={onNext}
         disabled={!canNext || saving}
-        className="w-full max-w-md py-6 rounded-xl text-base"
+        className="w-full py-6 rounded-xl text-base"
         style={{
-          background: BL.periwinkle,
+          background: BL.blue,
           color: "#fff",
           opacity: canNext && !saving ? 1 : 0.4,
           fontWeight: 600,
@@ -384,10 +401,10 @@ function TeamStep({ teamName, setTeamName, teamEmails, setTeamEmails, onNext, on
 }
 
 // ─── Personalize Step ───────────────────────────────────────────────
-function PersonalizeStep({ workTypeId, setWorkTypeId, heardAboutUsId, setHeardAboutUsId, onNext, saving }) {
+function PersonalizeStep({ workTypeId, setWorkTypeId, heardAboutUsId, setHeardAboutUsId, onNext, onBack, saving }) {
   const canNext = Boolean(workTypeId && heardAboutUsId);
   return (
-    <div className="text-center">
+    <div className="w-full max-w-2xl mx-auto text-center">
       <h1 className="text-3xl mb-3" style={{ color: BL.navy, fontWeight: 800 }}>
         Personalize your Experience
       </h1>
@@ -408,19 +425,28 @@ function PersonalizeStep({ workTypeId, setWorkTypeId, heardAboutUsId, setHeardAb
         onSelect={setHeardAboutUsId}
       />
 
-      <Button
-        onClick={onNext}
-        disabled={!canNext || saving}
-        className="w-full max-w-md py-6 rounded-xl text-base mt-6"
-        style={{
-          background: BL.periwinkle,
-          color: "#fff",
-          opacity: canNext && !saving ? 1 : 0.4,
-          fontWeight: 600,
-        }}
-      >
-        {saving ? "Saving…" : "Next"}
-      </Button>
+      <div className="flex items-center justify-center gap-3 mt-2">
+        <button
+          onClick={onBack}
+          className="px-4 py-2 text-sm bg-transparent border-0 cursor-pointer"
+          style={{ color: BL.muted, fontWeight: 500 }}
+        >
+          Back
+        </button>
+        <Button
+          onClick={onNext}
+          disabled={!canNext || saving}
+          className="px-12 py-6 rounded-xl text-base"
+          style={{
+            background: BL.blue,
+            color: "#fff",
+            opacity: canNext && !saving ? 1 : 0.4,
+            fontWeight: 600,
+          }}
+        >
+          {saving ? "Saving…" : "Next"}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -429,9 +455,9 @@ function Question({ label, options, valueId, onSelect }) {
   return (
     <div className="mb-10">
       <p className="mb-5 text-sm" style={{ color: BL.navy, fontWeight: 600 }}>
-        {label} <span style={{ color: BL.periwinkle }}>*</span>
+        {label} <span style={{ color: BL.blue }}>*</span>
       </p>
-      <div className="flex flex-wrap justify-center gap-2 max-w-xl mx-auto">
+      <div className="flex flex-wrap justify-center gap-2">
         {options.map((opt) => {
           const selected = valueId === opt.id;
           return (
@@ -440,9 +466,9 @@ function Question({ label, options, valueId, onSelect }) {
               onClick={() => onSelect(opt.id)}
               className="px-4 py-2 rounded-lg text-sm flex items-center gap-2 cursor-pointer"
               style={{
-                background: selected ? BL.periwinkle : "#fff",
+                background: selected ? BL.blue : "#fff",
                 color: selected ? "#fff" : BL.navy,
-                border: selected ? `1px solid ${BL.periwinkle}` : `1px solid ${BL.border}`,
+                border: selected ? `1px solid ${BL.blue}` : `1px solid ${BL.border}`,
                 fontWeight: 500,
               }}
             >
@@ -457,7 +483,7 @@ function Question({ label, options, valueId, onSelect }) {
 }
 
 // ─── Pricing Step ───────────────────────────────────────────────────
-function PricingStep({ billingInterval, setBillingInterval, selectedPlanId, setSelectedPlanId, onNext, saving }) {
+function PricingStep({ billingInterval, setBillingInterval, selectedPlanId, setSelectedPlanId, onNext, onBack, saving }) {
   const visiblePlans = useMemo(
     () => PLANS.filter((p) => p.interval === billingInterval),
     [billingInterval],
@@ -465,82 +491,130 @@ function PricingStep({ billingInterval, setBillingInterval, selectedPlanId, setS
   const canNext = Boolean(selectedPlanId);
 
   return (
-    <div>
-      <div className="text-center">
+    <div className="w-full">
+      <div className="text-center mb-2">
         <h1 className="text-3xl mb-3" style={{ color: BL.navy, fontWeight: 800 }}>
-          Test one plan 7 days for free
+          Try one plan free for 7 days
         </h1>
         <p className="text-sm leading-relaxed max-w-md mx-auto mb-6" style={{ color: BL.body }}>
-          Choose a plan and start your free trial. Cancel anytime.
+          Cancel anytime. No charge until your trial ends.
         </p>
-        <IntervalToggle value={billingInterval} onChange={setBillingInterval} />
+        <IntervalToggle value={billingInterval} onChange={setBillingInterval} maxSavings={MAX_YEARLY_SAVINGS} />
       </div>
 
-      <div className="grid md:grid-cols-3 gap-4 mt-8">
+      <div className="grid md:grid-cols-3 gap-5 mt-10">
         {visiblePlans.map((p) => {
           const selected = selectedPlanId === p.id;
+          const isPopular = !!p.popular;
           const monthlyEquivalent = p.interval === "Yearly" ? Math.round(p.price / 12) : p.price;
-          const subLabel = p.interval === "Yearly" ? `Billed $${p.price.toLocaleString()} annually` : "Billed monthly";
+          const subLabel = p.interval === "Yearly" ? `Billed $${p.price.toLocaleString()} per year` : "Billed monthly";
+          const savings = p.interval === "Yearly" ? yearlySavingsPct(p.tier) : 0;
+
           return (
-            <Card
+            <div
               key={p.id}
+              className="relative rounded-2xl cursor-pointer transition-shadow"
               onClick={() => setSelectedPlanId(p.id)}
-              className="cursor-pointer"
               style={{
                 background: "#fff",
-                border: selected ? `2px solid ${BL.periwinkle}` : `1px solid ${BL.border}`,
+                border: selected ? `2px solid ${BL.blue}` : `1px solid ${BL.border}`,
+                boxShadow: isPopular ? "0 8px 24px rgba(41,79,246,0.10)" : "0 2px 8px rgba(0,15,77,0.04)",
+                overflow: "hidden",
               }}
             >
-              <CardContent className="p-6">
+              {isPopular && (
                 <div
-                  className="text-xs uppercase tracking-wide mb-2"
-                  style={{ color: BL.periwinkle, fontWeight: 700 }}
+                  className="text-xs uppercase tracking-wider text-center py-2"
+                  style={{ background: BL.blue, color: "#fff", fontWeight: 700 }}
+                >
+                  Most popular
+                </div>
+              )}
+              <div className="p-6">
+                <div
+                  className="inline-block text-xs uppercase tracking-wide px-2.5 py-1 rounded-full mb-3"
+                  style={{ background: BL.periwinkle, color: BL.blue, fontWeight: 700 }}
                 >
                   {p.tier}
                 </div>
-                <div className="text-2xl mb-1" style={{ color: BL.navy, fontWeight: 800 }}>
-                  ${monthlyEquivalent} <span className="text-sm" style={{ color: BL.muted, fontWeight: 500 }}>/mo</span>
+                <div className="flex items-baseline gap-1 mb-1">
+                  <span className="text-4xl" style={{ color: BL.navy, fontWeight: 800 }}>
+                    ${monthlyEquivalent}
+                  </span>
+                  <span className="text-sm" style={{ color: BL.muted, fontWeight: 500 }}>/mo</span>
                 </div>
-                <div className="text-xs mb-5" style={{ color: BL.muted }}>{subLabel}</div>
+                <div className="text-xs mb-1" style={{ color: BL.muted }}>{subLabel}</div>
+                {savings > 0 && (
+                  <div className="text-xs mb-5" style={{ color: BL.blue, fontWeight: 700 }}>
+                    Save {savings}% vs monthly
+                  </div>
+                )}
+                {savings === 0 && <div className="mb-5" />}
 
-                <ul className="space-y-2 text-sm" style={{ color: BL.body }}>
+                <ul className="space-y-2.5 text-sm mb-6" style={{ color: BL.body }}>
                   <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4" style={{ color: BL.periwinkle }} strokeWidth={3} />
-                    {p.maxVideos} videos / mo
+                    <Check className="w-4 h-4 flex-shrink-0" style={{ color: BL.blue }} strokeWidth={3} />
+                    <span><strong>{p.maxVideos}</strong> videos / mo</span>
                   </li>
                   <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4" style={{ color: BL.periwinkle }} strokeWidth={3} />
-                    {p.maxWorkspaces} {p.maxWorkspaces === 1 ? "workspace" : "workspaces"}
+                    <Check className="w-4 h-4 flex-shrink-0" style={{ color: BL.blue }} strokeWidth={3} />
+                    <span><strong>{p.maxWorkspaces}</strong> {p.maxWorkspaces === 1 ? "workspace" : "workspaces"}</span>
                   </li>
                   <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4" style={{ color: BL.periwinkle }} strokeWidth={3} />
-                    {p.maxUsers} {p.maxUsers === 1 ? "seat" : "seats"}
+                    <Check className="w-4 h-4 flex-shrink-0" style={{ color: BL.blue }} strokeWidth={3} />
+                    <span><strong>{p.maxUsers}</strong> {p.maxUsers === 1 ? "seat" : "seats"}</span>
                   </li>
                 </ul>
 
+                <div className="border-t pt-4 mb-5" style={{ borderColor: BL.border }}>
+                  <div className="text-xs uppercase tracking-wide mb-3" style={{ color: BL.muted, fontWeight: 700 }}>
+                    Everything in Brieflee
+                  </div>
+                  <ul className="space-y-2 text-sm" style={{ color: BL.body }}>
+                    {FEATURES.map((f) => (
+                      <li key={f.key} className="flex items-center gap-2">
+                        <span
+                          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ background: BL.light2 }}
+                        >
+                          <f.Icon className="w-4 h-4" style={{ color: BL.blue }} strokeWidth={2} />
+                        </span>
+                        {f.label}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
                 <div
-                  className="mt-6 text-center py-2.5 rounded-lg text-sm"
+                  className="text-center py-2.5 rounded-lg text-sm"
                   style={{
-                    background: selected ? BL.periwinkle : BL.light,
-                    color: selected ? "#fff" : BL.navy,
+                    background: selected ? BL.blue : (isPopular ? BL.navy : BL.light2),
+                    color: selected || isPopular ? "#fff" : BL.navy,
                     fontWeight: 600,
                   }}
                 >
                   {selected ? "Selected" : "Choose plan"}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           );
         })}
       </div>
 
-      <div className="text-center">
+      <div className="flex items-center justify-center gap-3 mt-10">
+        <button
+          onClick={onBack}
+          className="px-4 py-2 text-sm bg-transparent border-0 cursor-pointer"
+          style={{ color: BL.muted, fontWeight: 500 }}
+        >
+          Back
+        </button>
         <Button
           onClick={onNext}
           disabled={!canNext || saving}
-          className="w-full max-w-md py-6 rounded-xl text-base mt-10"
+          className="px-12 py-6 rounded-xl text-base"
           style={{
-            background: BL.periwinkle,
+            background: BL.blue,
             color: "#fff",
             opacity: canNext && !saving ? 1 : 0.4,
             fontWeight: 600,
@@ -549,35 +623,39 @@ function PricingStep({ billingInterval, setBillingInterval, selectedPlanId, setS
           {saving ? "Saving…" : "Continue to checkout"}
         </Button>
       </div>
+
+      <p className="text-center text-xs mt-6" style={{ color: BL.muted }}>
+        $0 today · Cancel anytime · Powered by Stripe
+      </p>
     </div>
   );
 }
 
-function IntervalToggle({ value, onChange }) {
+function IntervalToggle({ value, onChange, maxSavings }) {
   const options = ["Monthly", "Yearly"];
   return (
-    <div className="inline-flex p-1 rounded-full" style={{ background: BL.light }}>
+    <div className="inline-flex p-1 rounded-full" style={{ background: BL.light2 }}>
       {options.map((o) => {
         const active = value === o;
         return (
           <button
             key={o}
             onClick={() => onChange(o)}
-            className="px-5 py-1.5 rounded-full text-sm flex items-center gap-2 cursor-pointer bg-transparent border-0"
+            className="px-5 py-1.5 rounded-full text-sm flex items-center gap-2 cursor-pointer border-0"
             style={{
               background: active ? "#fff" : "transparent",
               color: BL.navy,
               fontWeight: active ? 700 : 500,
-              boxShadow: active ? "0 1px 2px rgba(0,19,100,0.06)" : "none",
+              boxShadow: active ? "0 1px 2px rgba(0,15,77,0.08)" : "none",
             }}
           >
             {o}
-            {o === "Yearly" && (
+            {o === "Yearly" && maxSavings > 0 && (
               <span
                 className="text-xs px-1.5 py-0.5 rounded"
-                style={{ background: BL.periwinkle, color: "#fff", fontWeight: 700 }}
+                style={{ background: BL.blue, color: "#fff", fontWeight: 700 }}
               >
-                Save ~17%
+                Save {maxSavings}%
               </span>
             )}
           </button>
@@ -587,82 +665,161 @@ function IntervalToggle({ value, onChange }) {
   );
 }
 
-// ─── Checkout Step ──────────────────────────────────────────────────
-function CheckoutStep({ selectedPlanId, user }) {
+// ─── Checkout Step (uses Softr's native checkout block via iframe) ──
+function CheckoutStep({ selectedPlanId, onBack }) {
   const plan = PLANS.find((p) => p.id === selectedPlanId);
+  const iframeId = useMemo(
+    () => plan ? `softr-${SOFTR_CHECKOUT_PAGE_ID}-${plan.softrCheckoutEmbedSlug}` : null,
+    [plan],
+  );
 
-  // TODO: Embedded Stripe Checkout. Wire a backend endpoint that creates a Checkout Session
-  // with { mode: 'subscription', line_items: [{ price: plan.stripePriceId, quantity: 1 }],
-  //        subscription_data: { trial_period_days: 7 }, customer_email: user.email,
-  //        ui_mode: 'embedded', return_url: '/setup' }, returns { client_secret }.
-  // Then mount via @stripe/stripe-js initEmbeddedCheckout({ clientSecret }) into the
-  // div with id="stripe-embedded-checkout" below.
+  // Load iframe-resizer once, then resize the embedded Softr checkout iframe.
+  useEffect(() => {
+    if (!iframeId) return;
+    const SCRIPT_SRC = "https://cdnjs.cloudflare.com/ajax/libs/iframe-resizer/4.2.11/iframeResizer.min.js";
+
+    const init = () => {
+      try {
+        if (typeof window.iFrameResize === "function") {
+          window.iFrameResize({ checkOrigin: false, log: false }, `#${iframeId}`);
+        }
+      } catch (e) {
+        console.warn("iFrameResize init failed", e);
+      }
+    };
+
+    if (typeof window.iFrameResize === "function") {
+      // small delay so iframe is in DOM
+      const t = setTimeout(init, 50);
+      return () => clearTimeout(t);
+    }
+
+    let script = document.querySelector(`script[src="${SCRIPT_SRC}"]`);
+    if (!script) {
+      script = document.createElement("script");
+      script.src = SCRIPT_SRC;
+      script.async = true;
+      document.body.appendChild(script);
+    }
+    script.addEventListener("load", init);
+    return () => script.removeEventListener("load", init);
+  }, [iframeId]);
 
   if (!plan) {
     return (
       <div className="text-center py-20">
         <p style={{ color: BL.muted }}>Pick a plan first.</p>
+        <button
+          onClick={onBack}
+          className="mt-4 text-sm bg-transparent border-0 cursor-pointer"
+          style={{ color: BL.blue, fontWeight: 600 }}
+        >
+          Back to plans
+        </button>
       </div>
     );
   }
 
+  const usingPlaceholder = plan.softrCheckoutEmbedSlug === SOFTR_CHECKOUT_PLACEHOLDER && plan.tier !== "Creator";
+  const iframeSrc = `https://www.brieflee.co/embed/pages/${SOFTR_CHECKOUT_PAGE_ID}/blocks/${plan.softrCheckoutEmbedSlug}`;
+
   return (
-    <div className="grid md:grid-cols-2 gap-6">
-      <Card style={{ background: "#fff", border: `1px solid ${BL.border}` }}>
-        <CardContent className="p-6">
-          <div className="text-xs uppercase tracking-wide mb-1" style={{ color: BL.periwinkle, fontWeight: 700 }}>
-            {plan.tier} · {plan.interval}
-          </div>
-          <div className="text-2xl mb-4" style={{ color: BL.navy, fontWeight: 800 }}>
-            ${plan.price.toLocaleString()} {plan.interval === "Yearly" ? "/yr" : "/mo"}
-          </div>
+    <div className="w-full">
+      <div className="text-center mb-8">
+        <h1 className="text-3xl mb-2" style={{ color: BL.navy, fontWeight: 800 }}>
+          Enter card details to start your trial
+        </h1>
+        <p className="text-sm" style={{ color: BL.body }}>
+          You won't be charged until your 7-day trial ends. Cancel anytime.
+        </p>
+      </div>
 
-          <ul className="space-y-2 text-sm mb-6" style={{ color: BL.body }}>
-            <li className="flex items-center gap-2">
-              <Check className="w-4 h-4" style={{ color: BL.periwinkle }} strokeWidth={3} />
-              {plan.maxVideos} videos / mo
-            </li>
-            <li className="flex items-center gap-2">
-              <Check className="w-4 h-4" style={{ color: BL.periwinkle }} strokeWidth={3} />
-              {plan.maxWorkspaces} {plan.maxWorkspaces === 1 ? "workspace" : "workspaces"}
-            </li>
-            <li className="flex items-center gap-2">
-              <Check className="w-4 h-4" style={{ color: BL.periwinkle }} strokeWidth={3} />
-              {plan.maxUsers} {plan.maxUsers === 1 ? "seat" : "seats"}
-            </li>
-          </ul>
+      <div className="grid md:grid-cols-5 gap-6">
+        {/* Order summary (left, 2 cols) */}
+        <div className="md:col-span-2">
+          <Card style={{ background: "#fff", border: `1px solid ${BL.border}` }}>
+            <CardContent className="p-6">
+              <div
+                className="inline-block text-xs uppercase tracking-wide px-2.5 py-1 rounded-full mb-3"
+                style={{ background: BL.periwinkle, color: BL.blue, fontWeight: 700 }}
+              >
+                {plan.tier} · {plan.interval}
+              </div>
+              <div className="text-3xl mb-1" style={{ color: BL.navy, fontWeight: 800 }}>
+                ${plan.price.toLocaleString()}
+                <span className="text-sm ml-1" style={{ color: BL.muted, fontWeight: 500 }}>
+                  /{plan.interval === "Yearly" ? "yr" : "mo"}
+                </span>
+              </div>
 
-          <div className="text-xs space-y-2" style={{ color: BL.muted }}>
-            <div>Pay $0 today — your 7-day trial starts now.</div>
-            <div>Cancel anytime in settings.</div>
-            <div>Powered by Stripe.</div>
-          </div>
-        </CardContent>
-      </Card>
+              <ul className="space-y-2 text-sm mb-6 mt-4" style={{ color: BL.body }}>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4" style={{ color: BL.blue }} strokeWidth={3} />
+                  {plan.maxVideos} videos / mo
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4" style={{ color: BL.blue }} strokeWidth={3} />
+                  {plan.maxWorkspaces} {plan.maxWorkspaces === 1 ? "workspace" : "workspaces"}
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4" style={{ color: BL.blue }} strokeWidth={3} />
+                  {plan.maxUsers} {plan.maxUsers === 1 ? "seat" : "seats"}
+                </li>
+                {FEATURES.map((f) => (
+                  <li key={f.key} className="flex items-center gap-2">
+                    <f.Icon className="w-4 h-4 flex-shrink-0" style={{ color: BL.blue }} strokeWidth={2} />
+                    {f.label}
+                  </li>
+                ))}
+              </ul>
 
-      <div
-        id="stripe-embedded-checkout"
-        className="rounded-2xl p-6 flex items-center justify-center text-center"
-        style={{ background: "#fff", border: `1px dashed ${BL.border}`, minHeight: 320 }}
-      >
-        <div>
-          <div className="text-sm mb-2" style={{ color: BL.navy, fontWeight: 700 }}>
-            Stripe Embedded Checkout mounts here
+              <button
+                onClick={onBack}
+                className="text-sm bg-transparent border-0 cursor-pointer"
+                style={{ color: BL.blue, fontWeight: 600 }}
+              >
+                ← Choose a different plan
+              </button>
+            </CardContent>
+          </Card>
+
+          <div className="mt-4 text-xs space-y-2" style={{ color: BL.muted }}>
+            <div>✓ $0 today — your 7-day trial starts now</div>
+            <div>✓ Cancel anytime in settings</div>
+            <div>✓ Powered by Stripe</div>
           </div>
-          <div className="text-xs leading-relaxed max-w-xs mx-auto" style={{ color: BL.muted }}>
-            Backend endpoint creates Session with{" "}
-            <code style={{ background: BL.light, padding: "0 4px", borderRadius: 4 }}>
-              trial_period_days: 7
-            </code>{" "}
-            and price{" "}
-            <code style={{ background: BL.light, padding: "0 4px", borderRadius: 4 }}>
-              {plan.stripePriceId}
-            </code>
-            , then{" "}
-            <code style={{ background: BL.light, padding: "0 4px", borderRadius: 4 }}>
-              initEmbeddedCheckout(clientSecret)
-            </code>
-            .
+        </div>
+
+        {/* Softr native checkout iframe (right, 3 cols) */}
+        <div className="md:col-span-3">
+          {usingPlaceholder && (
+            <div
+              className="text-xs px-3 py-2 mb-3 rounded-lg"
+              style={{ background: BL.periwinkle, color: BL.blue }}
+            >
+              <strong>Placeholder:</strong> showing the Creator Monthly checkout block.
+              Bev — once you create the {plan.tier} {plan.interval} block in Softr, update
+              <code style={{ background: "rgba(255,255,255,0.6)", padding: "0 4px", margin: "0 2px", borderRadius: 4 }}>
+                softrCheckoutEmbedSlug
+              </code>
+              for this plan in PLANS.
+            </div>
+          )}
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{ background: "#fff", border: `1px solid ${BL.border}` }}
+          >
+            <iframe
+              key={iframeId}
+              id={iframeId}
+              title={`Checkout — ${plan.tier} ${plan.interval}`}
+              src={iframeSrc}
+              width="100%"
+              height="1000"
+              scrolling="no"
+              frameBorder="0"
+              style={{ border: "none", display: "block", width: "100%" }}
+            />
           </div>
         </div>
       </div>
