@@ -128,12 +128,19 @@ export default function Block() {
   const firstName =
     (user && (user.firstName || user.first_name || user.fullName?.split(' ')[0] || user.name?.split(' ')[0])) || '';
 
-  // Auto-scroll the chat bubble to the newest message on every state change
+  // Auto-scroll the chat bubble to the newest message — only on conversation
+  // advances, never on unrelated re-renders (e.g. verb rotation tick)
   useEffect(() => {
     if (chatLogRef.current) {
       chatLogRef.current.scrollTo({ top: chatLogRef.current.scrollHeight, behavior: 'smooth' });
     }
-  });
+  }, [
+    showMessage1, showMessage2, showMessage3, showMessage4,
+    showCards, showUploadOptions, showContextOptions, showUploadUI,
+    showButton, showValidationTyping, validationPassed, validationFailed,
+    showLoadingMessage, showVideoFrame, reviewReady, pollingTimedOut,
+    isSubmitted, showBulkUpload,
+  ]);
 
   // ─── Upload hook ───
   const { uploadAsync } = useUpload();
@@ -804,8 +811,6 @@ export default function Block() {
           }
           .hero-greeting .rotating-verb {
             display: inline-block;
-            min-width: 5.2em;
-            text-align: left;
             color: #294FF6;
             font-weight: 800;
             position: relative;
@@ -876,12 +881,7 @@ export default function Block() {
           .chat-bubble {
             position: relative;
             z-index: 1;
-            background:
-              linear-gradient(180deg,
-                rgba(217, 224, 255, 0.55) 0%,
-                rgba(217, 224, 255, 0.18) 30%,
-                #FFFFFF 65%
-              );
+            background: linear-gradient(to bottom, rgba(217, 224, 255, 0.15), #FFFFFF);
             border-radius: 20px;
             overflow-y: auto;
             overscroll-behavior: contain;
