@@ -21,11 +21,11 @@ import { toast } from "sonner";
 // workspace selector renders at the top of the block. With one
 // account it stays hidden — the page just operates on that account.
 //
-// The "+ Add workspace" button only renders when there's plan
-// headroom. To wire it: create a USERS formula `accounts_remaining`
-// (plan_max_accounts − current_count), expose it as a lookup on the
-// accounts table, and paste that lookup field's ID below.
-const ACCOUNTS_REMAINING_FIELD_ID = null; // e.g. "abc12" once wired
+// The "+ Add workspace" button stays hidden until you (1) flip
+// SHOW_ADD_WORKSPACE to true AND (2) add the accounts_remaining
+// field to the q.select() map below. Until both are done, the
+// button renders for nobody.
+const SHOW_ADD_WORKSPACE = false;
 
 // Where the "+ Add workspace" button sends the user. Configure this
 // route in Softr Studio as a Modal Page.
@@ -33,6 +33,9 @@ const ADD_WORKSPACE_PATH = "/account/add";
 const ADD_WORKSPACE_MODAL_SIZE = "lg"; // 'sm' | 'md' | 'lg' | 'xl'
 
 // ---- Field map (ACCOUNTS) -----------------------------------------
+// To enable plan-aware "+ Add workspace": uncomment the
+// accountsRemaining line and replace the placeholder with the field
+// ID of the users.accounts_remaining lookup on the accounts table.
 const select = q.select({
   name:              "aAKkT",
   aiMode:            "O9x4n",
@@ -46,9 +49,7 @@ const select = q.select({
   audioClarity:      "dMTrN",
   engagementPacing:  "bR5PL",
   brandMentionCount: "HCvZw",
-  ...(ACCOUNTS_REMAINING_FIELD_ID
-    ? { accountsRemaining: ACCOUNTS_REMAINING_FIELD_ID }
-    : {}),
+  // accountsRemaining: "REPLACE_WITH_FIELD_ID",
 });
 
 const updateFields = q.select({
@@ -417,17 +418,21 @@ export default function Block() {
     setSelectedAccountId(id);
   };
 
-  // accounts_remaining lookup — drives "+ Add workspace" button visibility.
-  // Hidden until the lookup field ID is wired (ACCOUNTS_REMAINING_FIELD_ID
-  // is null) OR the user is at their plan limit (remaining === 0).
-  const accountsRemainingRaw =
-    ACCOUNTS_REMAINING_FIELD_ID && record ? record.accountsRemaining : null;
+  // "+ Add workspace" button visibility:
+  //   1. SHOW_ADD_WORKSPACE flag must be on
+  //   2. AND record.accountsRemaining (if present in the field map) > 0
+  //      — if the field isn't on the record, treat as unlimited (the
+  //      flag is the master switch).
+  const accountsRemainingRaw = record ? record.accountsRemaining : undefined;
   const accountsRemaining = (() => {
-    if (accountsRemainingRaw == null) return null;
+    if (accountsRemainingRaw === undefined) return undefined; // field not in select
+    if (accountsRemainingRaw == null) return 0;
     if (Array.isArray(accountsRemainingRaw)) return Number(accountsRemainingRaw[0] ?? 0);
     return Number(accountsRemainingRaw);
   })();
-  const canAddWorkspace = accountsRemaining != null && accountsRemaining > 0;
+  const canAddWorkspace =
+    SHOW_ADD_WORKSPACE &&
+    (accountsRemaining === undefined || accountsRemaining > 0);
 
   const handleAddWorkspace = () => {
     if (typeof window !== "undefined" && typeof window.openSwModal === "function") {
