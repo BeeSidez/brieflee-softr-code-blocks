@@ -21,7 +21,7 @@
 //     same pattern as screen-3.
 //   • After the final blueprint save we redirect to /new.
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
