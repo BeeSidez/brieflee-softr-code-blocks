@@ -273,7 +273,11 @@ const STEP_LABELS = {
 // ----
 export default function Block() {
   const { data, status, refetch } = useRecords({ select, count: 1 });
-  const record = data?.[0];
+  // Newer Softr returns a paginated shape {pages:[{items:[...]}]}; older returned a
+  // flat array. Try both so the block works regardless.
+  const record =
+    data?.pages?.[0]?.items?.[0] ??
+    (Array.isArray(data) ? data[0] : null);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [savedSteps, setSavedSteps] = useState({});  // { 1: true, 2: true, ... }
@@ -447,7 +451,8 @@ export default function Block() {
   };
 
   if (status === "pending") return <Loading />;
-  if (status === "error" || !record) return <Loading error />;
+  if (status === "error") return <Loading error />;
+  if (!record) return <Loading message="No account record found. Check the block's Source tab — it should be bound to the accounts table with a filter to the logged-in user." />;
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "linear-gradient(to bottom, rgba(217, 224, 255, 0.15), rgba(255, 255, 255, 1))" }}>
@@ -1077,11 +1082,16 @@ function ProgressDots({ active, total }) {
   );
 }
 
-function Loading({ error }) {
+function Loading({ error, message }) {
+  const tone = error ? "#d92626" : "#001364";
+  const headline = error ? "Couldn't load your account" : (message ? "Setup not ready" : "Loading...");
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: "linear-gradient(to bottom, rgba(217, 224, 255, 0.15), rgba(255, 255, 255, 1))" }}>
-      <div className="text-center" style={{ color: error ? "#d92626" : "#001364" }}>
-        <div className="text-lg font-medium">{error ? "Couldn't load your account" : "Loading..."}</div>
+    <div className="min-h-screen flex items-center justify-center px-6" style={{ background: "linear-gradient(to bottom, rgba(217, 224, 255, 0.15), rgba(255, 255, 255, 1))" }}>
+      <div className="text-center max-w-md" style={{ color: tone }}>
+        <div className="text-lg font-medium">{headline}</div>
+        {message && (
+          <div className="text-sm mt-3 leading-relaxed" style={{ color: "#001364", fontWeight: 300 }}>{message}</div>
+        )}
       </div>
     </div>
   );
