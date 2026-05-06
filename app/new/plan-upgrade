@@ -39,24 +39,6 @@ const FEAT_ICONS = {
   workspaces:  `${CLD}/v1777998707/brieflee_icon_simple-bold-lined-computer-transparent_2026-05.png`,
 };
 
-// Trust strip - grey 3D engravings (lifted from /get-started)
-const TRUST_ICONS = {
-  daysFree:     `${CLD}/v1777622911/brieflee_engraving_party-popper-confetti-streamers-celebration-grey_2026-03.png`,
-  moneyBack:    `${CLD}/v1777622976/brieflee_engraving_wallet-overflowing-cash-bills-coins-money-grey_2026-03.png`,
-  stripeSecure: `${CLD}/v1777622954/brieflee_engraving_shop-now-cta-button-3d-engraved-grey_2026-03.png`,
-  instantSetup: `${CLD}/v1777622954/brieflee_engraving_hand-pressing-light-switch-button-grey-3d_2026-03.png`,
-};
-
-// Customer logo strip (lifted from /get-started)
-const CUSTOMER_LOGOS = [
-  { name: "Shopify",  url: `${CLD}/brieflee_customer-logo_shopify-wordmark-with-bag-icon-grey_2026-05.png` },
-  { name: "Shark",    url: `${CLD}/brieflee_customer-logo_shark-wordmark-black_2026-05.png` },
-  { name: "Halara",   url: `${CLD}/brieflee_customer-logo_halara-wordmark-black_2026-05.png` },
-  { name: "Cosrx",    url: `${CLD}/brieflee_customer-logo_cosrx-wordmark-black_2026-05.png` },
-  { name: "Indeed",   url: `${CLD}/brieflee_customer-logo_indeed-wordmark-grey_2026-05.png` },
-  { name: "Grubhub",  url: `${CLD}/brieflee_customer-logo_grubhub-wordmark-with-house-fork-grey_2026-05.png` },
-];
-
 const PLANS = [
   { id: "MOFJ50J3sX5cQ4", tier: "Creator", interval: "Monthly", price: 59,
     desc: "For solos and freelancers reviewing their own UGC.",
@@ -97,13 +79,6 @@ const FEATURE_ROWS = (plan) => [
   { iconUrl: FEAT_ICONS.remix,      label: "Remix",              amount: "Yes" },
   { iconUrl: FEAT_ICONS.seats,      label: "Seats",              amount: `${plan.maxUsers}` },
   { iconUrl: FEAT_ICONS.workspaces, label: "Workspaces",         amount: `${plan.maxWorkspaces}` },
-];
-
-const TRUST_ITEMS = [
-  { iconUrl: TRUST_ICONS.daysFree,     title: `${TRIAL_DAYS} days free`, body: "Full access. Cancel anytime." },
-  { iconUrl: TRUST_ICONS.moneyBack,    title: "Money back",              body: "15-day refund guarantee." },
-  { iconUrl: TRUST_ICONS.stripeSecure, title: "Stripe-secure",           body: "We never store card details." },
-  { iconUrl: TRUST_ICONS.instantSetup, title: "Instant setup",           body: "Reviewing in under 5 minutes." },
 ];
 
 const Svg = ({ size = 16, children, ...rest }) => (
@@ -242,29 +217,6 @@ export default function Block() {
               </div>
             );
           })}
-        </div>
-
-        <div className="trust-strip">
-          {TRUST_ITEMS.map((t) => (
-            <div className="trust-item" key={t.title}>
-              <img src={t.iconUrl} alt="" className="trust-icon-img" />
-              <div className="trust-text">
-                <strong>{t.title}</strong>
-                {t.body}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="text-center mt-10">
-          <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: "#555", fontWeight: 700 }}>
-            Trusted by top D2C growth teams and agencies
-          </div>
-          <div className="logo-strip">
-            {CUSTOMER_LOGOS.map((l) => (
-              <img key={l.name} src={l.url} alt={l.name} className="customer-logo" />
-            ))}
-          </div>
         </div>
 
         <div className="sticky-cta">
