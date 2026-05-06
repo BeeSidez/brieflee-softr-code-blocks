@@ -107,37 +107,23 @@ export default function Block() {
       console.error("[workspace] log error:", e);
     }
 
-    // Read by alias first, then fall back to .fields[snake_case], then
-    // to .fields[fieldId], then to bare snake_case. Field IDs verified
-    // against the live Softr database via the Tables API — all correct.
-    const get = (alias, fieldId, snake) =>
-      extractText(
-        record[alias] ??
-        record.fields?.[snake] ??
-        record.fields?.[fieldId] ??
-        record[snake] ??
-        record[fieldId],
-      );
-
+    // Read aliases directly off the record. q.select() should be
+    // surfacing them at the top level — that's what the docs say
+    // and what set-up uses. extractText handles the rare case where
+    // a field comes back as an object/array shape.
     const next = {
-      name:               get("name",               "aAKkT", "name"),
-      niche:              get("niche",              "vOp4b", "niche"),
-      brandBio:           get("brandBio",           "iVPat", "brand_bio"),
-      brandVoice:         get("brandVoice",         "ybmp8", "brand_voice"),
-      brandCta:           get("brandCta",           "s9vzj", "brand_cta"),
-      targetAudience:     get("targetAudience",     "6g1Vd", "target_audience"),
-      audiencePainPoints: get("audiencePainPoints", "B4zya", "audience_pain_points"),
-      audienceObjectives: get("audienceObjectives", "5Wq2k", "audience_objectives"),
+      name:               extractText(record.name),
+      niche:              extractText(record.niche),
+      brandBio:           extractText(record.brandBio),
+      brandVoice:         extractText(record.brandVoice),
+      brandCta:           extractText(record.brandCta),
+      targetAudience:     extractText(record.targetAudience),
+      audiencePainPoints: extractText(record.audiencePainPoints),
+      audienceObjectives: extractText(record.audienceObjectives),
     };
     setSaved(next);
     setDraft(next);
-    setLogoSaved(
-      record.logo ??
-      record.fields?.logo ??
-      record.fields?.q1B5K ??
-      record.q1B5K ??
-      null,
-    );
+    setLogoSaved(record.logo ?? null);
   }, [record]);
 
   // ---- Update hook -------------------------------------------------
@@ -771,13 +757,13 @@ function Style() {
           border-color: rgba(41, 79, 246, 0.55);
         }
         .workspace-logo-btn-ghost {
-          color: #C97D3F;
-          border-color: rgba(232, 155, 92, 0.45);
+          color: #DC2626;
+          border-color: rgba(220, 38, 38, 0.40);
         }
         .workspace-logo-btn-ghost:hover {
-          background: rgba(232, 155, 92, 0.10);
-          color: #B86A33;
-          border-color: rgba(232, 155, 92, 0.65);
+          background: rgba(220, 38, 38, 0.08);
+          color: #B91C1C;
+          border-color: rgba(185, 28, 28, 0.55);
         }
       `}
     </style>
