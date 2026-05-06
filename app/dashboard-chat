@@ -118,8 +118,8 @@ export default function Block() {
   const chatLogRef = useRef(null);
   const user = useCurrentUser();
 
-  // Hero greeting — rotating verb
-  const HERO_VERBS = ['review', 'remix', 'polish', 'ship'];
+  // Hero greeting — rotating verb (all read naturally as "[verb] a video")
+  const HERO_VERBS = ['review', 'remix', 'analyse', 'break down'];
   const [verbIdx, setVerbIdx] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setVerbIdx((i) => (i + 1) % HERO_VERBS.length), 2400);
@@ -719,7 +719,7 @@ export default function Block() {
     <div
       className="flex flex-col"
       style={{
-        background: 'linear-gradient(to bottom, rgba(217, 224, 255, 0.15), rgba(255, 255, 255, 1))',
+        background: '#FAFBFF',
         borderRadius: '16px',
         padding: '32px 0 28px',
       }}
@@ -804,7 +804,8 @@ export default function Block() {
           }
           .hero-greeting .rotating-verb {
             display: inline-block;
-            min-width: 2.6em;
+            min-width: 5.2em;
+            text-align: left;
             color: #294FF6;
             font-weight: 800;
             position: relative;
@@ -828,7 +829,12 @@ export default function Block() {
 
           /* ── Contained chat bubble ── */
           .chat-bubble {
-            background: #FFFFFF;
+            background:
+              linear-gradient(180deg,
+                rgba(217, 224, 255, 0.55) 0%,
+                rgba(217, 224, 255, 0.18) 30%,
+                #FFFFFF 65%
+              );
             border: 1px solid rgba(122, 147, 255, 0.18);
             border-radius: 20px;
             box-shadow: 0 10px 32px rgba(0, 15, 77, 0.06), 0 2px 8px rgba(0, 15, 77, 0.04);
@@ -862,7 +868,7 @@ export default function Block() {
           <span className="rotating-verb">
             <span key={verbIdx} className="verb-anim">{HERO_VERBS[verbIdx]}</span>
           </span>
-          {' '}something amazing{firstName ? `, ${firstName}` : ''}
+          {' '}a video{firstName ? `, ${firstName}` : ''}
         </div>
       </div>
 
