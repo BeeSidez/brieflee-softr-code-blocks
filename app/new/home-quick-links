@@ -1,43 +1,60 @@
 // Home page · Quick-link tiles
 // Sits directly below dashboard-chat. Five engraving-fronted shortcuts.
-// Modal targets (/review, /remix, /bulk) and page targets (/project,
-// /settings) both use plain <a href> — Softr's router handles modal
-// vs same-tab based on each route's configuration in the page builder.
+// Modal targets (/review, /remix, /bulk) call window.openSwModal — Softr's
+// runtime helper that overlays a modal page instead of doing a full
+// navigation. Same-tab targets (/project, /settings) navigate normally.
+
+const MODAL_SIZE = 'lg'; // 'sm' | 'md' | 'lg' | 'xl' — Softr modal sizes
 
 const QUICK_LINKS = [
   {
     title: 'Quick review',
     href: '/review',
+    modal: true,
     img: 'https://res.cloudinary.com/dchroynzv/image/upload/v1777622981/brieflee_engraving_star-eyes-emoji-face-excited-amazed-open-mouth_2026-03.png',
     alt: 'Star-eyes excited face',
   },
   {
     title: 'Swipe videos',
     href: '/remix',
+    modal: true,
     img: 'https://res.cloudinary.com/dchroynzv/image/upload/v1777622958/brieflee_engraving_film-clapboard-reel-icon-storyboard-3d-engraved_2026-03.png',
     alt: 'Film clapboard',
   },
   {
     title: 'Bulk upload',
     href: '/bulk',
+    modal: true,
     img: 'https://res.cloudinary.com/dchroynzv/image/upload/v1777622946/brieflee_engraving_hand-pointing-swipe-left-gesture-curved-arrow-cta_2026-03.png',
     alt: 'Hand pointing swipe',
   },
   {
     title: 'Campaigns',
     href: '/project',
+    modal: false,
     img: 'https://res.cloudinary.com/dchroynzv/image/upload/v1777622911/brieflee_engraving_party-popper-confetti-streamers-celebration-grey_2026-03.png',
     alt: 'Party popper',
   },
   {
-    title: 'Quality settings',
+    title: 'Quality',
     href: '/settings',
+    modal: false,
     img: 'https://res.cloudinary.com/dchroynzv/image/upload/v1777622961/brieflee_engraving_see-no-evil-emoji-hands-covering-eyes-peeking-grey-bg_2026-03.png',
     alt: 'See no evil',
   },
 ];
 
 export default function Block() {
+  const handleClick = (e, link) => {
+    if (!link.modal) return; // Same-tab links: let the anchor navigate
+    if (typeof window !== 'undefined' && typeof window.openSwModal === 'function') {
+      e.preventDefault();
+      window.openSwModal(link.href, MODAL_SIZE);
+    }
+    // Fallback: if openSwModal isn't available (e.g. block previewed in
+    // isolation), the anchor's href will still navigate.
+  };
+
   return (
     <div style={{ background: '#FAFBFF', padding: '28px 0 48px' }}>
       <style>
@@ -133,6 +150,7 @@ export default function Block() {
               href={link.href}
               className="quick-card"
               aria-label={link.title}
+              onClick={(e) => handleClick(e, link)}
             >
               <div className="quick-icon-wrap">
                 <img
