@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Globe, FileText, ToggleLeft, ListChecks, Sliders, Clock } from "lucide-react";
+import { Globe, FileText, ToggleLeft, ListChecks, Sliders, Clock, ArrowRight } from "lucide-react";
 import { useRecords, useRecordUpdate, q } from "@/lib/datasource";
 import { useCurrentUser } from "@/lib/user";
 import { toast } from "sonner";
@@ -661,57 +661,93 @@ function Step1({ active, done, skipped, website, setWebsite, noWebsite, setNoWeb
   const toggleCase = (id) =>
     setUseCases((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
 
-  const canSave = (noWebsite ? description.trim().length > 0 : website.trim().length > 0) && useCases.length > 0;
+  const websiteValue = noWebsite ? description : website;
+  const websiteValid = noWebsite ? description.trim().length >= 30 : website.trim().length >= 3;
+  const canSave = websiteValid && useCases.length > 0;
 
   return (
     <div>
       {t1 && <Typing />}
+
+      {/* Lee's first bubble + the "Don't have a website?" toggle right under it
+          (matches screen-2 — the toggle lives next to Lee's question, not inside the input card). */}
       {m1 && (
-        <Bubble>
-          Great! First I need to gather some information about your brand. Could you share your company website? I'll use it to build your content blueprint.
-        </Bubble>
+        <div className="mb-4">
+          <div className="flex gap-2.5 items-start">
+            <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
+            <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>
+                Great! First I need to gather some information about your brand. Could you share your company website? I'll use it to build your content blueprint.
+              </p>
+            </div>
+          </div>
+          <div className="ml-10 mt-2">
+            <button
+              onClick={() => setNoWebsite(!noWebsite)}
+              className="text-xs"
+              style={{ color: "#7A93FF", fontWeight: 500, background: "transparent", border: "none", cursor: "pointer" }}
+            >
+              {noWebsite ? "Have a website? Enter URL instead" : "Don't have a website?"}
+            </button>
+          </div>
+        </div>
       )}
 
+      {/* Input area — URL field with Globe, OR free-text description with strength meter.
+          Matches screen-2 styling: rounded-xl, periwinkle border, plain text input (no
+          browser URL validation — so http:// is optional). */}
       {showInput && (
         <div className="mb-4 ml-10">
-          <div className="bg-white rounded-xl p-4 shadow-sm space-y-3" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+          <div className="max-w-lg">
             {!noWebsite ? (
-              <div>
-                <label className="text-xs font-medium block mb-1.5" style={{ color: "#001364" }}>Website</label>
-                <Input
-                  type="url"
-                  placeholder="https://yourbrand.com"
-                  value={website}
-                  onChange={(e) => setWebsite(e.target.value)}
-                  style={{ background: "#fff", borderColor: "rgba(217, 224, 255, 0.6)", color: "#001364" }}
-                />
-                <button
-                  onClick={() => setNoWebsite(true)}
-                  className="text-xs mt-2 underline"
-                  style={{ color: "#7A93FF", background: "transparent", border: "none", cursor: "pointer" }}
-                >
-                  Don't have a website?
-                </button>
+              <div className="space-y-3">
+                <div className="relative">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                    <Globe className="w-4 h-4" style={{ color: "#7A93FF" }} />
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="url"
+                    autoComplete="url"
+                    value={website}
+                    onChange={(e) => setWebsite(e.target.value)}
+                    placeholder="yourbrand.com"
+                    className="w-full pl-10 pr-4 py-3 rounded-xl text-sm bg-white outline-none transition-all duration-200"
+                    style={{ border: "1px solid rgba(217, 224, 255, 0.4)", color: "#000F4D", fontWeight: 300 }}
+                    onFocus={(e) => (e.target.style.borderColor = "#7A93FF")}
+                    onBlur={(e) => (e.target.style.borderColor = "rgba(217, 224, 255, 0.4)")}
+                  />
+                </div>
               </div>
             ) : (
-              <div>
-                <label className="text-xs font-medium block mb-1.5" style={{ color: "#001364" }}>
-                  Tell me about your brand
-                </label>
-                <Textarea
-                  rows={4}
-                  placeholder="What you sell, who it's for, why it exists..."
+              <div className="space-y-3">
+                <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  style={{ background: "#fff", borderColor: "rgba(217, 224, 255, 0.6)", color: "#001364" }}
+                  placeholder="Type a few sentences on your business. Brieflee will use this information to create a custom content blueprint for you. The more details you can provide, the better."
+                  rows={5}
+                  className="w-full text-sm rounded-xl p-3 outline-none resize-none transition-all duration-200"
+                  style={{ border: "1px solid rgba(217, 224, 255, 0.4)", color: "#000F4D", fontWeight: 300, backgroundColor: "#FFFFFF" }}
+                  onFocus={(e) => (e.target.style.borderColor = "#7A93FF")}
+                  onBlur={(e) => (e.target.style.borderColor = "rgba(217, 224, 255, 0.4)")}
                 />
-                <button
-                  onClick={() => setNoWebsite(false)}
-                  className="text-xs mt-2 underline"
-                  style={{ color: "#7A93FF", background: "transparent", border: "none", cursor: "pointer" }}
-                >
-                  Actually, I do have a website
-                </button>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="h-1.5 w-20 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full transition-all duration-300"
+                        style={{
+                          width: `${Math.min((description.length / 100) * 100, 100)}%`,
+                          backgroundColor: description.length < 50 ? "#f5b301" : description.length < 100 ? "#7A93FF" : "#20956f",
+                        }}
+                      />
+                    </div>
+                    <span className="text-xs" style={{ color: description.length < 100 ? "#7A93FF" : "#20956f", fontWeight: 500 }}>
+                      {description.length < 50 ? "Keep going" : description.length < 100 ? "Almost there" : "Looks good"}
+                    </span>
+                  </div>
+                  <span className="text-xs" style={{ color: "#001364", fontWeight: 300 }}>{Math.min(description.length, 100)}/100</span>
+                </div>
               </div>
             )}
           </div>
@@ -721,32 +757,42 @@ function Step1({ active, done, skipped, website, setWebsite, noWebsite, setNoWeb
       {t2 && <Typing />}
       {m2 && <Bubble>How will you use Brieflee?</Bubble>}
 
+      {/* Use case cards — full-width, checkbox-style. Matches screen-2's rendering. */}
       {showChips && (
-        <div className="mb-4 ml-10 flex flex-wrap gap-1.5">
-          {USE_CASE_OPTIONS.map((opt) => {
-            const on = useCases.includes(opt.id);
-            return (
-              <button
-                key={opt.id}
-                onClick={() => toggleCase(opt.id)}
-                className="text-xs rounded-full px-3 py-1.5 transition-all duration-150"
-                style={{
-                  background: on ? "#7A93FF" : "#fff",
-                  color: on ? "#fff" : "#001364",
-                  border: on ? "1px solid #7A93FF" : "1px solid rgba(217, 224, 255, 0.7)",
-                  fontWeight: on ? 600 : 400,
-                }}
-              >
-                {on ? "v " : ""}{opt.label}
-              </button>
-            );
-          })}
+        <div className="mb-4 ml-10">
+          <div className="space-y-3 max-w-lg">
+            {USE_CASE_OPTIONS.map((opt) => {
+              const on = useCases.includes(opt.id);
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => toggleCase(opt.id)}
+                  className="flex items-center gap-2 w-full text-left px-4 py-3 rounded-xl transition-all duration-200 bg-white shadow-sm"
+                  style={{
+                    border: on ? "2px solid #7A93FF" : "1px solid rgba(217, 224, 255, 0.4)",
+                    backgroundColor: on ? "rgba(122, 147, 255, 0.05)" : "#FFFFFF",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div
+                    className="w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0"
+                    style={{ borderColor: on ? "#7A93FF" : "rgba(217, 224, 255, 0.5)" }}
+                  >
+                    {on && <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: "#7A93FF" }} />}
+                  </div>
+                  <span className="text-sm" style={{ color: "#000F4D", fontWeight: 300 }}>{opt.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
       {showSave && (
         <ActionRow>
-          <SaveBtn disabled={!canSave || saving} onClick={onSave}>{saving ? "Saving..." : "Save"}</SaveBtn>
+          <SaveBtn disabled={!canSave || saving} onClick={onSave}>
+            {saving ? "Saving..." : (<span className="inline-flex items-center gap-1.5">Continue <ArrowRight className="w-3.5 h-3.5" /></span>)}
+          </SaveBtn>
         </ActionRow>
       )}
     </div>
