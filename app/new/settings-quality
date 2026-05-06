@@ -1,0 +1,620 @@
+// /settings · Quality tab — single Vibe Code block.
+// Three sub-sections in one card stack: Review mode → QA checklist →
+// Thresholds. All three are fields on the user's ACCOUNTS record.
+//
+// SOFTR CONFIG REQUIRED:
+//   Source tab: bind to ACCOUNTS in "brieflee beta", filter to logged-in user.
+//   Actions tab: auto-populated from updateFields aliases below.
+//
+// Constants (AI_MODE_OPTIONS / QA_CHECK_OPTIONS / THRESHOLD_ROWS) and the
+// row UI patterns are lifted from onboarding/new/set-up so the look + data
+// shape stay in lockstep with the onboarding flow.
+
+import { useState, useEffect, useRef } from "react";
+import { Switch } from "@/components/ui/switch";
+import { useRecords, useRecordUpdate, q } from "@/lib/datasource";
+import { toast } from "sonner";
+
+// ---- Field map (ACCOUNTS) -----------------------------------------
+const select = q.select({
+  aiMode:            "O9x4n",
+  qaChecklist:       "mZaRc",
+  productScreenTime: "AFgpo",
+  hookSpeed:         "wthaW",
+  visualHook:        "Nq4ZX",
+  ctaPlacement:      "FA452",
+  faceTime:          "FH27O",
+  textLegibility:    "TNRuM",
+  audioClarity:      "dMTrN",
+  engagementPacing:  "bR5PL",
+  brandMentionCount: "HCvZw",
+});
+
+const updateFields = q.select({
+  aiMode:            "O9x4n",
+  qaChecklist:       "mZaRc",
+  productScreenTime: "AFgpo",
+  hookSpeed:         "wthaW",
+  visualHook:        "Nq4ZX",
+  ctaPlacement:      "FA452",
+  faceTime:          "FH27O",
+  textLegibility:    "TNRuM",
+  audioClarity:      "dMTrN",
+  engagementPacing:  "bR5PL",
+  brandMentionCount: "HCvZw",
+});
+
+// ---- AI mode options ---------------------------------------------
+const AI_MODE_OPTIONS = [
+  {
+    id: "5b1b9734-20b6-4070-bd32-a3a4d31d0ed9",
+    label: "Autonomous",
+    description: "I handle everything. I'll approve, flag, or reject content automatically and let creators know what to fix. You just check the dashboard.",
+  },
+  {
+    id: "cf1fb41e-7deb-4a1a-aff4-02290407b432",
+    label: "Hybrid",
+    description: "I'll review everything and give you my recommendation, but you make the final call. Best of both worlds.",
+    recommended: true,
+  },
+  {
+    id: "b840eef9-5174-415b-981e-16b37ede1eb5",
+    label: "Manual",
+    description: "You review everything yourself. I'll give you insights and scores to help, but all decisions are yours.",
+  },
+];
+
+// ---- QA checklist options ----------------------------------------
+const QA_CHECK_OPTIONS = [
+  { id: "1c014e7b-fc4b-462a-8081-9c485045b748", label: "Product visibility" },
+  { id: "4b7319f2-9c96-4216-98b9-54b4ec4ed9a9", label: "Product usage" },
+  { id: "ab481105-a6c9-4f62-82da-57420ae197f6", label: "Hook quality" },
+  { id: "63856e72-bb9c-4de5-927b-3afc30a88551", label: "Visual hook" },
+  { id: "5961652d-1e74-409b-af7a-968e2385895b", label: "Audio clarity" },
+  { id: "a1457ddb-710d-4c63-ada8-0f5a571c8543", label: "Audio delivery" },
+  { id: "265bfda9-da30-4251-bf2c-2ba87d1b2af4", label: "Pronunciation" },
+  { id: "355ea7e9-f86f-42d3-9ee8-1a89a044e8db", label: "Music & sound balance" },
+  { id: "07ef7746-1c9a-4438-923e-49ab63c3ce57", label: "Follows the brief" },
+  { id: "78fe815c-c0fa-4433-95c9-78fb0d3cfb73", label: "Brand name mentioned" },
+  { id: "8b17d1b1-b2b7-4dd1-b70e-49e415e1afe5", label: "Lighting & camera" },
+  { id: "fe2b01a1-d876-4283-afd4-92c1ade28878", label: "Setting & background" },
+  { id: "7135f0d2-3c8b-4ba9-aadd-95dbbfc21cbd", label: "Distracting elements" },
+  { id: "06508651-5488-4fe3-bc9c-cf0417f65bcd", label: "Text legibility" },
+  { id: "474a5dd4-fe33-4bb8-9544-a7adfb5bfee2", label: "Closed captions" },
+  { id: "c7f14d97-fbab-44a8-b524-31de975cee16", label: "Safe zones" },
+  { id: "e7443f15-4c43-42b4-9ed2-226371525c91", label: "Scene pacing" },
+  { id: "28b4d084-fb7d-414c-b51f-c229856a7fb2", label: "Video length" },
+  { id: "c9f111c2-3a56-44ad-82e8-211db1c2df4a", label: "Watchable on mute" },
+  { id: "d5e005f5-b4f4-4d24-a9fe-560d21adb216", label: "Creator visability" },
+  { id: "4875c5d3-4d5c-4f9d-881e-4aa558549d41", label: "Energy & authenticity" },
+  { id: "44769cff-9feb-452c-a69d-a8bc204eb768", label: "Wardrobe & appearance" },
+  { id: "bca11db7-edf0-4b0a-94ea-5f05f80aadcb", label: "CTA present" },
+  { id: "3981544e-a463-4b80-b8df-28540b987501", label: "Brand alignment" },
+  { id: "165f1575-d6b3-485b-b08b-58600de3041f", label: "Copyright check" },
+  { id: "cff021c4-bf63-4ac9-993a-eb80b83b7965", label: "Inspiration link match" },
+];
+
+// ---- Threshold rows ----------------------------------------------
+const THRESHOLD_ROWS = [
+  {
+    key: "productScreenTime", label: "Product visibility",
+    description: "How much of the video the product is on screen.",
+    options: [
+      { id: "b35780d0-cf0c-4ad5-9819-88509bbcea7b", label: "40%" },
+      { id: "adf5f58d-f355-456a-956e-bb3606953ca4", label: "50%" },
+      { id: "ab1858bf-81ba-4d74-9299-05aee5ca27cc", label: "60%" },
+      { id: "c9e7411b-92ad-4e9f-b307-0e2237a9d729", label: "70%" },
+      { id: "61c37e78-9569-40de-8714-c988ebbfc9c5", label: "80%" },
+      { id: "8ef83ca6-7faf-45ff-965b-dadff26490ed", label: "90%" },
+      { id: "f7d50c89-87f3-4b8f-a2b1-ddaea2c5cec8", label: "100%" },
+      { id: "5a044cc4-e9d8-400b-8327-a07908b873c4", label: "None" },
+    ],
+  },
+  {
+    key: "hookSpeed", label: "Audio hook timing",
+    description: "How quickly the spoken hook needs to land.",
+    options: [
+      { id: "9df2a4cf-8700-4429-b511-a683203b0c09", label: "1 second" },
+      { id: "d3b4b86b-17d9-4d6e-845d-ead62d45f9cb", label: "2 seconds" },
+      { id: "7679470f-b9ef-4e1f-94b2-b62cda5b2c45", label: "3 seconds" },
+      { id: "03dc29a7-e098-4b92-882b-fb9a95cea132", label: "5 seconds" },
+      { id: "209d018e-2dcd-45d6-a643-ac78109ff33e", label: "None" },
+    ],
+  },
+  {
+    key: "visualHook", label: "Visual hook strength",
+    description: "How visually striking the first frames need to be.",
+    options: [
+      { id: "9df2a4cf-8700-4429-b511-a683203b0c09", label: "60%" },
+      { id: "f29966f4-72fe-419a-8174-45236991748e", label: "65%" },
+      { id: "0ac7e1e4-3835-4213-bf1b-969041655ced", label: "70%" },
+      { id: "19bff3f1-e5f8-419e-a338-6668211cc873", label: "75%" },
+      { id: "f3f93ac8-7edc-47f4-b896-bdbee78da235", label: "80%" },
+      { id: "9018f787-8e85-497a-86a7-2ba9810bada4", label: "85%" },
+      { id: "237d1a0d-11bd-4ab8-8189-3dd22ab87127", label: "90%" },
+      { id: "d3b4b86b-17d9-4d6e-845d-ead62d45f9cb", label: "None" },
+    ],
+  },
+  {
+    key: "ctaPlacement", label: "CTA placement",
+    description: "Where the call-to-action should hit.",
+    options: [
+      { id: "33bfa39e-0740-4aa8-acf0-900305019279", label: "Last 3 seconds" },
+      { id: "193e4f66-7852-4fca-960a-f8642773b828", label: "Last 5 seconds" },
+      { id: "cd4956a2-5f0a-4d21-9a4c-a7b95f8f059b", label: "Last 7 seconds" },
+      { id: "4b841326-cdb4-455a-a144-d7c3f2b31f0b", label: "Last 10 seconds" },
+      { id: "8f234b73-3c77-444c-9cac-3a06a8201121", label: "None" },
+    ],
+  },
+  {
+    key: "faceTime", label: "Face time",
+    description: "How much of the video shows a person.",
+    options: [
+      { id: "df9abb2d-d48b-41bb-a579-f1c37dd657e2", label: "20%" },
+      { id: "48c105c0-e7ae-4a55-89b2-13fee1ea247a", label: "30%" },
+      { id: "c6aa7f4f-1dce-4946-8d20-31dba36d8f3f", label: "40%" },
+      { id: "b8c2c9b1-f745-4b0f-9636-557eea3d60b5", label: "50%" },
+      { id: "b993622a-0760-466b-a2a0-dd54e332596e", label: "60%" },
+      { id: "d2d7cd50-f83c-4442-9e84-b189088931be", label: "70%" },
+      { id: "7994d112-b9d3-4307-b6b7-cbc353852132", label: "None" },
+    ],
+  },
+  {
+    key: "textLegibility", label: "Text legibility",
+    description: "How readable on-screen text needs to be.",
+    options: [
+      { id: "172419f7-1149-490a-a44e-d13537cf6786", label: "70%" },
+      { id: "82a7dafa-d93e-4dd9-9168-490cb66058eb", label: "80%" },
+      { id: "b891de6f-d9da-4d6c-a963-d87ff2bd8621", label: "90%" },
+      { id: "d94e5bdb-6850-4ecb-b316-aceee396e539", label: "100%" },
+      { id: "bf8aaa4d-923f-4330-803a-877a29149922", label: "None" },
+    ],
+  },
+  {
+    key: "audioClarity", label: "Audio clarity",
+    description: "How clean the audio needs to be.",
+    options: [
+      { id: "160aa42f-ad5f-4721-8d3c-a2db8e09fcd9", label: "70%" },
+      { id: "e95cc790-2106-4f40-b2e6-971aa256618d", label: "80%" },
+      { id: "393fe9bc-6206-4fd5-a952-ed6587763dca", label: "90%" },
+      { id: "f317b2bc-7c04-43f9-859d-6db37b7628a9", label: "100%" },
+      { id: "6b88224d-9a3f-4bfa-9e47-3143551d73ab", label: "None" },
+    ],
+  },
+  {
+    key: "engagementPacing", label: "Engagement pacing",
+    description: "How often something visually changes.",
+    options: [
+      { id: "6fa82020-d6e2-4ff3-a0d3-94c783c4f680", label: "Every 2 seconds" },
+      { id: "6a1ff582-aa09-40da-ba82-6212c86f99e6", label: "Every 3 seconds" },
+      { id: "5528fc87-d2d3-4273-ba37-da90fae5bf3e", label: "Every 4 seconds" },
+      { id: "a0034690-8372-4676-96c6-43e8a4c167cd", label: "Every 5 seconds" },
+      { id: "0d707c11-b7fd-42cf-9450-c1293cd851b7", label: "None" },
+    ],
+  },
+  {
+    key: "brandMentionCount", label: "Brand mentions",
+    description: "Minimum brand mentions in the video.",
+    options: [
+      { id: "1673c553-d650-47d3-b42b-3fa1be8f19dd", label: "0" },
+      { id: "16e85382-54ad-4559-9b07-e42f920faf40", label: "1" },
+      { id: "206736be-aad0-430f-98c7-3f0011390e86", label: "2" },
+      { id: "d83d7d2f-00cc-4c1a-92ec-a362c5a47580", label: "3" },
+      { id: "98ce1d25-8cf6-4879-a396-d6f57b065fa1", label: "4+" },
+    ],
+  },
+];
+
+// =====================================================================
+// Block
+// =====================================================================
+export default function Block() {
+  const { data, status, refetch } = useRecords({ select, count: 1 });
+  const record =
+    data?.pages?.[0]?.items?.[0] ??
+    (Array.isArray(data) ? data[0] : null);
+
+  // Hydrated local state — single source of truth for the UI
+  const [aiModeId, setAiModeId] = useState(null);
+  const [qaIds, setQaIds] = useState([]);
+  const [thresholds, setThresholds] = useState({});
+  const [savingState, setSavingState] = useState("idle"); // idle | saving | saved
+
+  const hydratedRef = useRef(false);
+  const pendingFieldsRef = useRef({});
+  const saveTimerRef = useRef(null);
+  const savedClearTimerRef = useRef(null);
+
+  const updateRecord = useRecordUpdate({
+    fields: updateFields,
+    onSuccess: () => {
+      setSavingState("saved");
+      refetch();
+      if (savedClearTimerRef.current) clearTimeout(savedClearTimerRef.current);
+      savedClearTimerRef.current = setTimeout(() => setSavingState("idle"), 1800);
+    },
+    onError: (err) => {
+      setSavingState("idle");
+      toast.error("Couldn't save", { description: err?.message || "Try again." });
+    },
+  });
+
+  // ---- Hydrate local state once when the record first arrives -----
+  useEffect(() => {
+    if (!record || hydratedRef.current) return;
+    hydratedRef.current = true;
+
+    if (record.aiMode?.id) setAiModeId(record.aiMode.id);
+
+    if (Array.isArray(record.qaChecklist)) {
+      setQaIds(record.qaChecklist.map((x) => x?.id ?? x).filter(Boolean));
+    }
+
+    const t = {};
+    THRESHOLD_ROWS.forEach((row) => {
+      const v = record[row.key];
+      if (v?.id) t[row.key] = v.id;
+    });
+    setThresholds(t);
+  }, [record]);
+
+  // ---- Debounced save ----------------------------------------------
+  const queueSave = (newFields) => {
+    if (!record?.id) return;
+    Object.assign(pendingFieldsRef.current, newFields);
+    setSavingState("saving");
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const fields = pendingFieldsRef.current;
+      pendingFieldsRef.current = {};
+      updateRecord.mutate({ recordId: record.id, fields });
+    }, 800);
+  };
+
+  // ---- Cleanup -----------------------------------------------------
+  useEffect(() => () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    if (savedClearTimerRef.current) clearTimeout(savedClearTimerRef.current);
+  }, []);
+
+  // ---- Handlers ----------------------------------------------------
+  const setReviewMode = (id) => {
+    setAiModeId(id);
+    const m = AI_MODE_OPTIONS.find((x) => x.id === id);
+    queueSave({ aiMode: m ? { id: m.id, label: m.label } : null });
+  };
+
+  const toggleQA = (id) => {
+    setQaIds((cur) => {
+      const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+      queueSave({ qaChecklist: next });
+      return next;
+    });
+  };
+
+  const setThresholdValue = (rowKey, optId) => {
+    setThresholds((cur) => {
+      const next = { ...cur };
+      if (cur[rowKey] === optId) delete next[rowKey];
+      else next[rowKey] = optId;
+
+      const row = THRESHOLD_ROWS.find((r) => r.key === rowKey);
+      const opt = row?.options.find((o) => o.id === next[rowKey]);
+      queueSave({ [rowKey]: opt ? { id: opt.id, label: opt.label } : null });
+      return next;
+    });
+  };
+
+  const setThresholdRequired = (rowKey, on) => {
+    setThresholds((cur) => {
+      const next = { ...cur };
+      if (!on) {
+        delete next[rowKey];
+        queueSave({ [rowKey]: null });
+      } else {
+        const row = THRESHOLD_ROWS.find((r) => r.key === rowKey);
+        const firstReal = row?.options.find((o) => o.label !== "None") || row?.options[0];
+        if (firstReal) {
+          next[rowKey] = firstReal.id;
+          queueSave({ [rowKey]: { id: firstReal.id, label: firstReal.label } });
+        }
+      }
+      return next;
+    });
+  };
+
+  // ---- Render guards -----------------------------------------------
+  if (status === "pending") return <BlockShell><Loading /></BlockShell>;
+  if (status === "error") return <BlockShell><Loading error /></BlockShell>;
+  if (!record) {
+    return (
+      <BlockShell>
+        <Loading message="No account record found. Check the block's Source tab is bound to accounts with a filter to the logged-in user." />
+      </BlockShell>
+    );
+  }
+
+  const thresholdsCount = Object.keys(thresholds).length;
+
+  return (
+    <BlockShell>
+      <SaveIndicator state={savingState} />
+
+      {/* ── Section 1 · Review mode ─────────────────────────────────── */}
+      <SectionCard
+        title="Review mode"
+        subtitle="How involved you want to be when content comes in."
+      >
+        <div className="space-y-3">
+          {AI_MODE_OPTIONS.map((m) => {
+            const sel = aiModeId === m.id;
+            return (
+              <button
+                key={m.id}
+                onClick={() => setReviewMode(m.id)}
+                className="w-full text-left px-4 py-3 rounded-xl transition-all duration-200 bg-white"
+                style={{
+                  border: sel ? "2px solid #7A93FF" : "1px solid rgba(217, 224, 255, 0.55)",
+                  backgroundColor: sel ? "rgba(122, 147, 255, 0.06)" : "#fff",
+                  boxShadow: sel
+                    ? "0 4px 14px rgba(122, 147, 255, 0.18)"
+                    : "0 1px 3px rgba(0, 15, 77, 0.04)",
+                }}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <h4 className="text-sm" style={{ color: "#000F4D", fontWeight: 600 }}>
+                    {m.label}
+                  </h4>
+                  {m.recommended && (
+                    <span
+                      className="text-xs px-2 py-0.5 rounded-full"
+                      style={{
+                        backgroundColor: "#D9E0FF",
+                        color: "#294FF6",
+                        fontWeight: 500,
+                      }}
+                    >
+                      Recommended
+                    </span>
+                  )}
+                </div>
+                <p
+                  className="text-xs leading-relaxed"
+                  style={{ color: "#001364", fontWeight: 300 }}
+                >
+                  {m.description}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      </SectionCard>
+
+      {/* ── Section 2 · QA Checklist ───────────────────────────────── */}
+      <SectionCard
+        title="QA Checklist"
+        subtitle="Default checks Brieflee runs on every quick review."
+      >
+        <div className="flex flex-wrap gap-1.5">
+          {QA_CHECK_OPTIONS.map((opt) => {
+            const on = qaIds.includes(opt.id);
+            return (
+              <button
+                key={opt.id}
+                onClick={() => toggleQA(opt.id)}
+                className="text-xs rounded-full px-3 py-1.5 transition-all duration-150"
+                style={{
+                  background: on ? "#7A93FF" : "#fff",
+                  color: on ? "#fff" : "#001364",
+                  border: on ? "1px solid #7A93FF" : "1px solid rgba(217, 224, 255, 0.7)",
+                  fontWeight: on ? 600 : 400,
+                }}
+              >
+                {on ? "✓ " : ""}{opt.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="text-xs mt-3" style={{ color: "#7A93FF" }}>
+          {qaIds.length === 0
+            ? "None selected — you'll pick checks each time."
+            : `${qaIds.length} check${qaIds.length === 1 ? "" : "s"} will run on every quick review.`}
+        </div>
+      </SectionCard>
+
+      {/* ── Section 3 · Thresholds ─────────────────────────────────── */}
+      <SectionCard
+        title="Default standards"
+        subtitle="Quality bar for each check. Briefs override these for full reviews — this is your safety net for quick reviews."
+      >
+        <div className="space-y-4">
+          {THRESHOLD_ROWS.map((row) => {
+            const required = !!thresholds[row.key];
+            return (
+              <div
+                key={row.key}
+                className="space-y-1.5 pb-3"
+                style={{ borderBottom: "1px dashed rgba(217, 224, 255, 0.6)" }}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <label
+                      className="text-xs font-medium block"
+                      style={{ color: "#001364" }}
+                    >
+                      {row.label}
+                    </label>
+                    <p
+                      className="text-xs leading-relaxed"
+                      style={{ color: "#000F4D", fontWeight: 300 }}
+                    >
+                      {row.description}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={required}
+                    onCheckedChange={(checked) =>
+                      setThresholdRequired(row.key, checked)
+                    }
+                  />
+                </div>
+                {required && (
+                  <div className="flex flex-wrap gap-1.5 pt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                    {row.options
+                      .filter((opt) => opt.label !== "None")
+                      .map((opt) => {
+                        const on = thresholds[row.key] === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            onClick={() => setThresholdValue(row.key, opt.id)}
+                            className="text-xs rounded-full px-3 py-1 transition-all duration-150"
+                            style={{
+                              background: on ? "#7A93FF" : "#fff",
+                              color: on ? "#fff" : "#001364",
+                              border: on
+                                ? "1px solid #7A93FF"
+                                : "1px solid rgba(217, 224, 255, 0.7)",
+                              fontWeight: on ? 600 : 400,
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="text-xs mt-3" style={{ color: "#7A93FF" }}>
+          {thresholdsCount === 0
+            ? "No thresholds set."
+            : `${thresholdsCount} threshold${thresholdsCount === 1 ? "" : "s"} set.`}
+        </div>
+      </SectionCard>
+    </BlockShell>
+  );
+}
+
+// =====================================================================
+// Sub-components
+// =====================================================================
+
+function BlockShell({ children }) {
+  return (
+    <div
+      className="flex flex-col"
+      style={{
+        background: "#FAFBFF",
+        borderRadius: "16px",
+        padding: "32px 0 48px",
+        position: "relative",
+      }}
+    >
+      <Style />
+      <div className="settings-quality container mx-auto px-4 max-w-2xl w-full">
+        <div className="space-y-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function SectionCard({ title, subtitle, children }) {
+  return (
+    <section
+      className="quality-card"
+      style={{
+        background: "#FFFFFF",
+        border: "1px solid rgba(217, 224, 255, 0.55)",
+        borderRadius: "18px",
+        padding: "22px 24px",
+        boxShadow: "0 1px 3px rgba(0, 15, 77, 0.04)",
+      }}
+    >
+      <header className="mb-4">
+        <h3
+          className="text-base"
+          style={{ color: "#000F4D", fontWeight: 600, letterSpacing: "-0.005em" }}
+        >
+          {title}
+        </h3>
+        {subtitle && (
+          <p
+            className="text-xs mt-0.5"
+            style={{ color: "#7A93FF", fontWeight: 400, lineHeight: 1.5 }}
+          >
+            {subtitle}
+          </p>
+        )}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function SaveIndicator({ state }) {
+  if (state === "idle") return null;
+  const isSaving = state === "saving";
+  return (
+    <div
+      className="quality-save-indicator"
+      style={{
+        position: "absolute",
+        top: 16,
+        right: 24,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        fontSize: 12,
+        fontWeight: 500,
+        color: isSaving ? "#7A93FF" : "#22A06B",
+        padding: "5px 10px",
+        background: "#FFFFFF",
+        border: "1px solid rgba(217, 224, 255, 0.6)",
+        borderRadius: 999,
+        boxShadow: "0 1px 4px rgba(0, 15, 77, 0.05)",
+        zIndex: 5,
+      }}
+    >
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: "50%",
+          background: isSaving ? "#7A93FF" : "#22A06B",
+          animation: isSaving ? "qPulse 1.2s ease-in-out infinite" : "none",
+        }}
+      />
+      {isSaving ? "Saving…" : "Saved"}
+    </div>
+  );
+}
+
+function Loading({ message, error }) {
+  return (
+    <div
+      className="text-center"
+      style={{ padding: "60px 20px", color: error ? "#D14343" : "#7A93FF" }}
+    >
+      <p className="text-sm">{message || (error ? "Couldn't load settings." : "Loading…")}</p>
+    </div>
+  );
+}
+
+function Style() {
+  return (
+    <style>
+      {`
+        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+        .settings-quality * { font-family: 'League Spartan', sans-serif; }
+
+        @keyframes qPulse {
+          0%, 100% { opacity: 0.5; transform: scale(0.85); }
+          50%      { opacity: 1;   transform: scale(1.15); }
+        }
+      `}
+    </style>
+  );
+}
