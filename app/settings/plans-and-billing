@@ -35,6 +35,8 @@ const BL_TRACK = "rgba(217, 224, 255, 0.6)";
 const BL_MUTED = "#7A93FF";
 
 const select = q.select({
+  // Primary field of the accounts table — useRecord requires it.
+  name:                       "aAKkT",
   subscriptionTier:           "oYTWQ",
   subscriptionStatus:         "LX54T",
   subscriptionPeriodEnd:      "xhi4r",

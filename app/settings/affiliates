@@ -39,6 +39,8 @@ const COMMISSION_PERCENT = "20%";
 
 // ─── Field map (Users table) ────────────────────────────────────
 const select = q.select({
+  // Primary field of the users table — useRecord requires it.
+  fullName:      "PXdkq",
   affiliateLink: "lLV7p", // FORMULA — full affiliate URL
 });
 
