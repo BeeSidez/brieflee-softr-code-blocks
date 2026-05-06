@@ -115,7 +115,25 @@ export default function Block() {
   const briefInputRef = useRef(null);
   const pollingRef = useRef(null);
   const loadingRef = useRef(null);
+  const chatLogRef = useRef(null);
   const user = useCurrentUser();
+
+  // Hero greeting — rotating verb
+  const HERO_VERBS = ['review', 'remix', 'polish', 'ship'];
+  const [verbIdx, setVerbIdx] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setVerbIdx((i) => (i + 1) % HERO_VERBS.length), 2400);
+    return () => clearInterval(id);
+  }, []);
+  const firstName =
+    (user && (user.firstName || user.first_name || user.fullName?.split(' ')[0] || user.name?.split(' ')[0])) || '';
+
+  // Auto-scroll the chat bubble to the newest message on every state change
+  useEffect(() => {
+    if (chatLogRef.current) {
+      chatLogRef.current.scrollTo({ top: chatLogRef.current.scrollHeight, behavior: 'smooth' });
+    }
+  });
 
   // ─── Upload hook ───
   const { uploadAsync } = useUpload();
@@ -699,11 +717,11 @@ export default function Block() {
 
   return (
     <div
-      className="min-h-screen flex flex-col"
+      className="flex flex-col"
       style={{
         background: 'linear-gradient(to bottom, rgba(217, 224, 255, 0.15), rgba(255, 255, 255, 1))',
         borderRadius: '16px',
-        overflow: 'hidden',
+        padding: '32px 0 28px',
       }}
     >
       <style>
@@ -767,11 +785,91 @@ export default function Block() {
             animation: none;
             background: conic-gradient(from 0deg, #7A93FF, #294FF6, #7A93FF);
           }
+
+          /* ── Hero greeting ── */
+          @keyframes verbFade {
+            0%   { opacity: 0; transform: translateY(8px); }
+            18%  { opacity: 1; transform: translateY(0); }
+            82%  { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-8px); }
+          }
+          .hero-greeting {
+            text-align: center;
+            margin: 0 auto 18px;
+            color: #000F4D;
+            font-weight: 500;
+            font-size: 28px;
+            line-height: 1.2;
+            letter-spacing: -0.01em;
+          }
+          .hero-greeting .rotating-verb {
+            display: inline-block;
+            min-width: 2.6em;
+            color: #294FF6;
+            font-weight: 800;
+            position: relative;
+          }
+          .hero-greeting .rotating-verb::after {
+            content: '';
+            position: absolute;
+            left: 0; right: 0; bottom: -2px;
+            height: 2px;
+            background: linear-gradient(90deg, #7A93FF, #294FF6);
+            border-radius: 2px;
+            opacity: 0.6;
+          }
+          .verb-anim {
+            display: inline-block;
+            animation: verbFade 2.4s ease-in-out infinite;
+          }
+          @media (max-width: 640px) {
+            .hero-greeting { font-size: 22px; }
+          }
+
+          /* ── Contained chat bubble ── */
+          .chat-bubble {
+            background: #FFFFFF;
+            border: 1px solid rgba(122, 147, 255, 0.18);
+            border-radius: 20px;
+            box-shadow: 0 10px 32px rgba(0, 15, 77, 0.06), 0 2px 8px rgba(0, 15, 77, 0.04);
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            min-height: 360px;
+            max-height: calc(100vh - 200px);
+            scroll-behavior: smooth;
+          }
+          .chat-bubble::-webkit-scrollbar { width: 8px; }
+          .chat-bubble::-webkit-scrollbar-track { background: transparent; }
+          .chat-bubble::-webkit-scrollbar-thumb {
+            background: rgba(122, 147, 255, 0.25);
+            border-radius: 8px;
+          }
+          .chat-bubble::-webkit-scrollbar-thumb:hover {
+            background: rgba(122, 147, 255, 0.45);
+          }
+          .chat-inner { padding: 24px 28px 28px; }
+          @media (max-width: 640px) {
+            .chat-inner { padding: 18px 18px 22px; }
+            .chat-bubble { max-height: calc(100vh - 160px); }
+          }
         `}
       </style>
 
-      <div className="flex-1 overflow-y-auto pb-48">
-        <div className="container mx-auto px-4 py-8 max-w-2xl">
+      {/* Hero greeting */}
+      <div className="hero-greeting container mx-auto px-4 max-w-2xl">
+        <div>
+          Time to{' '}
+          <span className="rotating-verb">
+            <span key={verbIdx} className="verb-anim">{HERO_VERBS[verbIdx]}</span>
+          </span>
+          {' '}something amazing{firstName ? `, ${firstName}` : ''}
+        </div>
+      </div>
+
+      {/* Contained chat bubble */}
+      <div className="container mx-auto px-4 max-w-2xl w-full">
+        <div className="chat-bubble" ref={chatLogRef}>
+          <div className="chat-inner">
 
           {/* ══════════════════════════════════════════════════ */}
           {/* MESSAGE 1: What would you like to do today?       */}
@@ -1526,6 +1624,7 @@ export default function Block() {
             </div>
           )}
 
+          </div>
         </div>
       </div>
     </div>
