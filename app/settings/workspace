@@ -12,7 +12,13 @@
 import { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useRecords, useRecordUpdate, useUpload, q } from "@/lib/datasource";
+import {
+  useRecord,
+  useCurrentRecordId,
+  useRecordUpdate,
+  useUpload,
+  q,
+} from "@/lib/datasource";
 import { toast } from "sonner";
 
 // ---- Field map (ACCOUNTS) -----------------------------------------
@@ -55,10 +61,8 @@ const EMPTY_DRAFT = {
 // Block
 // =====================================================================
 export default function Block() {
-  const { data, status, refetch } = useRecords({ select, count: 1 });
-  const record =
-    data?.pages?.[0]?.items?.[0] ??
-    (Array.isArray(data) ? data[0] : null);
+  const recordId = useCurrentRecordId();
+  const { data: record, status, refetch } = useRecord({ recordId, select });
 
   // Saved state — mirrors the record after each successful save
   const [saved, setSaved] = useState(EMPTY_DRAFT);
@@ -84,46 +88,27 @@ export default function Block() {
   const upload = useUpload();
 
   // ---- Hydrate from record (re-runs when record.id changes) -------
+  // useRecord returns data with fields nested under data.fields.<alias>.
+  // (Confirmed against Bev's working Softr-generated reference block.)
   useEffect(() => {
-    if (!record) return;
+    if (!record || !record.fields) return;
     if (hydratedForRecordIdRef.current === record.id) return;
     hydratedForRecordIdRef.current = record.id;
 
-    // DIAGNOSTIC: dump the raw record so we know exactly what Softr
-    // returns. Open dev tools → Console after pasting this. Remove
-    // after we've nailed the data shape.
-    try {
-      // eslint-disable-next-line no-console
-      console.log("[workspace] RAW RECORD:", record);
-      // eslint-disable-next-line no-console
-      console.log("[workspace] TOP-LEVEL KEYS:", Object.keys(record));
-      // eslint-disable-next-line no-console
-      console.log(
-        "[workspace] FIELDS KEYS:",
-        record.fields ? Object.keys(record.fields) : "(no .fields)",
-      );
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error("[workspace] log error:", e);
-    }
-
-    // Read aliases directly off the record. q.select() should be
-    // surfacing them at the top level — that's what the docs say
-    // and what set-up uses. extractText handles the rare case where
-    // a field comes back as an object/array shape.
+    const f = record.fields;
     const next = {
-      name:               extractText(record.name),
-      niche:              extractText(record.niche),
-      brandBio:           extractText(record.brandBio),
-      brandVoice:         extractText(record.brandVoice),
-      brandCta:           extractText(record.brandCta),
-      targetAudience:     extractText(record.targetAudience),
-      audiencePainPoints: extractText(record.audiencePainPoints),
-      audienceObjectives: extractText(record.audienceObjectives),
+      name:               extractText(f.name),
+      niche:              extractText(f.niche),
+      brandBio:           extractText(f.brandBio),
+      brandVoice:         extractText(f.brandVoice),
+      brandCta:           extractText(f.brandCta),
+      targetAudience:     extractText(f.targetAudience),
+      audiencePainPoints: extractText(f.audiencePainPoints),
+      audienceObjectives: extractText(f.audienceObjectives),
     };
     setSaved(next);
     setDraft(next);
-    setLogoSaved(record.logo ?? null);
+    setLogoSaved(f.logo ?? null);
   }, [record]);
 
   // ---- Update hook -------------------------------------------------
@@ -150,13 +135,13 @@ export default function Block() {
   });
 
   const performSave = (section, fields, onComplete) => {
-    if (!record?.id) {
+    if (!recordId) {
       toast.error("Couldn't find your account record.");
       return;
     }
     pendingSaveContextRef.current = { section, onComplete };
     setSavingSection(section);
-    updateRecord.mutate({ recordId: record.id, fields });
+    updateRecord.mutate({ recordId, fields });
   };
 
   // ---- Cleanup -----------------------------------------------------
@@ -192,7 +177,7 @@ export default function Block() {
     setDraft((cur) => ({ ...cur, [key]: value }));
 
   const saveIdentity = async () => {
-    if (!record?.id) {
+    if (!recordId) {
       toast.error("Couldn't find your account record.");
       return;
     }

@@ -10,7 +10,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Switch } from "@/components/ui/switch";
-import { useRecords, useRecordUpdate, q } from "@/lib/datasource";
+import {
+  useRecord,
+  useCurrentRecordId,
+  useRecordUpdate,
+  q,
+} from "@/lib/datasource";
 import { toast } from "sonner";
 
 // ---- Field map (ACCOUNTS) -----------------------------------------
@@ -220,10 +225,8 @@ const objectsEqualShallow = (a, b) => {
 // Block
 // =====================================================================
 export default function Block() {
-  const { data, status, refetch } = useRecords({ select, count: 1 });
-  const record =
-    data?.pages?.[0]?.items?.[0] ??
-    (Array.isArray(data) ? data[0] : null);
+  const recordId = useCurrentRecordId();
+  const { data: record, status, refetch } = useRecord({ recordId, select });
 
   // Saved state — mirrors the record after each successful save
   const [aiModeIdSaved, setAiModeIdSaved] = useState(null);
@@ -245,42 +248,27 @@ export default function Block() {
   const savedFlashTimerRef = useRef(null);
 
   // ---- Hydrate from record (re-runs when record.id changes) -------
+  // useRecord returns data with fields nested under data.fields.<alias>.
   useEffect(() => {
-    if (!record) return;
+    if (!record || !record.fields) return;
     if (hydratedForRecordIdRef.current === record.id) return;
     hydratedForRecordIdRef.current = record.id;
 
-    // DIAGNOSTIC: dump the raw record so we know exactly what Softr
-    // returns for accounts. Remove once data shape is confirmed.
-    try {
-      // eslint-disable-next-line no-console
-      console.log("[quality] RAW RECORD:", record);
-      // eslint-disable-next-line no-console
-      console.log("[quality] TOP-LEVEL KEYS:", Object.keys(record));
-      // eslint-disable-next-line no-console
-      console.log(
-        "[quality] FIELDS KEYS:",
-        record.fields ? Object.keys(record.fields) : "(no .fields)",
-      );
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error("[quality] log error:", e);
-    }
+    const f = record.fields;
 
-    // Read directly off the aliases declared in q.select().
-    const aiId = record.aiMode?.id || null;
+    const aiId = f.aiMode?.id || null;
     setAiModeId(aiId);
     setAiModeIdSaved(aiId);
 
-    const qa = Array.isArray(record.qaChecklist)
-      ? record.qaChecklist.map((x) => x?.id ?? x).filter(Boolean)
+    const qa = Array.isArray(f.qaChecklist)
+      ? f.qaChecklist.map((x) => x?.id ?? x).filter(Boolean)
       : [];
     setQaIds(qa);
     setQaIdsSaved(qa);
 
     const t = {};
     THRESHOLD_ROWS.forEach((row) => {
-      const v = record[row.key];
+      const v = f[row.key];
       if (v?.id) t[row.key] = v.id;
     });
     setThresholds(t);
@@ -311,13 +299,13 @@ export default function Block() {
   });
 
   const performSave = (section, fields, onComplete) => {
-    if (!record?.id) {
+    if (!recordId) {
       toast.error("Couldn't find your account record.");
       return;
     }
     pendingSaveContextRef.current = { section, onComplete };
     setSavingSection(section);
-    updateRecord.mutate({ recordId: record.id, fields });
+    updateRecord.mutate({ recordId, fields });
   };
 
   // ---- Cleanup -----------------------------------------------------

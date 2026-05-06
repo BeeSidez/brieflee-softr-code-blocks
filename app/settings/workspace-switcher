@@ -205,47 +205,25 @@ export default function Block() {
   );
 }
 
-// Account name lookup — Softr can surface the primary field under the
-// alias (record.name), nested in record.fields[snake_case], OR keyed
-// by field ID. Verified the name field ID is "aAKkT" via the Softr
-// Tables API. Try all paths.
+// Account name lookup — Softr's data layer surfaces fields under
+// account.fields.<alias>. Field aliases come from q.select.
 function extractName(account) {
-  const candidates = [
-    account?.name,
-    account?.fields?.name,
-    account?.fields?.aAKkT,
-    account?.aAKkT,
-    account?.title,
-    account?.fields?.title,
-  ];
-  for (const raw of candidates) {
-    const value = unwrap(raw);
-    if (value) return value;
-  }
-  return "";
+  const value = unwrap(account?.fields?.name);
+  return value || "";
 }
 
 function extractLogoUrl(account) {
-  const candidates = [
-    account?.logo,
-    account?.fields?.logo,
-    account?.fields?.q1B5K,
-    account?.q1B5K,
-  ];
-  for (const raw of candidates) {
-    if (!raw) continue;
-    if (typeof raw === "string") return raw;
-    if (Array.isArray(raw)) {
-      const first = raw[0];
-      if (!first) continue;
-      if (typeof first === "string") return first;
-      if (first.url) return first.url;
-      if (first.thumbnailUrl) return first.thumbnailUrl;
-    }
-    if (typeof raw === "object") {
-      if (raw.url) return raw.url;
-      if (raw.thumbnailUrl) return raw.thumbnailUrl;
-    }
+  const raw = account?.fields?.logo;
+  if (!raw) return null;
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw)) {
+    const first = raw[0];
+    if (!first) return null;
+    if (typeof first === "string") return first;
+    return first.url || first.thumbnailUrl || null;
+  }
+  if (typeof raw === "object") {
+    return raw.url || raw.thumbnailUrl || null;
   }
   return null;
 }
