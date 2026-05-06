@@ -827,17 +827,62 @@ export default function Block() {
             .hero-greeting { font-size: 22px; }
           }
 
+          /* ── Shimmering shell (animated halo around the bubble) ── */
+          @keyframes shellSpin {
+            0%   { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          @keyframes shellGlow {
+            0%, 100% {
+              box-shadow:
+                0 10px 32px rgba(0, 15, 77, 0.06),
+                0 0 22px rgba(122, 147, 255, 0.20);
+            }
+            50% {
+              box-shadow:
+                0 12px 38px rgba(0, 15, 77, 0.08),
+                0 0 38px rgba(122, 147, 255, 0.42);
+            }
+          }
+          .chat-shell {
+            position: relative;
+            border-radius: 22px;
+            padding: 2px;
+            overflow: hidden;
+            isolation: isolate;
+            animation: shellGlow 4.2s ease-in-out infinite;
+          }
+          .chat-shell::before {
+            content: '';
+            position: absolute;
+            top: -75%; left: -75%;
+            width: 250%; height: 250%;
+            background: conic-gradient(
+              from 0deg,
+              #D9E0FF 0%,
+              #7A93FF 18%,
+              #294FF6 35%,
+              #000F4D 48%,
+              #294FF6 60%,
+              #7A93FF 78%,
+              #D9E0FF 100%
+            );
+            animation: shellSpin 7s linear infinite;
+            z-index: 0;
+            opacity: 0.85;
+          }
+
           /* ── Contained chat bubble ── */
           .chat-bubble {
+            position: relative;
+            z-index: 1;
             background:
               linear-gradient(180deg,
                 rgba(217, 224, 255, 0.55) 0%,
                 rgba(217, 224, 255, 0.18) 30%,
                 #FFFFFF 65%
               );
-            border: 1px solid rgba(122, 147, 255, 0.18);
             border-radius: 20px;
-            box-shadow: 0 10px 32px rgba(0, 15, 77, 0.06), 0 2px 8px rgba(0, 15, 77, 0.04);
             overflow-y: auto;
             overscroll-behavior: contain;
             min-height: 360px;
@@ -872,10 +917,11 @@ export default function Block() {
         </div>
       </div>
 
-      {/* Contained chat bubble */}
+      {/* Contained chat bubble (with shimmering halo) */}
       <div className="container mx-auto px-4 max-w-2xl w-full">
-        <div className="chat-bubble" ref={chatLogRef}>
-          <div className="chat-inner">
+        <div className="chat-shell">
+          <div className="chat-bubble" ref={chatLogRef}>
+            <div className="chat-inner">
 
           {/* ══════════════════════════════════════════════════ */}
           {/* MESSAGE 1: What would you like to do today?       */}
@@ -1630,6 +1676,7 @@ export default function Block() {
             </div>
           )}
 
+            </div>
           </div>
         </div>
       </div>
