@@ -60,8 +60,21 @@ const EMPTY_DRAFT = {
 // =====================================================================
 // Block
 // =====================================================================
+// If the URL has `?workspace=<id>` (set by the workspace-switcher
+// block), use that as the record ID. Falls back to Softr's
+// useCurrentRecordId if the URL param isn't present. Re-reads on every
+// render so the switcher's URL update flows through.
+function useWorkspaceRecordId() {
+  const fromContext = useCurrentRecordId();
+  const fromUrl =
+    typeof window !== "undefined"
+      ? new URL(window.location.href).searchParams.get("workspace")
+      : null;
+  return fromUrl || fromContext;
+}
+
 export default function Block() {
-  const recordId = useCurrentRecordId();
+  const recordId = useWorkspaceRecordId();
   const { data: record, status, refetch } = useRecord({ recordId, select });
 
   // Saved state — mirrors the record after each successful save
