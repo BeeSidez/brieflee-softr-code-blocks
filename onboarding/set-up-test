@@ -254,15 +254,6 @@ const LEE_AVATAR = "https://res.cloudinary.com/dspv9nm1n/image/upload/v177142767
 // Softr-hosted explainer video. No YouTube UI -> no distractions, can't click out.
 const HOW_VIDEO_URL = "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/c84a1dcc-34aa-4dd0-8871-a72c7d64bd92.mp4";
 
-const STEP_LABELS = {
-  1: "Brand setup",
-  2: "Review mode",
-  3: "How Brieflee works",
-  4: "QA Checklist",
-  5: "Thresholds",
-  6: "Content blueprint",
-};
-
 // =====================================================================
 // Block — orchestrator
 // =====================================================================
@@ -517,7 +508,7 @@ export default function Block() {
       </div>
 
       {/* Floating "Skip this step" - preview-only, always available. */}
-      {currentStep >= 1 && currentStep <= 6 && (
+      {currentStep > 0 && currentStep < 7 ? (
         <button
           onClick={() => markSkippedAndAdvance(currentStep)}
           className="fixed bottom-6 right-6 text-xs px-4 py-2 rounded-full shadow-lg"
@@ -525,7 +516,7 @@ export default function Block() {
         >
           Skip this step ->
         </button>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -1738,25 +1729,6 @@ function TypingDots() {
         <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: "#7A93FF" }} />
         <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: "#7A93FF" }} />
         <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: "#7A93FF" }} />
-      </div>
-    </div>
-  );
-}
-
-function Collapsed({ text, skipped }) {
-  return (
-    <div className="mb-4 ml-10">
-      <div
-        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full"
-        style={{
-          background: skipped ? "#f8fbff" : "#ecf0ff",
-          border: "1px solid rgba(217, 224, 255, 0.6)",
-          color: skipped ? "#7A93FF" : "#001364",
-          fontSize: 12,
-          fontWeight: 600,
-        }}
-      >
-        {skipped ? "(skipped)" : "✓"} {text} {skipped ? "" : "saved"}
       </div>
     </div>
   );
