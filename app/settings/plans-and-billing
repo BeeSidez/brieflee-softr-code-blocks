@@ -1,41 +1,52 @@
 // /settings · Plans and Billing tab
 //
-// Reads the user's current subscription (via accounts.subscription_*
-// lookups, which read through accounts.current_subscription → subscriptions
-// table) plus usage-vs-max numbers (via accounts.*_remaining usage
-// lookups). Read-only display + action buttons:
-//   • Change plan  →  /plans/upgrade  (modal)
-//   • Manage billing →  STRIPE_PORTAL_URL  (configure below)
+// Lifts the design Bev had on the existing native column-container
+// block: "You are currently on: <tier> plan" heading, "Credits Renew
+// on: <date>" subhead, then a 4-column grid of progress-bar stat cards
+// (Videos / Team / Workspaces) with an actions card on the right
+// (Manage billing + Change plan).
+//
+// Data source: accounts.subscription_* lookups (which resolve through
+// accounts.current_subscription → subscriptions table). No more
+// dependency on the legacy usage table — subscription_max_videos,
+// subscription_max_members, etc. are the source of truth now.
 //
 // SOFTR CONFIG REQUIRED:
 //   Source tab: bind to ACCOUNTS, filter by URL parameter `workspace`
-//   so the workspace switcher works end-to-end on this tab too.
+//   so the workspace switcher works on this tab too (id equals URL
+//   parameter `workspace`, fallback to user's first account when
+//   absent).
 
 import { useRecord, useCurrentRecordId, q } from "@/lib/datasource";
+import { Video, Users, Layers, ExternalLink } from "lucide-react";
 
-// Stripe customer portal URL (Bev: replace with your portal link
-// from Stripe Dashboard → Settings → Billing → Customer portal).
+// Stripe customer portal URL — Bev: paste the real link from
+// Stripe Dashboard → Settings → Billing → Customer portal.
 const STRIPE_PORTAL_URL = "https://billing.stripe.com/p/login/REPLACE_ME";
 const CHANGE_PLAN_PATH = "/plans/upgrade";
 const CHANGE_PLAN_MODAL_SIZE = "xl"; // 'sm' | 'md' | 'lg' | 'xl'
 
+// ─── Brand palette ────────────────────────────────────────────
+const BL_NAVY = "#000F4D";
+const BL_DEEP = "#001364";
+const BL_PERIWINKLE = "#7A93FF";
+const BL_BORDER = "rgba(217, 224, 255, 0.55)";
+const BL_TRACK = "rgba(217, 224, 255, 0.6)";
+const BL_MUTED = "#7A93FF";
+
 const select = q.select({
-  name:                       "aAKkT",
   subscriptionTier:           "oYTWQ",
   subscriptionStatus:         "LX54T",
   subscriptionPeriodEnd:      "xhi4r",
   subscriptionProductName:    "eX2ZC",
   subscriptionInterval:       "nhVIe",
   subscriptionMaxVideos:      "cNlUS",
-  subscriptionMaxStorageGb:   "anN5E",
   subscriptionMaxWorkspaces:  "MFzCN",
   subscriptionMaxMembers:     "2k4fx",
   videosRemaining:            "A0Cwp",
-  storageRemaining:           "1WK5u",
   workspacesRemaining:        "ILIg2",
   membersRemaining:           "VY8Ge",
   totalVideos:                "qyGWx",
-  totalStorageGb:             "1MssQ",
   totalWorkspaces:            "3gogx",
   totalUsers:                 "qwSF2",
 });
@@ -53,47 +64,27 @@ export default function Block() {
   const recordId = useWorkspaceRecordId();
   const { data: record, status } = useRecord({ recordId, select });
 
-  if (status === "pending") return <Shell><Loading /></Shell>;
-  if (status === "error") return <Shell><Loading error /></Shell>;
-  if (!record || !record.fields) {
-    return <Shell><Loading message="No account record found." /></Shell>;
+  if (status === "pending") {
+    return <Shell><Loading /></Shell>;
+  }
+  if (status === "error" || !record || !record.fields) {
+    return <Shell><Loading message="Couldn't load billing." error /></Shell>;
   }
 
   const f = record.fields;
   const tier            = unwrap(f.subscriptionTier);
-  const statusLabel     = unwrap(f.subscriptionStatus);
-  const productName     = unwrapText(f.subscriptionProductName);
+  const productName     = unwrap(f.subscriptionProductName) || tier;
   const interval        = unwrap(f.subscriptionInterval);
-  const periodEnd       = unwrapText(f.subscriptionPeriodEnd);
-  const hasSubscription = !!(tier || productName || statusLabel);
+  const statusLabel     = unwrap(f.subscriptionStatus);
+  const periodEnd       = unwrap(f.subscriptionPeriodEnd);
+  const hasSubscription = !!(productName || tier || statusLabel);
 
-  const usage = [
-    {
-      label: "Videos this cycle",
-      used: numberFromMaybeArray(f.totalVideos),
-      max: numberFromMaybeArray(f.subscriptionMaxVideos),
-      remaining: numberFromMaybeArray(f.videosRemaining),
-    },
-    {
-      label: "Storage",
-      used: parseFloat(unwrapText(f.totalStorageGb) || "0"),
-      max: numberFromMaybeArray(f.subscriptionMaxStorageGb),
-      remaining: numberFromMaybeArray(f.storageRemaining),
-      unit: "GB",
-    },
-    {
-      label: "Workspaces",
-      used: numberFromMaybeArray(f.totalWorkspaces),
-      max: numberFromMaybeArray(f.subscriptionMaxWorkspaces),
-      remaining: numberFromMaybeArray(f.workspacesRemaining),
-    },
-    {
-      label: "Team members",
-      used: numberFromMaybeArray(f.totalUsers),
-      max: numberFromMaybeArray(f.subscriptionMaxMembers),
-      remaining: numberFromMaybeArray(f.membersRemaining),
-    },
-  ];
+  const videosUsed = num(f.totalVideos);
+  const videosMax  = num(f.subscriptionMaxVideos);
+  const teamUsed   = num(f.totalUsers);
+  const teamMax    = num(f.subscriptionMaxMembers);
+  const wsUsed     = num(f.totalWorkspaces);
+  const wsMax      = num(f.subscriptionMaxWorkspaces);
 
   const handleChangePlan = () => {
     if (
@@ -113,89 +104,64 @@ export default function Block() {
 
   return (
     <Shell>
-      {/* ── Current plan card ─────────────────────────────────────── */}
-      <section className="pb-card">
-        <header className="pb-card-header">
-          <div>
-            <h3 className="pb-card-title">Current plan</h3>
-            <p className="pb-card-sub">
-              {hasSubscription
-                ? "Your active subscription"
-                : "You're on the free tier — upgrade to unlock more."}
-            </p>
-          </div>
-          {hasSubscription && (
-            <StatusBadge status={statusLabel} />
+      {/* ── Heading row ── */}
+      <header className="pb-heading">
+        <h2 className="pb-heading-title">
+          {hasSubscription ? (
+            <>
+              You are currently on:{" "}
+              <span className="pb-heading-tier">{productName}</span>{" "}
+              {interval && <span className="pb-heading-interval">({interval})</span>}{" "}
+              plan
+            </>
+          ) : (
+            <>You're not on a plan yet</>
           )}
-        </header>
-
-        {hasSubscription ? (
-          <div className="pb-plan-row">
-            <div className="pb-plan-name">
-              <span className="pb-plan-product">{productName || tier || "—"}</span>
-              {interval && (
-                <span className="pb-plan-interval">{interval}</span>
-              )}
-            </div>
-            {periodEnd && (
-              <div className="pb-plan-renew">
-                {statusLabel === "trial"
-                  ? `Trial ends ${formatDate(periodEnd)}`
-                  : `Renews ${formatDate(periodEnd)}`}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="pb-empty-state">
-            <p>Pick a plan to start reviewing videos at scale.</p>
-          </div>
+          {hasSubscription && <StatusBadge status={statusLabel} />}
+        </h2>
+        {periodEnd && (
+          <p className="pb-heading-sub">
+            {String(statusLabel).toLowerCase().includes("trial")
+              ? `Trial ends ${formatDate(periodEnd)}`
+              : `Credits renew on ${formatDate(periodEnd)}`}
+          </p>
         )}
+      </header>
 
-        <footer className="pb-card-footer">
-          <button
-            type="button"
-            onClick={handleChangePlan}
-            className="pb-btn-primary"
-          >
-            {hasSubscription ? "Change plan" : "Choose a plan"}
-          </button>
-          {hasSubscription && (
-            <button
-              type="button"
-              onClick={handleManageBilling}
-              className="pb-btn-secondary"
-            >
-              Manage billing →
-            </button>
-          )}
-        </footer>
-      </section>
-
-      {/* ── Usage card ────────────────────────────────────────────── */}
-      <section className="pb-card">
-        <header className="pb-card-header">
-          <div>
-            <h3 className="pb-card-title">Usage this cycle</h3>
-            <p className="pb-card-sub">
-              {periodEnd
-                ? `Resets on ${formatDate(periodEnd)}`
-                : "Track what's left of your monthly allowance."}
-            </p>
-          </div>
-        </header>
-        <div className="pb-usage-list">
-          {usage.map((u) => (
-            <UsageRow key={u.label} {...u} />
-          ))}
-        </div>
-      </section>
+      {/* ── 4-column grid ── */}
+      <div className="pb-grid">
+        <StatCard
+          icon={Video}
+          label="Videos used"
+          used={videosUsed}
+          max={videosMax}
+          hasPlan={hasSubscription}
+        />
+        <StatCard
+          icon={Users}
+          label="Team members"
+          used={teamUsed}
+          max={teamMax}
+          hasPlan={hasSubscription}
+        />
+        <StatCard
+          icon={Layers}
+          label="Workspaces"
+          used={wsUsed}
+          max={wsMax}
+          hasPlan={hasSubscription}
+        />
+        <ActionsCard
+          hasSubscription={hasSubscription}
+          onChangePlan={handleChangePlan}
+          onManageBilling={handleManageBilling}
+        />
+      </div>
     </Shell>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-// Sub-components
-// ─────────────────────────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────
 
 function Shell({ children }) {
   return (
@@ -209,87 +175,83 @@ function Shell({ children }) {
     >
       <Style />
       <div className="settings-pb container mx-auto px-4 max-w-4xl w-full">
-        <div className="space-y-4">{children}</div>
+        <div className="space-y-6">{children}</div>
       </div>
     </div>
   );
 }
 
-function StatusBadge({ status }) {
-  const map = {
-    active:   { fg: "#22A06B", bg: "rgba(34, 160, 107, 0.12)", border: "rgba(34, 160, 107, 0.30)", label: "Active" },
-    trial:    { fg: "#7A93FF", bg: "rgba(122, 147, 255, 0.12)", border: "rgba(122, 147, 255, 0.30)", label: "Trial" },
-    trialing: { fg: "#7A93FF", bg: "rgba(122, 147, 255, 0.12)", border: "rgba(122, 147, 255, 0.30)", label: "Trial" },
-    past_due: { fg: "#C97D3F", bg: "rgba(232, 155, 92, 0.12)", border: "rgba(232, 155, 92, 0.40)", label: "Past due" },
-    canceled: { fg: "#DC2626", bg: "rgba(220, 38, 38, 0.10)",  border: "rgba(220, 38, 38, 0.35)", label: "Canceled" },
-    cancelled:{ fg: "#DC2626", bg: "rgba(220, 38, 38, 0.10)",  border: "rgba(220, 38, 38, 0.35)", label: "Canceled" },
-  };
-  const v = map[String(status || "").toLowerCase()] || map.trial;
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        fontSize: 11,
-        fontWeight: 600,
-        color: v.fg,
-        background: v.bg,
-        border: `1px solid ${v.border}`,
-        borderRadius: 999,
-        padding: "4px 10px",
-      }}
-    >
-      <span
-        style={{
-          width: 5,
-          height: 5,
-          borderRadius: "50%",
-          background: v.fg,
-        }}
-      />
-      {v.label}
-    </span>
-  );
-}
-
-function UsageRow({ label, used, max, remaining, unit }) {
+function StatCard({ icon: Icon, label, used, max, hasPlan }) {
   const safeMax = Number.isFinite(max) && max > 0 ? max : null;
   const safeUsed = Number.isFinite(used) ? Math.max(0, used) : 0;
   const pct = safeMax ? Math.min(100, Math.round((safeUsed / safeMax) * 100)) : 0;
   const over = safeMax !== null && safeUsed > safeMax;
 
   return (
-    <div className="pb-usage-row">
-      <div className="pb-usage-row-top">
-        <span className="pb-usage-label">{label}</span>
-        <span className="pb-usage-numbers">
-          {safeMax !== null
-            ? `${formatNum(safeUsed)}${unit ? unit : ""} of ${formatNum(safeMax)}${unit ? unit : ""}`
-            : "Not on a plan"}
-        </span>
+    <div className="pb-card">
+      <div className="pb-card-head">
+        <Icon className="pb-card-icon" size={16} />
+        <span className="pb-card-label">{label}</span>
       </div>
-      {safeMax !== null && (
-        <div className="pb-progress-track">
-          <div
-            className="pb-progress-fill"
-            style={{
-              width: `${pct}%`,
-              background: over
-                ? "linear-gradient(90deg, #DC2626, #B91C1C)"
-                : "linear-gradient(90deg, #7A93FF, #294FF6)",
-            }}
-          />
-        </div>
-      )}
-      {Number.isFinite(remaining) && (
-        <div className="pb-usage-remaining">
-          {remaining < 0
-            ? `${formatNum(Math.abs(remaining))} over`
-            : `${formatNum(remaining)} remaining`}
-        </div>
+      <div className="pb-progress-track">
+        <div
+          className="pb-progress-fill"
+          style={{
+            width: `${hasPlan && safeMax ? pct : 0}%`,
+            background: over
+              ? "linear-gradient(90deg, #DC2626, #B91C1C)"
+              : "linear-gradient(90deg, #7A93FF, #294FF6)",
+          }}
+        />
+      </div>
+      <div className="pb-card-numbers">
+        {hasPlan && safeMax !== null
+          ? `${formatCount(safeUsed)} / ${formatCount(safeMax)}`
+          : "Not on a plan"}
+      </div>
+    </div>
+  );
+}
+
+function ActionsCard({ hasSubscription, onChangePlan, onManageBilling }) {
+  return (
+    <div className="pb-actions">
+      <button
+        type="button"
+        onClick={onChangePlan}
+        className="pb-btn-primary"
+      >
+        {hasSubscription ? "Change plan" : "Choose a plan"}
+      </button>
+      {hasSubscription && (
+        <button
+          type="button"
+          onClick={onManageBilling}
+          className="pb-btn-secondary"
+        >
+          Manage billing
+          <ExternalLink size={12} />
+        </button>
       )}
     </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  const map = {
+    active:    { fg: "#22A06B", bg: "rgba(34, 160, 107, 0.12)", border: "rgba(34, 160, 107, 0.30)", label: "Active" },
+    trial:     { fg: "#7A93FF", bg: "rgba(122, 147, 255, 0.12)", border: "rgba(122, 147, 255, 0.30)", label: "Trial" },
+    trialing:  { fg: "#7A93FF", bg: "rgba(122, 147, 255, 0.12)", border: "rgba(122, 147, 255, 0.30)", label: "Trial" },
+    past_due:  { fg: "#C97D3F", bg: "rgba(232, 155, 92, 0.12)", border: "rgba(232, 155, 92, 0.40)", label: "Past due" },
+    canceled:  { fg: "#DC2626", bg: "rgba(220, 38, 38, 0.10)",  border: "rgba(220, 38, 38, 0.35)", label: "Canceled" },
+    cancelled: { fg: "#DC2626", bg: "rgba(220, 38, 38, 0.10)",  border: "rgba(220, 38, 38, 0.35)", label: "Canceled" },
+  };
+  const v = map[String(status || "").toLowerCase()] || map.trial;
+  return (
+    <span className="pb-status-badge" style={{ color: v.fg, background: v.bg, border: `1px solid ${v.border}` }}>
+      <span className="pb-status-dot" style={{ background: v.fg }} />
+      {v.label}
+    </span>
   );
 }
 
@@ -297,16 +259,14 @@ function Loading({ message, error }) {
   return (
     <div
       className="text-center"
-      style={{ padding: "60px 20px", color: error ? "#D14343" : "#7A93FF" }}
+      style={{ padding: "60px 20px", color: error ? "#D14343" : BL_MUTED }}
     >
-      <p className="text-sm">{message || (error ? "Couldn't load billing." : "Loading…")}</p>
+      <p className="text-sm">{message || "Loading…"}</p>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────
 
 function unwrap(raw) {
   if (raw == null) return "";
@@ -314,22 +274,12 @@ function unwrap(raw) {
   if (Array.isArray(raw)) {
     const f = raw[0];
     if (typeof f === "string") return f;
-    return f?.label ?? "";
+    return f?.label ?? String(f ?? "");
   }
   if (typeof raw === "object") return raw.label ?? "";
   return String(raw);
 }
-function unwrapText(raw) {
-  if (raw == null) return "";
-  if (typeof raw === "string") return raw;
-  if (Array.isArray(raw)) {
-    const f = raw[0];
-    if (typeof f === "string") return f;
-    return f?.label ?? String(f ?? "");
-  }
-  return String(raw);
-}
-function numberFromMaybeArray(raw) {
+function num(raw) {
   if (raw == null) return null;
   if (Array.isArray(raw)) {
     if (raw.length === 0) return null;
@@ -339,10 +289,9 @@ function numberFromMaybeArray(raw) {
   if (typeof raw === "string") return parseFloat(raw);
   return null;
 }
-function formatNum(n) {
+function formatCount(n) {
   if (!Number.isFinite(n)) return "—";
-  if (Math.abs(n) < 100) return n.toString();
-  return Math.round(n).toLocaleString();
+  return n.toLocaleString("en-GB");
 }
 function formatDate(iso) {
   if (!iso) return "";
@@ -357,88 +306,122 @@ function Style() {
   return (
     <style>
       {`
-        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700;800&display=swap');
         .settings-pb * { font-family: 'League Spartan', sans-serif; }
+
+        .pb-heading-title {
+          font-size: 22px;
+          font-weight: 600;
+          color: ${BL_NAVY};
+          letter-spacing: -0.012em;
+          margin: 0 0 6px;
+          line-height: 1.25;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+        .pb-heading-tier {
+          color: ${BL_PERIWINKLE};
+          font-weight: 700;
+        }
+        .pb-heading-interval {
+          color: ${BL_PERIWINKLE};
+          font-weight: 500;
+          font-size: 0.85em;
+        }
+        .pb-heading-sub {
+          font-size: 13px;
+          color: ${BL_MUTED};
+          margin: 0;
+          font-weight: 400;
+        }
+
+        .pb-status-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          font-weight: 600;
+          padding: 4px 10px;
+          border-radius: 999px;
+        }
+        .pb-status-dot {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+        }
+
+        .pb-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 14px;
+        }
+        @media (max-width: 900px) {
+          .pb-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 520px) {
+          .pb-grid { grid-template-columns: 1fr; }
+        }
 
         .pb-card {
           background: #FFFFFF;
-          border: 1px solid rgba(217, 224, 255, 0.55);
-          border-radius: 18px;
-          padding: 22px 24px;
+          border: 1px solid ${BL_BORDER};
+          border-radius: 16px;
+          padding: 18px 18px 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
           box-shadow: 0 1px 3px rgba(0, 15, 77, 0.04);
         }
-        .pb-card-header {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 12px;
-          margin-bottom: 16px;
-        }
-        .pb-card-title {
-          font-size: 16px;
-          font-weight: 600;
-          color: #000F4D;
-          letter-spacing: -0.005em;
-          margin: 0;
-        }
-        .pb-card-sub {
-          font-size: 12px;
-          color: #7A93FF;
-          line-height: 1.5;
-          margin: 4px 0 0;
-        }
-
-        .pb-plan-row {
+        .pb-card-head {
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          gap: 16px;
-          padding: 14px 0;
-          border-top: 1px dashed rgba(217, 224, 255, 0.7);
-          border-bottom: 1px dashed rgba(217, 224, 255, 0.7);
+          gap: 8px;
         }
-        .pb-plan-name {
-          display: flex;
-          align-items: baseline;
-          gap: 10px;
+        .pb-card-icon {
+          color: ${BL_PERIWINKLE};
+          flex-shrink: 0;
         }
-        .pb-plan-product {
-          font-size: 22px;
-          font-weight: 700;
-          color: #000F4D;
-          letter-spacing: -0.01em;
-        }
-        .pb-plan-interval {
-          font-size: 12px;
-          font-weight: 500;
-          color: #7A93FF;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-        }
-        .pb-plan-renew {
+        .pb-card-label {
           font-size: 13px;
-          color: #001364;
-          font-weight: 500;
+          font-weight: 600;
+          color: ${BL_DEEP};
+        }
+        .pb-progress-track {
+          height: 8px;
+          background: ${BL_TRACK};
+          border-radius: 999px;
+          overflow: hidden;
+        }
+        .pb-progress-fill {
+          height: 100%;
+          border-radius: 999px;
+          transition: width 0.5s ease;
+        }
+        .pb-card-numbers {
+          font-size: 13px;
+          font-weight: 600;
+          color: ${BL_DEEP};
+          font-variant-numeric: tabular-nums;
         }
 
-        .pb-empty-state {
-          padding: 14px 0;
-          color: #7A93FF;
-          font-size: 13px;
-        }
-
-        .pb-card-footer {
+        .pb-actions {
+          background: #FFFFFF;
+          border: 1px solid ${BL_BORDER};
+          border-radius: 16px;
+          padding: 18px;
           display: flex;
-          gap: 10px;
-          margin-top: 16px;
-          flex-wrap: wrap;
+          flex-direction: column;
+          justify-content: center;
+          gap: 8px;
         }
         .pb-btn-primary {
-          background: #7A93FF;
+          padding: 9px 16px;
+          background: ${BL_PERIWINKLE};
           color: #FFFFFF;
           font-size: 13px;
           font-weight: 600;
-          padding: 9px 20px;
           border-radius: 999px;
           border: none;
           cursor: pointer;
@@ -451,11 +434,15 @@ function Style() {
           box-shadow: 0 4px 12px rgba(41, 79, 246, 0.35);
         }
         .pb-btn-secondary {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          padding: 9px 14px;
           background: transparent;
-          color: #7A93FF;
+          color: ${BL_PERIWINKLE};
           font-size: 13px;
           font-weight: 600;
-          padding: 9px 16px;
           border-radius: 999px;
           border: 1px solid rgba(122, 147, 255, 0.40);
           cursor: pointer;
@@ -465,51 +452,6 @@ function Style() {
           background: rgba(122, 147, 255, 0.10);
           color: #294FF6;
           border-color: rgba(41, 79, 246, 0.55);
-        }
-
-        .pb-usage-list {
-          display: flex;
-          flex-direction: column;
-          gap: 18px;
-        }
-        .pb-usage-row {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-        .pb-usage-row-top {
-          display: flex;
-          align-items: baseline;
-          justify-content: space-between;
-          gap: 12px;
-        }
-        .pb-usage-label {
-          font-size: 13px;
-          font-weight: 600;
-          color: #000F4D;
-        }
-        .pb-usage-numbers {
-          font-size: 12px;
-          color: #001364;
-          font-weight: 500;
-          font-variant-numeric: tabular-nums;
-        }
-        .pb-progress-track {
-          height: 8px;
-          background: rgba(217, 224, 255, 0.6);
-          border-radius: 999px;
-          overflow: hidden;
-        }
-        .pb-progress-fill {
-          height: 100%;
-          background: linear-gradient(90deg, #7A93FF, #294FF6);
-          border-radius: 999px;
-          transition: width 0.4s ease;
-        }
-        .pb-usage-remaining {
-          font-size: 11px;
-          color: #7A93FF;
-          font-weight: 500;
         }
       `}
     </style>
