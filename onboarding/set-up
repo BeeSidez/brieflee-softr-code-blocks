@@ -1,10 +1,10 @@
-// /set-up — single Vibe Code block, the whole post-payment onboarding setup.
+// /set-up -- single Vibe Code block, the whole post-payment onboarding setup.
 // Six sub-steps in one chat with Lee:
 //   1. Set up your brand                (lifted from screen-2)
 //   2. Choose your review mode          (lifted from screen-4)
-//   3. How Brieflee works  · skippable  (lifted from screen-5)
-//   4. QA Checklist        · skippable  (Bev's copy + qa_checklist multi-select)
-//   5. Thresholds          · skippable  (9 single-select threshold fields)
+//   3. How Brieflee works  - skippable  (lifted from screen-5)
+//   4. QA Checklist        - skippable  (Bev's copy + qa_checklist multi-select)
+//   5. Thresholds          - skippable  (9 single-select threshold fields)
 //   6. Review your content blueprint    (lifted from screen-3 blueprint half)
 //
 // SOFTR CONFIG REQUIRED:
@@ -12,14 +12,14 @@
 //   Actions tab: auto-populated from updateFields aliases below.
 //
 // UX rules:
-//   • Each sub-step reveals as a chat sequence (typing → bubble → card).
-//   • Once a sub-step saves or skips, its big input card collapses to a single
-//     "✓ Saved" / "↷ Skipped" line and the next sub-step's chat reveals below.
-//   • The page smooth-scrolls to the new sub-step so the active conversation
+//   * Each sub-step reveals as a chat sequence (typing -> bubble -> card).
+//   * Once a sub-step saves or skips, its big input card collapses to a single
+//     "OK Saved" / "~> Skipped" line and the next sub-step's chat reveals below.
+//   * The page smooth-scrolls to the new sub-step so the active conversation
 //     stays in view.
-//   • Top progress dots (one per sub-step) light up as the user advances —
+//   * Top progress dots (one per sub-step) light up as the user advances --
 //     same pattern as screen-3.
-//   • After the final blueprint save we redirect to /new.
+//   * After the final blueprint save we redirect to /new.
 
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ import { Input } from "@/components/ui/input";
 import { useRecords, useRecordUpdate, q } from "@/lib/datasource";
 import { toast } from "sonner";
 
-// ─── Field map (ACCOUNTS) ───────────────────────────────────────────
+// --- Field map (ACCOUNTS) -------------------------------------------
 const select = q.select({
   // Brand setup (step 1)
   website:           "RaK4B",
@@ -59,9 +59,33 @@ const select = q.select({
   audienceObjectives: "5Wq2k",
 });
 
-const updateFields = select; // same alias map for writes
+// Separate q.select for writes (matches screen-3's pattern). Same fields, but
+// declared as its own call so Softr's Actions tab picks them up cleanly.
+const updateFields = q.select({
+  website:           "RaK4B",
+  description:       "RQcNB",
+  useCase:           "i3nJ9",
+  aiMode:            "O9x4n",
+  qaChecklist:       "mZaRc",
+  productScreenTime: "AFgpo",
+  hookSpeed:         "wthaW",
+  visualHook:        "Nq4ZX",
+  ctaPlacement:      "FA452",
+  faceTime:          "FH27O",
+  textLegibility:    "TNRuM",
+  audioClarity:      "dMTrN",
+  engagementPacing:  "bR5PL",
+  brandMentionCount: "HCvZw",
+  brandBio:           "iVPat",
+  brandVoice:         "ybmp8",
+  brandCta:           "s9vzj",
+  niche:              "vOp4b",
+  targetAudience:     "6g1Vd",
+  audiencePainPoints: "B4zya",
+  audienceObjectives: "5Wq2k",
+});
 
-// ─── Step 1 option UUIDs (use_case is multi-select) ────────────────
+// --- Step 1 option UUIDs (use_case is multi-select) ----------------
 const USE_CASE_OPTIONS = [
   { id: "8a24a59b-40f7-4988-851e-e2837c7da0ba", label: "Review UGC creator submissions" },
   { id: "92b35e89-622b-41fb-abca-78a30b55f8f1", label: "Review Influencer submissions" },
@@ -70,7 +94,7 @@ const USE_CASE_OPTIONS = [
   { id: "825f9e77-c70b-42a1-b3ec-516b25fccde9", label: "Other" },
 ];
 
-// ─── Step 2 option UUIDs (ai_mode, single) ─────────────────────────
+// --- Step 2 option UUIDs (ai_mode, single) -------------------------
 const AI_MODE_OPTIONS = [
   {
     id: "5b1b9734-20b6-4070-bd32-a3a4d31d0ed9",
@@ -90,7 +114,7 @@ const AI_MODE_OPTIONS = [
   },
 ];
 
-// ─── Step 4 option UUIDs (qa_checklist, multi) ─────────────────────
+// --- Step 4 option UUIDs (qa_checklist, multi) ---------------------
 const QA_CHECK_OPTIONS = [
   { id: "1c014e7b-fc4b-462a-8081-9c485045b748", label: "Product visibility" },
   { id: "4b7319f2-9c96-4216-98b9-54b4ec4ed9a9", label: "Product usage" },
@@ -120,7 +144,7 @@ const QA_CHECK_OPTIONS = [
   { id: "cff021c4-bf63-4ac9-993a-eb80b83b7965", label: "Inspiration link match" },
 ];
 
-// ─── Step 5 threshold rows ────────────────────────────────────────
+// --- Step 5 threshold rows ----------------------------------------
 const THRESHOLD_ROWS = [
   {
     key: "productScreenTime", label: "Product visibility",
@@ -231,7 +255,7 @@ const THRESHOLD_ROWS = [
   },
 ];
 
-// ─── Constants ─────────────────────────────────────────────────────
+// --- Constants -----------------------------------------------------
 const LEE_AVATAR = "https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png";
 const FINISH_URL = "/new";
 const TOTAL_STEPS = 6;
@@ -244,9 +268,9 @@ const STEP_LABELS = {
   6: "Content blueprint",
 };
 
-// ═══════════════════════════════════════════════════════════════════
+// ----
 // Block
-// ═══════════════════════════════════════════════════════════════════
+// ----
 export default function Block() {
   const { data, status, refetch } = useRecords({ select, count: 1 });
   const record = data?.[0];
@@ -255,31 +279,31 @@ export default function Block() {
   const [savedSteps, setSavedSteps] = useState({});  // { 1: true, 2: true, ... }
   const [skippedSteps, setSkippedSteps] = useState({});
 
-  // Refs for smooth scroll
-  const stepRefs = {
-    1: useRef(null),
-    2: useRef(null),
-    3: useRef(null),
-    4: useRef(null),
-    5: useRef(null),
-    6: useRef(null),
-  };
+  // Refs for smooth scroll — declared individually so each useRef call sits at
+  // top level (Rules of Hooks; some validators flag hooks-in-object-literal).
+  const ref1 = useRef(null);
+  const ref2 = useRef(null);
+  const ref3 = useRef(null);
+  const ref4 = useRef(null);
+  const ref5 = useRef(null);
+  const ref6 = useRef(null);
+  const stepRefs = { 1: ref1, 2: ref2, 3: ref3, 4: ref4, 5: ref5, 6: ref6 };
 
-  // Step 1 — Brand setup
+  // Step 1 -- Brand setup
   const [website, setWebsite] = useState("");
   const [description, setDescription] = useState("");
   const [useCases, setUseCases] = useState([]);
 
-  // Step 2 — Review mode
+  // Step 2 -- Review mode
   const [aiModeId, setAiModeId] = useState(null);
 
-  // Step 4 — QA checklist
+  // Step 4 -- QA checklist
   const [qaIds, setQaIds] = useState([]);
 
-  // Step 5 — Thresholds
+  // Step 5 -- Thresholds
   const [thresholds, setThresholds] = useState({});
 
-  // Step 6 — Blueprint review
+  // Step 6 -- Blueprint review
   const [brandBio, setBrandBio] = useState("");
   const [brandVoice, setBrandVoice] = useState("");
   const [brandCta, setBrandCta] = useState("");
@@ -347,7 +371,7 @@ export default function Block() {
     advance(step + 1);
   };
 
-  // ─── Save handlers ────────────────────────────────────────────
+  // --- Save handlers --------------------------------------------
   const save = (fieldsObj, after) => {
     if (!record?.id) {
       toast.error("Couldn't find your account record.");
@@ -529,10 +553,10 @@ export default function Block() {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// Step components — each runs its own typing/message reveal sequence
+// ----
+// Step components -- each runs its own typing/message reveal sequence
 // when active=true, and shows a collapsed summary when done/skipped.
-// ═══════════════════════════════════════════════════════════════════
+// ----
 
 function Step1({ active, done, skipped, website, setWebsite, description, setDescription, useCases, setUseCases, onSave, saving }) {
   const reveal = useReveal(active, [400, 1700, 2400, 4000]);
@@ -544,7 +568,7 @@ function Step1({ active, done, skipped, website, setWebsite, description, setDes
   const canSave = website.trim().length > 0 && useCases.length > 0;
 
   return (
-    <>
+    <div>
       {reveal[0] && <Typing />}
       {reveal[1] && (
         <Bubble>
@@ -575,7 +599,7 @@ function Step1({ active, done, skipped, website, setWebsite, description, setDes
       )}
 
       {reveal[3] && (
-        <>
+        <div>
           <Bubble>How will you use Brieflee?</Bubble>
           <div className="mb-4 ml-10 flex flex-wrap gap-1.5">
             {USE_CASE_OPTIONS.map((opt) => {
@@ -600,9 +624,9 @@ function Step1({ active, done, skipped, website, setWebsite, description, setDes
           <ActionRow>
             <SaveBtn disabled={!canSave || saving} onClick={onSave}>{saving ? "Saving..." : "Save"}</SaveBtn>
           </ActionRow>
-        </>
+        </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -611,7 +635,7 @@ function Step2({ active, done, skipped, aiModeId, setAiModeId, onSave, saving })
   if (done || skipped) return <Collapsed step={2} skipped={skipped} />;
 
   return (
-    <>
+    <div>
       {reveal[0] && <Typing />}
       {reveal[1] && (
         <Bubble>How involved do you want to be when content comes in?</Bubble>
@@ -647,14 +671,14 @@ function Step2({ active, done, skipped, aiModeId, setAiModeId, onSave, saving })
       )}
 
       {reveal[3] && (
-        <>
+        <div>
           <Bubble>You can change this anytime in your settings.</Bubble>
           <ActionRow>
             <SaveBtn disabled={!aiModeId || saving} onClick={onSave}>{saving ? "Saving..." : "Save"}</SaveBtn>
           </ActionRow>
-        </>
+        </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -663,7 +687,7 @@ function Step3({ active, done, skipped, onGotIt, onSkip }) {
   if (done || skipped) return <Collapsed step={3} skipped={skipped} />;
 
   return (
-    <>
+    <div>
       {reveal[0] && <Typing />}
       {reveal[1] && (
         <Bubble>Before you dive in, here's two ways you can use Brieflee.</Bubble>
@@ -701,7 +725,7 @@ function Step3({ active, done, skipped, onGotIt, onSkip }) {
           <SaveBtn onClick={onGotIt}>Got it</SaveBtn>
         </ActionRow>
       )}
-    </>
+    </div>
   );
 }
 
@@ -713,7 +737,7 @@ function Step4({ active, done, skipped, qaIds, setQaIds, onSave, onSkip, saving 
     setQaIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
 
   return (
-    <>
+    <div>
       {reveal[0] && <Typing />}
       {reveal[1] && <Bubble>Now let's set your defaults for quick reviews.</Bubble>}
       {reveal[2] && <Typing />}
@@ -766,15 +790,15 @@ function Step4({ active, done, skipped, qaIds, setQaIds, onSave, onSkip, saving 
       )}
 
       {reveal[7] && (
-        <>
+        <div>
           <Bubble>Or skip and pick checks each time.</Bubble>
           <ActionRow>
             <SkipBtn onClick={onSkip}>Skip</SkipBtn>
             <SaveBtn disabled={saving} onClick={onSave}>{saving ? "Saving..." : "Save"}</SaveBtn>
           </ActionRow>
-        </>
+        </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -793,7 +817,7 @@ function Step5({ active, done, skipped, thresholds, setThresholds, onSave, onSki
   const selected = Object.keys(thresholds).length;
 
   return (
-    <>
+    <div>
       {reveal[0] && <Typing />}
       {reveal[1] && <Bubble>Now how strict each check should be.</Bubble>}
       {reveal[2] && <Typing />}
@@ -857,15 +881,15 @@ function Step5({ active, done, skipped, thresholds, setThresholds, onSave, onSki
       )}
 
       {reveal[5] && (
-        <>
+        <div>
           <Bubble>Briefs override these too, so this is just your safety net for quick reviews.</Bubble>
           <ActionRow>
             <SkipBtn onClick={onSkip}>Skip</SkipBtn>
             <SaveBtn disabled={saving} onClick={onSave}>{saving ? "Saving..." : "Save"}</SaveBtn>
           </ActionRow>
-        </>
+        </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -887,7 +911,7 @@ function Step6({ active, done, blueprintReady, brandBio, setBrandBio, brandVoice
   const values  = { brandBio, brandVoice, brandCta, niche, targetAudience, audiencePainPoints, audienceObjectives };
 
   return (
-    <>
+    <div>
       {reveal[0] && <Typing />}
       {reveal[1] && <Bubble>Alright, last step. I've drafted your content blueprint from your website.</Bubble>}
       {reveal[2] && <Typing />}
@@ -932,13 +956,13 @@ function Step6({ active, done, blueprintReady, brandBio, setBrandBio, brandVoice
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ----
 // Shared chat primitives + reveal hook
-// ═══════════════════════════════════════════════════════════════════
+// ----
 
 // Stagger an array of timers, returning an array of booleans for each milestone.
 function useReveal(active, steps) {
