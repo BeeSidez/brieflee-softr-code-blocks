@@ -89,6 +89,24 @@ export default function Block() {
     if (hydratedForRecordIdRef.current === record.id) return;
     hydratedForRecordIdRef.current = record.id;
 
+    // DIAGNOSTIC: dump the raw record so we know exactly what Softr
+    // returns. Open dev tools → Console after pasting this. Remove
+    // after we've nailed the data shape.
+    try {
+      // eslint-disable-next-line no-console
+      console.log("[workspace] RAW RECORD:", record);
+      // eslint-disable-next-line no-console
+      console.log("[workspace] TOP-LEVEL KEYS:", Object.keys(record));
+      // eslint-disable-next-line no-console
+      console.log(
+        "[workspace] FIELDS KEYS:",
+        record.fields ? Object.keys(record.fields) : "(no .fields)",
+      );
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[workspace] log error:", e);
+    }
+
     // Read by alias first, then fall back to .fields[snake_case], then
     // to .fields[fieldId], then to bare snake_case. Field IDs verified
     // against the live Softr database via the Tables API — all correct.
@@ -334,7 +352,6 @@ export default function Block() {
           <Input
             value={draft.name}
             onChange={(e) => setField("name", e.target.value)}
-            placeholder="e.g. Brieflee Beta"
           />
         </FieldRow>
 
@@ -396,7 +413,6 @@ export default function Block() {
           <Textarea
             value={draft.brandBio}
             onChange={(e) => setField("brandBio", e.target.value)}
-            placeholder="One or two sentences on what your brand is and who it's for."
             rows={3}
           />
         </FieldRow>
@@ -405,7 +421,6 @@ export default function Block() {
           <Textarea
             value={draft.brandVoice}
             onChange={(e) => setField("brandVoice", e.target.value)}
-            placeholder="The tone of voice your content should hit."
             rows={3}
           />
         </FieldRow>
@@ -414,7 +429,6 @@ export default function Block() {
           <Textarea
             value={draft.brandCta}
             onChange={(e) => setField("brandCta", e.target.value)}
-            placeholder="The call-to-action your videos should drive towards."
             rows={2}
           />
         </FieldRow>
@@ -423,7 +437,6 @@ export default function Block() {
           <Textarea
             value={draft.niche}
             onChange={(e) => setField("niche", e.target.value)}
-            placeholder="The category or vertical you operate in."
             rows={2}
           />
         </FieldRow>
@@ -443,7 +456,6 @@ export default function Block() {
           <Textarea
             value={draft.targetAudience}
             onChange={(e) => setField("targetAudience", e.target.value)}
-            placeholder="Demographic, psychographic, where they spend time."
             rows={3}
           />
         </FieldRow>
@@ -452,7 +464,6 @@ export default function Block() {
           <Textarea
             value={draft.audiencePainPoints}
             onChange={(e) => setField("audiencePainPoints", e.target.value)}
-            placeholder="The problems your audience needs solving."
             rows={3}
           />
         </FieldRow>
@@ -461,7 +472,6 @@ export default function Block() {
           <Textarea
             value={draft.audienceObjectives}
             onChange={(e) => setField("audienceObjectives", e.target.value)}
-            placeholder="The outcomes your audience is trying to reach."
             rows={3}
           />
         </FieldRow>

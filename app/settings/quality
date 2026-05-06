@@ -245,13 +245,27 @@ export default function Block() {
   const savedFlashTimerRef = useRef(null);
 
   // ---- Hydrate from record (re-runs when record.id changes) -------
-  // Reads by alias first, then falls back to record.fields[snake_case]
-  // and record.fields[fieldId]. Field IDs verified via the Softr
-  // Tables API — matches the live database schema.
   useEffect(() => {
     if (!record) return;
     if (hydratedForRecordIdRef.current === record.id) return;
     hydratedForRecordIdRef.current = record.id;
+
+    // DIAGNOSTIC: dump the raw record so we know exactly what Softr
+    // returns for accounts. Remove once data shape is confirmed.
+    try {
+      // eslint-disable-next-line no-console
+      console.log("[quality] RAW RECORD:", record);
+      // eslint-disable-next-line no-console
+      console.log("[quality] TOP-LEVEL KEYS:", Object.keys(record));
+      // eslint-disable-next-line no-console
+      console.log(
+        "[quality] FIELDS KEYS:",
+        record.fields ? Object.keys(record.fields) : "(no .fields)",
+      );
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[quality] log error:", e);
+    }
 
     // ai_mode (single SELECT). Field ID O9x4n.
     const aiRaw =
