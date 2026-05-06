@@ -193,14 +193,17 @@ export default function Block() {
   );
 }
 
-// Account name lookup — tries common Softr access paths.
-// Softr can surface the primary field as `name` (when in q.select()),
-// `title` (in some hooks), or nested under `.fields`. Try all of them.
+// Account name lookup — Softr can surface the primary field under the
+// alias (record.name), nested in record.fields[snake_case], OR keyed
+// by field ID. Verified the name field ID is "aAKkT" via the Softr
+// Tables API. Try all paths.
 function extractName(account) {
   const candidates = [
     account?.name,
-    account?.title,
     account?.fields?.name,
+    account?.fields?.aAKkT,
+    account?.aAKkT,
+    account?.title,
     account?.fields?.title,
   ];
   for (const raw of candidates) {

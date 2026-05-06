@@ -87,32 +87,37 @@ export default function Block() {
     if (!record || hydratedRef.current) return;
     hydratedRef.current = true;
 
-    // Debug: log the raw record so we can see exactly what Softr is
-    // returning. Open dev tools → Console (Cmd+Opt+I) to inspect.
-    // Remove this log once data loads correctly.
-    // eslint-disable-next-line no-console
-    console.log("[workspace] hydrating from record:", record);
-    // eslint-disable-next-line no-console
-    console.log("[workspace] field samples:", {
-      name: record.name,
-      brandBio: record.brandBio,
-      logo: record.logo,
-      raw_keys: Object.keys(record || {}),
-    });
+    // Read by alias first, then fall back to .fields[snake_case], then
+    // to .fields[fieldId], then to bare snake_case. Field IDs verified
+    // against the live Softr database via the Tables API — all correct.
+    const get = (alias, fieldId, snake) =>
+      extractText(
+        record[alias] ??
+        record.fields?.[snake] ??
+        record.fields?.[fieldId] ??
+        record[snake] ??
+        record[fieldId],
+      );
 
     const next = {
-      name: extractText(record.name),
-      niche: extractText(record.niche),
-      brandBio: extractText(record.brandBio),
-      brandVoice: extractText(record.brandVoice),
-      brandCta: extractText(record.brandCta),
-      targetAudience: extractText(record.targetAudience),
-      audiencePainPoints: extractText(record.audiencePainPoints),
-      audienceObjectives: extractText(record.audienceObjectives),
+      name:               get("name",               "aAKkT", "name"),
+      niche:              get("niche",              "vOp4b", "niche"),
+      brandBio:           get("brandBio",           "iVPat", "brand_bio"),
+      brandVoice:         get("brandVoice",         "ybmp8", "brand_voice"),
+      brandCta:           get("brandCta",           "s9vzj", "brand_cta"),
+      targetAudience:     get("targetAudience",     "6g1Vd", "target_audience"),
+      audiencePainPoints: get("audiencePainPoints", "B4zya", "audience_pain_points"),
+      audienceObjectives: get("audienceObjectives", "5Wq2k", "audience_objectives"),
     };
     setSaved(next);
     setDraft(next);
-    setLogoSaved(record.logo ?? null);
+    setLogoSaved(
+      record.logo ??
+      record.fields?.logo ??
+      record.fields?.q1B5K ??
+      record.q1B5K ??
+      null,
+    );
   }, [record]);
 
   // ---- Update hook -------------------------------------------------
