@@ -11,8 +11,9 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Globe, FileText, ToggleLeft, ListChecks, Sliders, Clock,
-  Edit2, Megaphone, Zap,
+  Edit2, Megaphone, Zap, PlayCircle, X,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { useRecords, useRecordUpdate, q } from "@/lib/datasource";
 import { useCurrentUser } from "@/lib/user";
 import { toast } from "sonner";
@@ -242,6 +243,8 @@ const THRESHOLD_ROWS = [
 // ---- Constants ----------------------------------------------------
 const LEE_AVATAR = "https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png";
 const FINISH_URL = "/new";
+// Softr-hosted explainer video. No YouTube UI -> no distractions, can't click out.
+const HOW_VIDEO_URL = "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/c84a1dcc-34aa-4dd0-8871-a72c7d64bd92.mp4";
 
 const STEP_LABELS = {
   1: "Brand setup",
@@ -378,14 +381,20 @@ export default function Block() {
     });
     save(fields, () => markSavedAndAdvance(5));
   };
+  const [showConfetti, setShowConfetti] = useState(false);
+  const finishWithConfetti = () => {
+    setShowConfetti(true);
+    setTimeout(() => { window.location.href = FINISH_URL; }, 2600);
+  };
+
   const handleStep6 = () => {
     const blueprintKeys = ["name", "brandBio", "brandVoice", "brandCta", "niche", "targetAudience", "audiencePainPoints", "audienceObjectives"];
     const updates = {};
     blueprintKeys.forEach((k) => {
       if (editedValues[k] !== undefined) updates[k] = editedValues[k];
     });
-    if (Object.keys(updates).length === 0) { window.location.href = FINISH_URL; return; }
-    save(updates, () => { window.location.href = FINISH_URL; });
+    if (Object.keys(updates).length === 0) { finishWithConfetti(); return; }
+    save(updates, finishWithConfetti);
   };
 
   if (status === "pending") return <Loading />;
@@ -395,6 +404,7 @@ export default function Block() {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "linear-gradient(to bottom, rgba(217, 224, 255, 0.15), rgba(255, 255, 255, 1))" }}>
       <Style />
+      {showConfetti && <Confetti />}
       <ProgressDots currentStep={currentStep} />
 
       <div className="flex-1 overflow-y-auto pb-32">
@@ -516,7 +526,7 @@ function Welcome({ user, active, done, onStart }) {
     return () => t.forEach(clearTimeout);
   }, [active]);
 
-  if (done) return <Collapsed text="Welcome" />;
+  if (done) return null;
   const firstName = user?.fullName?.split(" ")[0] || "there";
 
   return (
@@ -629,7 +639,7 @@ function Step1({ active, done, hasWebsite, setHasWebsite, website, setWebsite, d
     return () => t.forEach(clearTimeout);
   }, [active]);
 
-  if (done) return <Collapsed text={STEP_LABELS[1]} />;
+  if (done) return null;
 
   // Strength meter (matches screen-2)
   const strengthColor = description.length < 100 ? "#d92626" : "#20956f";
@@ -856,7 +866,7 @@ function Step2({ active, done, aiModeId, setAiModeId, onSave, saving }) {
     return () => t.forEach(clearTimeout);
   }, [active]);
 
-  if (done) return <Collapsed text={STEP_LABELS[2]} />;
+  if (done) return null;
 
   return (
     <div>
@@ -938,79 +948,136 @@ function Step2({ active, done, aiModeId, setAiModeId, onSave, saving }) {
 }
 
 // =====================================================================
-// Step 3 - How Brieflee works (lifted from screen-5, skippable)
+// Step 3 - How Brieflee works (interactive: watch-toggle video + Got-it
+// per card). Skippable.
 // =====================================================================
 function Step3({ active, done, skipped, onGotIt, onSkip }) {
+  // Lee intro
   const [showTyping1, setShowTyping1] = useState(false);
   const [showMessage1, setShowMessage1] = useState(false);
+  const [showWatchBtn, setShowWatchBtn] = useState(false);
+  // Lee transition before cards
   const [showTyping2, setShowTyping2] = useState(false);
-  const [showVideo, setShowVideo] = useState(false);
-  const [showTyping3, setShowTyping3] = useState(false);
-  const [showCards, setShowCards] = useState(false);
-  const [showTyping4, setShowTyping4] = useState(false);
   const [showMessage2, setShowMessage2] = useState(false);
-  const [showTyping5, setShowTyping5] = useState(false);
+  // Card 1 (Campaigns) and its acknowledgement
+  const [showCard1, setShowCard1] = useState(false);
+  const [card1Acked, setCard1Acked] = useState(false);
+  // Typing + Card 2 (Quick reviews)
+  const [showTyping3, setShowTyping3] = useState(false);
+  const [showCard2, setShowCard2] = useState(false);
+  const [card2Acked, setCard2Acked] = useState(false);
+  // Final wrap-up
+  const [showTyping4, setShowTyping4] = useState(false);
   const [showMessage3, setShowMessage3] = useState(false);
   const [showActions, setShowActions] = useState(false);
 
+  // Local watch toggle for the explainer video
+  const [showVideoPlayer, setShowVideoPlayer] = useState(false);
+
+  // Initial reveal: intro -> watch button -> transition -> first card
   useEffect(() => {
     if (!active) return;
     const t = [];
     t.push(setTimeout(() => setShowTyping1(true), 300));
-    t.push(setTimeout(() => { setShowTyping1(false); setShowMessage1(true); }, 1500));
-    t.push(setTimeout(() => setShowTyping2(true), 2000));
-    t.push(setTimeout(() => { setShowTyping2(false); setShowVideo(true); }, 3800));
-    t.push(setTimeout(() => setShowTyping3(true), 4300));
-    t.push(setTimeout(() => { setShowTyping3(false); setShowCards(true); }, 6500));
-    t.push(setTimeout(() => setShowTyping4(true), 7000));
-    t.push(setTimeout(() => { setShowTyping4(false); setShowMessage2(true); }, 9200));
-    t.push(setTimeout(() => setShowTyping5(true), 9700));
-    t.push(setTimeout(() => { setShowTyping5(false); setShowMessage3(true); }, 10500));
-    t.push(setTimeout(() => setShowActions(true), 11000));
+    t.push(setTimeout(() => { setShowTyping1(false); setShowMessage1(true); }, 1800));
+    t.push(setTimeout(() => setShowWatchBtn(true), 2300));
+    t.push(setTimeout(() => setShowTyping2(true), 2800));
+    t.push(setTimeout(() => { setShowTyping2(false); setShowMessage2(true); }, 4500));
+    t.push(setTimeout(() => setShowCard1(true), 5000));
     return () => t.forEach(clearTimeout);
   }, [active]);
 
-  if (done || skipped) return <Collapsed text={STEP_LABELS[3]} skipped={skipped} />;
+  // After user clicks Got-it on card 1: typing -> card 2
+  useEffect(() => {
+    if (!card1Acked) return;
+    const t = [];
+    t.push(setTimeout(() => setShowTyping3(true), 400));
+    t.push(setTimeout(() => { setShowTyping3(false); setShowCard2(true); }, 1900));
+    return () => t.forEach(clearTimeout);
+  }, [card1Acked]);
+
+  // After user clicks Got-it on card 2: typing -> Got it? -> actions
+  useEffect(() => {
+    if (!card2Acked) return;
+    const t = [];
+    t.push(setTimeout(() => setShowTyping4(true), 400));
+    t.push(setTimeout(() => { setShowTyping4(false); setShowMessage3(true); }, 1900));
+    t.push(setTimeout(() => setShowActions(true), 2400));
+    return () => t.forEach(clearTimeout);
+  }, [card2Acked]);
+
+  if (done || skipped) return null;
 
   return (
     <div>
       {showTyping1 && <TypingWithAvatar />}
 
       {showMessage1 && (
-        <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
-          <div className="flex gap-2.5 items-start">
-            <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
-            <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
-              <p className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>Before you dive in, here's two ways you can use Brieflee.</p>
+        <BubbleWithAvatar>
+          Before you dive in, let me show you how Brieflee works.
+        </BubbleWithAvatar>
+      )}
+
+      {/* Watch the video — toggleable. Click to open the inline player; X to close. */}
+      {showWatchBtn && (
+        <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          {!showVideoPlayer ? (
+            <Button
+              onClick={() => setShowVideoPlayer(true)}
+              className="text-sm py-2 px-4 shadow-sm hover:shadow-md transition-all duration-300 inline-flex items-center gap-2"
+              style={{ backgroundColor: "#fff", color: "#001364", border: "1px solid rgba(217, 224, 255, 0.7)", borderRadius: 8, fontWeight: 500 }}
+            >
+              <PlayCircle className="w-4 h-4" style={{ color: "#7A93FF" }} />
+              Watch the 60-second tour
+            </Button>
+          ) : (
+            <div className="max-w-lg">
+              <div className="rounded-xl overflow-hidden shadow-sm relative" style={{ border: "1px solid rgba(217, 224, 255, 0.4)", background: "#000" }}>
+                <video
+                  src={HOW_VIDEO_URL}
+                  controls
+                  autoPlay
+                  playsInline
+                  className="block w-full"
+                  style={{ display: "block" }}
+                />
+                <button
+                  onClick={() => setShowVideoPlayer(false)}
+                  aria-label="Close video"
+                  className="absolute top-2 right-2 inline-flex items-center justify-center"
+                  style={{
+                    width: 28, height: 28, borderRadius: 999,
+                    background: "rgba(255,255,255,0.9)", color: "#001364",
+                    border: "none", cursor: "pointer",
+                  }}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <button
+                onClick={() => setShowVideoPlayer(false)}
+                className="text-xs mt-2"
+                style={{ color: "#7A93FF", fontWeight: 500, background: "transparent", border: "none", cursor: "pointer" }}
+              >
+                Hide video
+              </button>
             </div>
-          </div>
+          )}
         </div>
       )}
 
       {showTyping2 && <TypingNoAvatar />}
 
-      {showVideo && (
-        <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
-          <div className="max-w-lg rounded-xl overflow-hidden shadow-sm" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
-            <div style={{ position: "relative", paddingBottom: "56.25%", height: 0 }}>
-              <iframe
-                src="https://www.youtube.com/embed/1r2MMI8BsQ8"
-                title="Brieflee overview"
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }}
-              />
-            </div>
-          </div>
-        </div>
+      {showMessage2 && (
+        <BubbleNoAvatar>
+          Either way, you'll be using Brieflee in one of two ways. Here's the first.
+        </BubbleNoAvatar>
       )}
 
-      {showTyping3 && <TypingNoAvatar />}
-
-      {showCards && (
+      {/* Card 1 — Campaigns */}
+      {showCard1 && (
         <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
-          <div className="space-y-3 max-w-lg">
+          <div className="max-w-lg space-y-2">
             <div className="bg-white rounded-xl px-4 py-3 shadow-sm" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
               <div className="flex items-center gap-2 mb-1.5">
                 <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ backgroundColor: "#294FF6" }}>
@@ -1022,6 +1089,25 @@ function Step3({ active, done, skipped, onGotIt, onSkip }) {
                 When you want creators to submit content to you. Create a project, build your briefs, share the link. Creators upload directly and I review everything as it comes in.
               </p>
             </div>
+            {!card1Acked && (
+              <Button
+                onClick={() => setCard1Acked(true)}
+                className="text-xs py-1.5 px-4 shadow-sm hover:shadow-md transition-all duration-300"
+                style={{ backgroundColor: "#7A93FF", color: "#fff", borderRadius: 16, fontWeight: 500 }}
+              >
+                👍 Got it
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showTyping3 && <TypingNoAvatar />}
+
+      {/* Card 2 — Quick reviews */}
+      {showCard2 && (
+        <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="max-w-lg space-y-2">
             <div className="bg-white rounded-xl px-4 py-3 shadow-sm" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
               <div className="flex items-center gap-2 mb-1.5">
                 <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ backgroundColor: "#294FF6" }}>
@@ -1033,36 +1119,25 @@ function Step3({ active, done, skipped, onGotIt, onSkip }) {
                 When you already have the content. Upload videos you've received or created, paste in your brief, and I'll review them all in one go.
               </p>
             </div>
+            {!card2Acked && (
+              <Button
+                onClick={() => setCard2Acked(true)}
+                className="text-xs py-1.5 px-4 shadow-sm hover:shadow-md transition-all duration-300"
+                style={{ backgroundColor: "#7A93FF", color: "#fff", borderRadius: 16, fontWeight: 500 }}
+              >
+                👍 Got it
+              </Button>
+            )}
           </div>
         </div>
       )}
 
       {showTyping4 && <TypingWithAvatar />}
 
-      {showMessage2 && (
-        <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
-          <div className="flex gap-2.5 items-start">
-            <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
-            <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
-              <p className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>
-                Want to brief creators? Go to Campaigns. Want to check content quickly yourself? Go to Reviews. Simple.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showTyping5 && <TypingNoAvatar />}
-
       {showMessage3 && (
-        <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
-          <div className="flex gap-2.5 items-start">
-            <div className="w-8 h-8 flex-shrink-0" />
-            <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
-              <p className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>Got it?</p>
-            </div>
-          </div>
-        </div>
+        <BubbleWithAvatar>
+          That's it. Want to brief creators? Go to Campaigns. Want to check content quickly yourself? Go to Reviews. Simple.
+        </BubbleWithAvatar>
       )}
 
       {showActions && (
@@ -1073,14 +1148,7 @@ function Step3({ active, done, skipped, onGotIt, onSkip }) {
               className="text-xs px-4 py-1.5 shadow-sm hover:shadow-md transition-all duration-300"
               style={{ backgroundColor: "#7A93FF", color: "#fff", borderRadius: 16, fontWeight: 500 }}
             >
-              👍 Got it
-            </Button>
-            <Button
-              onClick={onGotIt}
-              className="text-xs px-4 py-1.5 shadow-sm hover:shadow-md transition-all duration-300"
-              style={{ backgroundColor: "#fff", color: "#7A93FF", border: "1px solid #7A93FF", borderRadius: 16, fontWeight: 500 }}
-            >
-              🙌 Makes sense
+              🙌 All clear
             </Button>
             <Button
               onClick={onSkip}
@@ -1127,7 +1195,7 @@ function Step4({ active, done, skipped, qaIds, setQaIds, onSave, onSkip, saving 
     return () => t.forEach(clearTimeout);
   }, [active]);
 
-  if (done || skipped) return <Collapsed text={STEP_LABELS[4]} skipped={skipped} />;
+  if (done || skipped) return null;
 
   const toggle = (id) =>
     setQaIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
@@ -1237,7 +1305,7 @@ function Step5({ active, done, skipped, thresholds, setThresholds, onSave, onSki
     return () => t.forEach(clearTimeout);
   }, [active]);
 
-  if (done || skipped) return <Collapsed text={STEP_LABELS[5]} skipped={skipped} />;
+  if (done || skipped) return null;
 
   const setOne = (rowKey, optId) =>
     setThresholds((cur) => {
@@ -1266,44 +1334,57 @@ function Step5({ active, done, skipped, thresholds, setThresholds, onSave, onSki
               <h3 className="text-base font-medium" style={{ color: "#001364" }}>Default standards</h3>
               <p className="text-xs" style={{ color: "#7A93FF", fontWeight: 300 }}>Quality bar for each check</p>
             </div>
-            <div className="space-y-3">
-              {THRESHOLD_ROWS.map((row) => (
-                <div key={row.key} className="space-y-1.5">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <label className="text-xs font-medium" style={{ color: "#001364" }}>{row.label}</label>
-                    {thresholds[row.key] && (
-                      <button
-                        onClick={() => setThresholds((c) => { const n = { ...c }; delete n[row.key]; return n; })}
-                        className="text-xs"
-                        style={{ color: "#7A93FF", background: "transparent", border: "none", cursor: "pointer" }}
-                      >
-                        Clear
-                      </button>
+            <div className="space-y-4">
+              {THRESHOLD_ROWS.map((row) => {
+                // Required = a value is set for this threshold. Switch toggles
+                // it on/off; off hides the chips and unsets the value.
+                const required = !!thresholds[row.key];
+                return (
+                  <div key={row.key} className="space-y-1.5 pb-3" style={{ borderBottom: "1px dashed rgba(217, 224, 255, 0.6)" }}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <label className="text-xs font-medium block" style={{ color: "#001364" }}>{row.label}</label>
+                        <p className="text-xs leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>{row.description}</p>
+                      </div>
+                      <Switch
+                        checked={required}
+                        onCheckedChange={(checked) => {
+                          if (!checked) {
+                            // Turn off: clear the value
+                            setThresholds((c) => { const n = { ...c }; delete n[row.key]; return n; });
+                          } else {
+                            // Turn on: set to the first non-"None" option as a sensible default
+                            const firstReal = row.options.find((o) => o.label !== "None") || row.options[0];
+                            if (firstReal) setOne(row.key, firstReal.id);
+                          }
+                        }}
+                      />
+                    </div>
+                    {required && (
+                      <div className="flex flex-wrap gap-1.5 pt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                        {row.options.filter((opt) => opt.label !== "None").map((opt) => {
+                          const on = thresholds[row.key] === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              onClick={() => setOne(row.key, opt.id)}
+                              className="text-xs rounded-full px-3 py-1 transition-all duration-150"
+                              style={{
+                                background: on ? "#7A93FF" : "#fff",
+                                color: on ? "#fff" : "#001364",
+                                border: on ? "1px solid #7A93FF" : "1px solid rgba(217, 224, 255, 0.7)",
+                                fontWeight: on ? 600 : 400,
+                              }}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
-                  <p className="text-xs" style={{ color: "#000F4D", fontWeight: 300 }}>{row.description}</p>
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {row.options.map((opt) => {
-                      const on = thresholds[row.key] === opt.id;
-                      return (
-                        <button
-                          key={opt.id}
-                          onClick={() => setOne(row.key, opt.id)}
-                          className="text-xs rounded-full px-3 py-1 transition-all duration-150"
-                          style={{
-                            background: on ? "#7A93FF" : "#fff",
-                            color: on ? "#fff" : "#001364",
-                            border: on ? "1px solid #7A93FF" : "1px solid rgba(217, 224, 255, 0.7)",
-                            fontWeight: on ? 600 : 400,
-                          }}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <div className="text-xs" style={{ color: "#7A93FF" }}>
               {selected === 0 ? "No thresholds set." : `${selected} threshold${selected === 1 ? "" : "s"} set.`}
@@ -1408,7 +1489,7 @@ function Step6({ active, done, blueprintReady, record, editingField, setEditingF
     return () => t.forEach(clearTimeout);
   }, [active]);
 
-  if (done) return <Collapsed text={STEP_LABELS[6]} />;
+  if (done) return null;
 
   const getFieldValue = (key) => {
     if (editedValues[key] !== undefined) return editedValues[key];
@@ -1672,6 +1753,66 @@ function Style() {
       .typing-dot { animation: bounce 1.4s infinite; }
       .typing-dot:nth-child(2) { animation-delay: 0.2s; }
       .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+      @keyframes confetti-fall {
+        0%   { transform: translateY(-20vh) rotate(0deg);   opacity: 1; }
+        100% { transform: translateY(110vh) rotate(720deg); opacity: 0.4; }
+      }
+      .confetti-piece {
+        position: fixed;
+        top: 0;
+        width: 8px;
+        height: 14px;
+        border-radius: 2px;
+        pointer-events: none;
+        z-index: 60;
+        animation: confetti-fall 2.6s cubic-bezier(0.2, 0.6, 0.4, 1) forwards;
+      }
     `}</style>
+  );
+}
+
+// 60-piece CSS confetti, no JS deps. Triggered on completion.
+function Confetti() {
+  const colors = ["#7A93FF", "#294FF6", "#D9E0FF", "#20956f", "#f5b301", "#ec4899"];
+  const pieces = Array.from({ length: 60 }).map((_, i) => ({
+    left: `${Math.random() * 100}%`,
+    color: colors[i % colors.length],
+    delay: `${Math.random() * 0.6}s`,
+    duration: `${2 + Math.random() * 1.2}s`,
+    rotate: `${Math.random() * 360}deg`,
+  }));
+  return (
+    <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 60 }}>
+      {pieces.map((p, i) => (
+        <span
+          key={i}
+          className="confetti-piece"
+          style={{
+            left: p.left,
+            backgroundColor: p.color,
+            animationDelay: p.delay,
+            animationDuration: p.duration,
+            transform: `rotate(${p.rotate})`,
+          }}
+        />
+      ))}
+      <div
+        className="absolute"
+        style={{
+          top: "40%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          background: "rgba(255, 255, 255, 0.95)",
+          border: "1px solid rgba(217, 224, 255, 0.7)",
+          borderRadius: 16,
+          padding: "20px 28px",
+          textAlign: "center",
+          boxShadow: "0 12px 40px rgba(41, 79, 246, 0.18)",
+        }}
+      >
+        <div className="text-2xl mb-1" style={{ color: "#001364", fontWeight: 800 }}>You're all set! 🎉</div>
+        <div className="text-sm" style={{ color: "#001364", fontWeight: 300 }}>Taking you to your dashboard...</div>
+      </div>
+    </div>
   );
 }
