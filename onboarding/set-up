@@ -1,5 +1,5 @@
-// /set-up -- single Vibe Code block, the whole post-payment onboarding setup.
-// Welcome screen + six sub-steps in one chat with Lee.
+// /set-up -- single Vibe Code block. Welcome + 6 sub-steps in one chat with Lee.
+// JSX lifted from screen-1 / screen-2 / screen-4 / screen-5 / screen-3 (blueprint half).
 //
 // SOFTR CONFIG REQUIRED:
 //   Source tab: bind to ACCOUNTS in "brieflee beta", filter to logged-in user.
@@ -9,14 +9,17 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import { Globe, FileText, ToggleLeft, ListChecks, Sliders, Clock, ArrowRight } from "lucide-react";
+import {
+  Globe, FileText, ToggleLeft, ListChecks, Sliders, Clock,
+  Edit2, Megaphone, Zap,
+} from "lucide-react";
 import { useRecords, useRecordUpdate, q } from "@/lib/datasource";
 import { useCurrentUser } from "@/lib/user";
 import { toast } from "sonner";
 
 // ---- Field map (ACCOUNTS) -----------------------------------------
 const select = q.select({
+  name:              "aAKkT",
   website:           "RaK4B",
   description:       "RQcNB",
   useCase:           "i3nJ9",
@@ -42,6 +45,7 @@ const select = q.select({
 });
 
 const updateFields = q.select({
+  name:              "aAKkT",
   website:           "RaK4B",
   description:       "RQcNB",
   useCase:           "i3nJ9",
@@ -65,7 +69,7 @@ const updateFields = q.select({
   audienceObjectives: "5Wq2k",
 });
 
-// ---- use_case option UUIDs ---------------------------------------
+// ---- Use case option UUIDs ---------------------------------------
 const USE_CASE_OPTIONS = [
   { id: "8a24a59b-40f7-4988-851e-e2837c7da0ba", label: "Review UGC creator submissions" },
   { id: "92b35e89-622b-41fb-abca-78a30b55f8f1", label: "Review Influencer submissions" },
@@ -74,7 +78,7 @@ const USE_CASE_OPTIONS = [
   { id: "825f9e77-c70b-42a1-b3ec-516b25fccde9", label: "Other" },
 ];
 
-// ---- ai_mode option UUIDs ----------------------------------------
+// ---- AI mode options ---------------------------------------------
 const AI_MODE_OPTIONS = [
   {
     id: "5b1b9734-20b6-4070-bd32-a3a4d31d0ed9",
@@ -94,7 +98,7 @@ const AI_MODE_OPTIONS = [
   },
 ];
 
-// ---- qa_checklist option UUIDs (multi) ---------------------------
+// ---- QA checklist options ----------------------------------------
 const QA_CHECK_OPTIONS = [
   { id: "1c014e7b-fc4b-462a-8081-9c485045b748", label: "Product visibility" },
   { id: "4b7319f2-9c96-4216-98b9-54b4ec4ed9a9", label: "Product usage" },
@@ -124,7 +128,7 @@ const QA_CHECK_OPTIONS = [
   { id: "cff021c4-bf63-4ac9-993a-eb80b83b7965", label: "Inspiration link match" },
 ];
 
-// ---- threshold rows ----------------------------------------------
+// ---- Threshold rows (lifted from screen-3 thresholdFields) -------
 const THRESHOLD_ROWS = [
   {
     key: "productScreenTime", label: "Product visibility",
@@ -238,7 +242,7 @@ const THRESHOLD_ROWS = [
 // ---- Constants ----------------------------------------------------
 const LEE_AVATAR = "https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png";
 const FINISH_URL = "/new";
-const TOTAL_PROGRESS = 6;
+
 const STEP_LABELS = {
   1: "Brand setup",
   2: "Review mode",
@@ -249,7 +253,7 @@ const STEP_LABELS = {
 };
 
 // =====================================================================
-// Block
+// Block — orchestrator
 // =====================================================================
 export default function Block() {
   const user = useCurrentUser();
@@ -258,11 +262,10 @@ export default function Block() {
     data?.pages?.[0]?.items?.[0] ??
     (Array.isArray(data) ? data[0] : null);
 
-  const [currentStep, setCurrentStep] = useState(0); // 0 = welcome, 1..6 = sub-steps
+  const [currentStep, setCurrentStep] = useState(0);
   const [savedSteps, setSavedSteps] = useState({});
   const [skippedSteps, setSkippedSteps] = useState({});
 
-  // Refs for smooth scroll
   const refWelcome = useRef(null);
   const ref1 = useRef(null);
   const ref2 = useRef(null);
@@ -272,29 +275,26 @@ export default function Block() {
   const ref6 = useRef(null);
   const stepRefs = { 0: refWelcome, 1: ref1, 2: ref2, 3: ref3, 4: ref4, 5: ref5, 6: ref6 };
 
-  // Step 1 state
+  // Step 1
+  const [hasWebsite, setHasWebsite] = useState(true);
   const [website, setWebsite] = useState("");
-  const [noWebsite, setNoWebsite] = useState(false);
   const [description, setDescription] = useState("");
   const [useCases, setUseCases] = useState([]);
+  const [showOtherInput, setShowOtherInput] = useState(false);
+  const [otherUseCase, setOtherUseCase] = useState("");
 
-  // Step 2 state
+  // Step 2
   const [aiModeId, setAiModeId] = useState(null);
 
-  // Step 4 state
+  // Step 4
   const [qaIds, setQaIds] = useState([]);
 
-  // Step 5 state
+  // Step 5
   const [thresholds, setThresholds] = useState({});
 
-  // Step 6 state
-  const [brandBio, setBrandBio] = useState("");
-  const [brandVoice, setBrandVoice] = useState("");
-  const [brandCta, setBrandCta] = useState("");
-  const [niche, setNiche] = useState("");
-  const [targetAudience, setTargetAudience] = useState("");
-  const [audiencePainPoints, setAudiencePainPoints] = useState("");
-  const [audienceObjectives, setAudienceObjectives] = useState("");
+  // Step 6
+  const [editingField, setEditingField] = useState(null);
+  const [editedValues, setEditedValues] = useState({});
 
   const updateRecord = useRecordUpdate({
     fields: updateFields,
@@ -307,7 +307,7 @@ export default function Block() {
   // Pre-fill from record
   useEffect(() => {
     if (!record) return;
-    if (record.website && !website) setWebsite(record.website);
+    if (record.website && !website) { setWebsite(record.website); setHasWebsite(true); }
     if (record.description && !description) setDescription(record.description);
     if (Array.isArray(record.useCase) && useCases.length === 0) {
       setUseCases(record.useCase.map((c) => c.id || c));
@@ -323,13 +323,6 @@ export default function Block() {
       });
       return next;
     });
-    if (record.brandBio && !brandBio) setBrandBio(record.brandBio);
-    if (record.brandVoice && !brandVoice) setBrandVoice(record.brandVoice);
-    if (record.brandCta && !brandCta) setBrandCta(record.brandCta);
-    if (record.niche && !niche) setNiche(record.niche);
-    if (record.targetAudience && !targetAudience) setTargetAudience(record.targetAudience);
-    if (record.audiencePainPoints && !audiencePainPoints) setAudiencePainPoints(record.audiencePainPoints);
-    if (record.audienceObjectives && !audienceObjectives) setAudienceObjectives(record.audienceObjectives);
   }, [record]); // eslint-disable-line
 
   const scrollTo = (step) => {
@@ -337,38 +330,30 @@ export default function Block() {
     if (!el) return;
     setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
-
-  const advance = (toStep) => {
-    setCurrentStep(toStep);
-    scrollTo(toStep);
-  };
-
-  const markSavedAndAdvance = (step) => {
-    setSavedSteps((cur) => ({ ...cur, [step]: true }));
-    advance(step + 1);
-  };
-  const markSkippedAndAdvance = (step) => {
-    setSkippedSteps((cur) => ({ ...cur, [step]: true }));
-    advance(step + 1);
-  };
+  const advance = (toStep) => { setCurrentStep(toStep); scrollTo(toStep); };
+  const markSavedAndAdvance = (step) => { setSavedSteps((c) => ({ ...c, [step]: true })); advance(step + 1); };
+  const markSkippedAndAdvance = (step) => { setSkippedSteps((c) => ({ ...c, [step]: true })); advance(step + 1); };
 
   const save = (fieldsObj, after) => {
-    if (!record?.id) {
-      toast.error("Couldn't find your account record.");
-      return;
-    }
+    if (!record?.id) { toast.error("Couldn't find your account record."); return; }
     updateRecord.mutate(
       { recordId: record.id, fields: fieldsObj },
       { onSuccess: () => { refetch(); after?.(); } },
     );
   };
 
+  // ---- Save handlers per step ------------------------------------
   const handleStep1 = () => {
+    if (useCases.length === 0) { toast.error("Please select at least one use case"); return; }
     const useCasePayload = USE_CASE_OPTIONS
       .filter((o) => useCases.includes(o.id))
       .map((o) => ({ id: o.id, label: o.label }));
     save(
-      { website: website.trim(), description: description.trim(), useCase: useCasePayload },
+      {
+        website: hasWebsite ? website.trim() : "",
+        description: !hasWebsite ? description.trim() : (record?.description || ""),
+        useCase: useCasePayload,
+      },
       () => markSavedAndAdvance(1),
     );
   };
@@ -394,18 +379,13 @@ export default function Block() {
     save(fields, () => markSavedAndAdvance(5));
   };
   const handleStep6 = () => {
-    save(
-      {
-        brandBio: brandBio.trim(),
-        brandVoice: brandVoice.trim(),
-        brandCta: brandCta.trim(),
-        niche: niche.trim(),
-        targetAudience: targetAudience.trim(),
-        audiencePainPoints: audiencePainPoints.trim(),
-        audienceObjectives: audienceObjectives.trim(),
-      },
-      () => { window.location.href = FINISH_URL; },
-    );
+    const blueprintKeys = ["name", "brandBio", "brandVoice", "brandCta", "niche", "targetAudience", "audiencePainPoints", "audienceObjectives"];
+    const updates = {};
+    blueprintKeys.forEach((k) => {
+      if (editedValues[k] !== undefined) updates[k] = editedValues[k];
+    });
+    if (Object.keys(updates).length === 0) { window.location.href = FINISH_URL; return; }
+    save(updates, () => { window.location.href = FINISH_URL; });
   };
 
   if (status === "pending") return <Loading />;
@@ -415,17 +395,12 @@ export default function Block() {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "linear-gradient(to bottom, rgba(217, 224, 255, 0.15), rgba(255, 255, 255, 1))" }}>
       <Style />
-      <ProgressDots active={currentStep} total={TOTAL_PROGRESS} />
+      <ProgressDots currentStep={currentStep} />
 
       <div className="flex-1 overflow-y-auto pb-32">
         <div className="container mx-auto px-4 py-8 max-w-2xl">
           <section ref={refWelcome}>
-            <Welcome
-              user={user}
-              active={currentStep === 0}
-              done={currentStep > 0}
-              onStart={() => advance(1)}
-            />
+            <Welcome user={user} active={currentStep === 0} done={currentStep > 0} onStart={() => advance(1)} />
           </section>
 
           {currentStep >= 1 && (
@@ -433,11 +408,12 @@ export default function Block() {
               <Step1
                 active={currentStep === 1}
                 done={!!savedSteps[1]}
-                skipped={!!skippedSteps[1]}
+                hasWebsite={hasWebsite} setHasWebsite={setHasWebsite}
                 website={website} setWebsite={setWebsite}
-                noWebsite={noWebsite} setNoWebsite={setNoWebsite}
                 description={description} setDescription={setDescription}
                 useCases={useCases} setUseCases={setUseCases}
+                showOtherInput={showOtherInput} setShowOtherInput={setShowOtherInput}
+                otherUseCase={otherUseCase} setOtherUseCase={setOtherUseCase}
                 onSave={handleStep1}
                 saving={updateRecord.status === "pending" && currentStep === 1}
               />
@@ -502,13 +478,9 @@ export default function Block() {
                 active={currentStep === 6}
                 done={!!savedSteps[6]}
                 blueprintReady={record.blueprintStatus?.label === "Complete"}
-                brandBio={brandBio} setBrandBio={setBrandBio}
-                brandVoice={brandVoice} setBrandVoice={setBrandVoice}
-                brandCta={brandCta} setBrandCta={setBrandCta}
-                niche={niche} setNiche={setNiche}
-                targetAudience={targetAudience} setTargetAudience={setTargetAudience}
-                audiencePainPoints={audiencePainPoints} setAudiencePainPoints={setAudiencePainPoints}
-                audienceObjectives={audienceObjectives} setAudienceObjectives={setAudienceObjectives}
+                record={record}
+                editingField={editingField} setEditingField={setEditingField}
+                editedValues={editedValues} setEditedValues={setEditedValues}
                 onFinish={handleStep6}
                 onRefetch={refetch}
                 saving={updateRecord.status === "pending" && currentStep === 6}
@@ -522,37 +494,37 @@ export default function Block() {
 }
 
 // =====================================================================
-// Welcome
+// Welcome (lifted from screen-1)
 // =====================================================================
 function Welcome({ user, active, done, onStart }) {
-  const [t1, setT1] = useState(false);
-  const [m1, setM1] = useState(false);
-  const [t2, setT2] = useState(false);
+  const [showTyping1, setShowTyping1] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [showTyping2, setShowTyping2] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
-  const [t3, setT3] = useState(false);
+  const [showTyping3, setShowTyping3] = useState(false);
   const [showButton, setShowButton] = useState(false);
 
   useEffect(() => {
     if (!active) return;
     const t = [];
-    t.push(setTimeout(() => setT1(true), 300));
-    t.push(setTimeout(() => { setT1(false); setM1(true); }, 2500));
-    t.push(setTimeout(() => setT2(true), 3000));
-    t.push(setTimeout(() => { setT2(false); setShowChecklist(true); }, 4500));
-    t.push(setTimeout(() => setT3(true), 5000));
-    t.push(setTimeout(() => { setT3(false); setShowButton(true); }, 5800));
+    t.push(setTimeout(() => setShowTyping1(true), 300));
+    t.push(setTimeout(() => { setShowTyping1(false); setShowWelcome(true); }, 2500));
+    t.push(setTimeout(() => setShowTyping2(true), 3000));
+    t.push(setTimeout(() => { setShowTyping2(false); setShowChecklist(true); }, 4500));
+    t.push(setTimeout(() => setShowTyping3(true), 5000));
+    t.push(setTimeout(() => { setShowTyping3(false); setShowButton(true); }, 5800));
     return () => t.forEach(clearTimeout);
   }, [active]);
 
   if (done) return <Collapsed text="Welcome" />;
-
   const firstName = user?.fullName?.split(" ")[0] || "there";
 
   return (
     <div>
-      {t1 && <Typing />}
-      {m1 && (
-        <div className="mb-4">
+      {showTyping1 && <TypingWithAvatar />}
+
+      {showWelcome && (
+        <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
           <div className="flex gap-2.5 items-start">
             <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
             <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
@@ -561,16 +533,17 @@ function Welcome({ user, active, done, onStart }) {
                 <br /><br />
                 I'm Lee, your AI review assistant. Nice to meet you.
                 <br /><br />
-                Let's get you set up so you can see Brieflee in action. It's quick and easy.
+                Let's get you set up so you can see Brieflee in action. It's quick and easy. Ready to get started?
               </p>
             </div>
           </div>
         </div>
       )}
 
-      {t2 && <Typing />}
+      {showTyping2 && <TypingNoAvatar />}
+
       {showChecklist && (
-        <div className="mb-4">
+        <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
           <div className="flex gap-2.5 items-start">
             <div className="w-8 h-8 flex-shrink-0" />
             <Card className="shadow-sm border max-w-lg" style={{ borderRadius: 10, borderColor: "rgba(217, 224, 255, 0.5)" }}>
@@ -578,20 +551,21 @@ function Welcome({ user, active, done, onStart }) {
                 <h3 className="text-sm" style={{ color: "#000F4D", fontWeight: 800 }}>A few steps to get started</h3>
               </CardHeader>
               <CardContent className="space-y-3 px-3 pb-3">
-                <ChecklistRow Icon={Globe}      label="Set up your brand"     time="1 min" body="Tell me about your brand so I know what to look for." last={false} />
+                <ChecklistRow Icon={Globe}      label="Set up your brand"     time="1 min" body="Tell us about your brand so Brieflee knows what to look for." last={false} />
                 <ChecklistRow Icon={ToggleLeft} label="Choose your review mode" time="1 min" body="How involved do you want to be when content comes in?" last={false} />
                 <ChecklistRow Icon={ListChecks} label="Pick your default checks" time="1 min" body="Which checks should always run on quick reviews." last={false} />
                 <ChecklistRow Icon={Sliders}    label="Set your standards"    time="2 min" body="How strict each check should be." last={false} />
-                <ChecklistRow Icon={FileText}   label="Review your content blueprint" time="2 min" body="A draft of your audience and brand voice from your website." last={true} />
+                <ChecklistRow Icon={FileText}   label="Review your content blueprint" time="2 min" body="I've pulled together a content blueprint from your website." last={true} />
               </CardContent>
             </Card>
           </div>
         </div>
       )}
 
-      {t3 && <Typing />}
+      {showTyping3 && <TypingWithAvatar />}
+
       {showButton && (
-        <div className="mb-4">
+        <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
           <div className="flex gap-2.5 items-start">
             <div className="w-8 h-8 flex-shrink-0" />
             <Button
@@ -599,7 +573,7 @@ function Welcome({ user, active, done, onStart }) {
               style={{ backgroundColor: "#7A93FF", color: "#fff", borderRadius: 8, fontWeight: 500 }}
               onClick={onStart}
             >
-              Get started ->
+              Get started →
             </Button>
           </div>
         </div>
@@ -632,74 +606,84 @@ function ChecklistRow({ Icon, label, time, body, last }) {
 }
 
 // =====================================================================
-// Step 1 - Set up your brand
+// Step 1 - Brand setup (lifted from screen-2)
 // =====================================================================
-function Step1({ active, done, skipped, website, setWebsite, noWebsite, setNoWebsite, description, setDescription, useCases, setUseCases, onSave, saving }) {
-  const [t1, setT1] = useState(false);
-  const [m1, setM1] = useState(false);
-  const [showInput, setShowInput] = useState(false);
-  const [t2, setT2] = useState(false);
-  const [m2, setM2] = useState(false);
-  const [showChips, setShowChips] = useState(false);
-  const [showSave, setShowSave] = useState(false);
+function Step1({ active, done, hasWebsite, setHasWebsite, website, setWebsite, description, setDescription, useCases, setUseCases, showOtherInput, setShowOtherInput, otherUseCase, setOtherUseCase, onSave, saving }) {
+  const [showTyping1, setShowTyping1] = useState(false);
+  const [showMessage1, setShowMessage1] = useState(false);
+  const [showTyping2, setShowTyping2] = useState(false);
+  const [showInputArea, setShowInputArea] = useState(false);
+  const [websiteSubmitted, setWebsiteSubmitted] = useState(false);
+  const [showTyping3, setShowTyping3] = useState(false);
+  const [showMessage2, setShowMessage2] = useState(false);
+  const [showTyping4, setShowTyping4] = useState(false);
+  const [showUseCases, setShowUseCases] = useState(false);
 
   useEffect(() => {
     if (!active) return;
     const t = [];
-    t.push(setTimeout(() => setT1(true), 500));
-    t.push(setTimeout(() => { setT1(false); setM1(true); }, 2700));
-    t.push(setTimeout(() => setShowInput(true), 3200));
-    t.push(setTimeout(() => setT2(true), 3700));
-    t.push(setTimeout(() => { setT2(false); setM2(true); }, 5500));
-    t.push(setTimeout(() => setShowChips(true), 6000));
-    t.push(setTimeout(() => setShowSave(true), 6500));
+    t.push(setTimeout(() => setShowTyping1(true), 300));
+    t.push(setTimeout(() => { setShowTyping1(false); setShowMessage1(true); }, 1800));
+    t.push(setTimeout(() => setShowTyping2(true), 2300));
+    t.push(setTimeout(() => { setShowTyping2(false); setShowInputArea(true); }, 3800));
     return () => t.forEach(clearTimeout);
   }, [active]);
 
-  if (done || skipped) return <Collapsed text={STEP_LABELS[1]} skipped={skipped} />;
+  if (done) return <Collapsed text={STEP_LABELS[1]} />;
 
-  const toggleCase = (id) =>
+  // Strength meter (matches screen-2)
+  const strengthColor = description.length < 100 ? "#d92626" : "#20956f";
+  const strengthLabel = description.length < 100 ? "Too short" : "Strong";
+
+  const isValidUrl = (u) => u && u.trim().length > 2; // permissive: any non-empty text counts
+
+  const handleWebsiteSubmit = () => {
+    if (hasWebsite && !website.trim()) { toast.error("Please enter your website"); return; }
+    if (!hasWebsite && description.length < 100) { toast.error("Please write at least 100 characters about your brand"); return; }
+    setWebsiteSubmitted(true);
+    setShowTyping3(true);
+    setTimeout(() => { setShowTyping3(false); setShowMessage2(true); }, 1500);
+    setTimeout(() => setShowTyping4(true), 2000);
+    setTimeout(() => { setShowTyping4(false); setShowUseCases(true); }, 3500);
+  };
+
+  const toggleUseCase = (id) => {
+    if (id === "825f9e77-c70b-42a1-b3ec-516b25fccde9") setShowOtherInput(!showOtherInput);
     setUseCases((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
-
-  const websiteValue = noWebsite ? description : website;
-  const websiteValid = noWebsite ? description.trim().length >= 30 : website.trim().length >= 3;
-  const canSave = websiteValid && useCases.length > 0;
+  };
 
   return (
     <div>
-      {t1 && <Typing />}
+      {showTyping1 && <TypingWithAvatar />}
 
-      {/* Lee's first bubble + the "Don't have a website?" toggle right under it
-          (matches screen-2 — the toggle lives next to Lee's question, not inside the input card). */}
-      {m1 && (
-        <div className="mb-4">
+      {showMessage1 && (
+        <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
           <div className="flex gap-2.5 items-start">
             <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
             <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
               <p className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>
-                Great! First I need to gather some information about your brand. Could you share your company website? I'll use it to build your content blueprint.
+                Great! First I need to gather some information about your brand. Could you please provide me the URL of your company's website? I'll use this to build your content blueprint.
               </p>
             </div>
           </div>
           <div className="ml-10 mt-2">
             <button
-              onClick={() => setNoWebsite(!noWebsite)}
+              onClick={() => setHasWebsite(!hasWebsite)}
               className="text-xs"
               style={{ color: "#7A93FF", fontWeight: 500, background: "transparent", border: "none", cursor: "pointer" }}
             >
-              {noWebsite ? "Have a website? Enter URL instead" : "Don't have a website?"}
+              {hasWebsite ? "Don't have a website?" : "Have a website? Enter URL instead"}
             </button>
           </div>
         </div>
       )}
 
-      {/* Input area — URL field with Globe, OR free-text description with strength meter.
-          Matches screen-2 styling: rounded-xl, periwinkle border, plain text input (no
-          browser URL validation — so http:// is optional). */}
-      {showInput && (
-        <div className="mb-4 ml-10">
+      {showTyping2 && <TypingNoAvatar />}
+
+      {showInputArea && !websiteSubmitted && (
+        <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
           <div className="max-w-lg">
-            {!noWebsite ? (
+            {hasWebsite ? (
               <div className="space-y-3">
                 <div className="relative">
                   <div className="absolute left-3 top-1/2 -translate-y-1/2">
@@ -718,6 +702,18 @@ function Step1({ active, done, skipped, website, setWebsite, noWebsite, setNoWeb
                     onBlur={(e) => (e.target.style.borderColor = "rgba(217, 224, 255, 0.4)")}
                   />
                 </div>
+                <Button
+                  onClick={handleWebsiteSubmit}
+                  disabled={!isValidUrl(website)}
+                  className="text-sm py-2 px-5 shadow-sm hover:shadow-md transition-all duration-300"
+                  style={{
+                    backgroundColor: !isValidUrl(website) ? "#D9E0FF" : "#7A93FF",
+                    color: "#fff", borderRadius: 8, fontWeight: 500,
+                    cursor: !isValidUrl(website) ? "not-allowed" : "pointer",
+                  }}
+                >
+                  Submit →
+                </Button>
               </div>
             ) : (
               <div className="space-y-3">
@@ -727,98 +723,136 @@ function Step1({ active, done, skipped, website, setWebsite, noWebsite, setNoWeb
                   placeholder="Type a few sentences on your business. Brieflee will use this information to create a custom content blueprint for you. The more details you can provide, the better."
                   rows={5}
                   className="w-full text-sm rounded-xl p-3 outline-none resize-none transition-all duration-200"
-                  style={{ border: "1px solid rgba(217, 224, 255, 0.4)", color: "#000F4D", fontWeight: 300, backgroundColor: "#FFFFFF" }}
+                  style={{ border: "1px solid rgba(217, 224, 255, 0.4)", color: "#000F4D", fontWeight: 300, backgroundColor: "#fff" }}
                   onFocus={(e) => (e.target.style.borderColor = "#7A93FF")}
                   onBlur={(e) => (e.target.style.borderColor = "rgba(217, 224, 255, 0.4)")}
                 />
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="h-1.5 w-20 bg-gray-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full transition-all duration-300"
-                        style={{
-                          width: `${Math.min((description.length / 100) * 100, 100)}%`,
-                          backgroundColor: description.length < 50 ? "#f5b301" : description.length < 100 ? "#7A93FF" : "#20956f",
-                        }}
-                      />
+                      <div className="h-full transition-all duration-300" style={{ width: `${Math.min((description.length / 100) * 100, 100)}%`, backgroundColor: strengthColor }} />
                     </div>
-                    <span className="text-xs" style={{ color: description.length < 100 ? "#7A93FF" : "#20956f", fontWeight: 500 }}>
-                      {description.length < 50 ? "Keep going" : description.length < 100 ? "Almost there" : "Looks good"}
-                    </span>
+                    <span className="text-xs" style={{ color: strengthColor, fontWeight: 500 }}>{strengthLabel}</span>
                   </div>
-                  <span className="text-xs" style={{ color: "#001364", fontWeight: 300 }}>{Math.min(description.length, 100)}/100</span>
+                  <span className="text-xs" style={{ color: "#001364", fontWeight: 300 }}>{description.length}/100</span>
                 </div>
+                <Button
+                  onClick={handleWebsiteSubmit}
+                  disabled={description.length < 100}
+                  className="text-sm py-2 px-5 shadow-sm hover:shadow-md transition-all duration-300"
+                  style={{
+                    backgroundColor: description.length < 100 ? "#D9E0FF" : "#7A93FF",
+                    color: "#fff", borderRadius: 8, fontWeight: 500,
+                    cursor: description.length < 100 ? "not-allowed" : "pointer",
+                  }}
+                >
+                  Submit →
+                </Button>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {t2 && <Typing />}
-      {m2 && <Bubble>How will you use Brieflee?</Bubble>}
+      {showTyping3 && <TypingWithAvatar />}
 
-      {/* Use case cards — full-width, checkbox-style. Matches screen-2's rendering. */}
-      {showChips && (
-        <div className="mb-4 ml-10">
-          <div className="space-y-3 max-w-lg">
-            {USE_CASE_OPTIONS.map((opt) => {
-              const on = useCases.includes(opt.id);
-              return (
-                <button
-                  key={opt.id}
-                  onClick={() => toggleCase(opt.id)}
-                  className="flex items-center gap-2 w-full text-left px-4 py-3 rounded-xl transition-all duration-200 bg-white shadow-sm"
-                  style={{
-                    border: on ? "2px solid #7A93FF" : "1px solid rgba(217, 224, 255, 0.4)",
-                    backgroundColor: on ? "rgba(122, 147, 255, 0.05)" : "#FFFFFF",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div
-                    className="w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0"
-                    style={{ borderColor: on ? "#7A93FF" : "rgba(217, 224, 255, 0.5)" }}
-                  >
-                    {on && <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: "#7A93FF" }} />}
-                  </div>
-                  <span className="text-sm" style={{ color: "#000F4D", fontWeight: 300 }}>{opt.label}</span>
-                </button>
-              );
-            })}
+      {showMessage2 && (
+        <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="flex gap-2.5 items-start">
+            <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
+            <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>How will you use Brieflee?</p>
+            </div>
           </div>
         </div>
       )}
 
-      {showSave && (
-        <ActionRow>
-          <SaveBtn disabled={!canSave || saving} onClick={onSave}>
-            {saving ? "Saving..." : (<span className="inline-flex items-center gap-1.5">Continue <ArrowRight className="w-3.5 h-3.5" /></span>)}
-          </SaveBtn>
-        </ActionRow>
+      {showTyping4 && <TypingNoAvatar />}
+
+      {showUseCases && (
+        <>
+          <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
+            <div className="space-y-3 max-w-lg">
+              {USE_CASE_OPTIONS.map((opt) => {
+                const on = useCases.includes(opt.id);
+                return (
+                  <div key={opt.id} className="space-y-2">
+                    <button
+                      onClick={() => toggleUseCase(opt.id)}
+                      className="flex items-center gap-2 w-full text-left px-4 py-3 rounded-xl transition-all duration-200 bg-white shadow-sm"
+                      style={{
+                        border: on ? "2px solid #7A93FF" : "1px solid rgba(217, 224, 255, 0.4)",
+                        backgroundColor: on ? "rgba(122, 147, 255, 0.05)" : "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div className="w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0" style={{ borderColor: on ? "#7A93FF" : "rgba(217, 224, 255, 0.5)" }}>
+                        {on && <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: "#7A93FF" }} />}
+                      </div>
+                      <span className="text-sm" style={{ color: "#000F4D", fontWeight: 300 }}>{opt.label}</span>
+                    </button>
+                    {opt.label === "Other" && showOtherInput && (
+                      <div className="ml-7">
+                        <input
+                          type="text"
+                          placeholder="Please specify..."
+                          value={otherUseCase}
+                          onChange={(e) => setOtherUseCase(e.target.value)}
+                          className="w-full px-4 py-3 rounded-xl text-sm bg-white outline-none transition-all duration-200"
+                          style={{ border: "1px solid rgba(217, 224, 255, 0.4)", color: "#000F4D", fontWeight: 300 }}
+                          onFocus={(e) => (e.target.style.borderColor = "#7A93FF")}
+                          onBlur={(e) => (e.target.style.borderColor = "rgba(217, 224, 255, 0.4)")}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
+            <Button
+              onClick={onSave}
+              disabled={saving || useCases.length === 0}
+              className="text-sm py-2 px-5 shadow-sm hover:shadow-md transition-all duration-300"
+              style={{
+                backgroundColor: (saving || useCases.length === 0) ? "#D9E0FF" : "#7A93FF",
+                color: "#fff", borderRadius: 8, fontWeight: 500,
+                cursor: (saving || useCases.length === 0) ? "not-allowed" : "pointer",
+              }}
+            >
+              {saving ? "Saving..." : "Continue →"}
+            </Button>
+          </div>
+        </>
       )}
     </div>
   );
 }
 
 // =====================================================================
-// Step 2 - Choose your review mode
+// Step 2 - Review mode (lifted from screen-4)
 // =====================================================================
 function Step2({ active, done, aiModeId, setAiModeId, onSave, saving }) {
-  const [t1, setT1] = useState(false);
-  const [m1, setM1] = useState(false);
-  const [showCards, setShowCards] = useState(false);
-  const [t2, setT2] = useState(false);
-  const [m2, setM2] = useState(false);
-  const [showSave, setShowSave] = useState(false);
+  const [showTyping1, setShowTyping1] = useState(false);
+  const [showMessage1, setShowMessage1] = useState(false);
+  const [showTyping2, setShowTyping2] = useState(false);
+  const [showCard, setShowCard] = useState(false);
+  const [showTyping3, setShowTyping3] = useState(false);
+  const [showMessage2, setShowMessage2] = useState(false);
+  const [showButton, setShowButton] = useState(false);
 
   useEffect(() => {
     if (!active) return;
     const t = [];
-    t.push(setTimeout(() => setT1(true), 500));
-    t.push(setTimeout(() => { setT1(false); setM1(true); }, 2400));
-    t.push(setTimeout(() => setShowCards(true), 3000));
-    t.push(setTimeout(() => setT2(true), 3500));
-    t.push(setTimeout(() => { setT2(false); setM2(true); }, 4800));
-    t.push(setTimeout(() => setShowSave(true), 5300));
+    t.push(setTimeout(() => setShowTyping1(true), 300));
+    t.push(setTimeout(() => { setShowTyping1(false); setShowMessage1(true); }, 2000));
+    t.push(setTimeout(() => setShowTyping2(true), 2500));
+    t.push(setTimeout(() => { setShowTyping2(false); setShowCard(true); }, 4000));
+    t.push(setTimeout(() => setShowTyping3(true), 4500));
+    t.push(setTimeout(() => { setShowTyping3(false); setShowMessage2(true); }, 6000));
+    t.push(setTimeout(() => setShowButton(true), 6500));
     return () => t.forEach(clearTimeout);
   }, [active]);
 
@@ -826,72 +860,113 @@ function Step2({ active, done, aiModeId, setAiModeId, onSave, saving }) {
 
   return (
     <div>
-      {t1 && <Typing />}
-      {m1 && <Bubble>How involved do you want to be when content comes in?</Bubble>}
+      {showTyping1 && <TypingWithAvatar />}
 
-      {showCards && (
-        <div className="mb-4 ml-10 space-y-2">
-          {AI_MODE_OPTIONS.map((m) => {
-            const sel = aiModeId === m.id;
-            return (
-              <button
-                key={m.id}
-                onClick={() => setAiModeId(m.id)}
-                className="w-full text-left rounded-xl p-3 shadow-sm transition-all duration-200"
-                style={{
-                  background: "#fff",
-                  border: sel ? "2px solid #7A93FF" : "1px solid rgba(217, 224, 255, 0.5)",
-                }}
-              >
-                <div className="flex items-baseline justify-between gap-2 mb-1">
-                  <div className="text-sm font-medium" style={{ color: "#001364" }}>{m.label}</div>
-                  {m.recommended && (
-                    <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#7A93FF", color: "#fff", fontWeight: 600 }}>Recommended</span>
-                  )}
-                </div>
-                <p className="text-xs leading-relaxed" style={{ color: "#001364", fontWeight: 300 }}>{m.description}</p>
-              </button>
-            );
-          })}
+      {showMessage1 && (
+        <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="flex gap-2.5 items-start">
+            <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
+            <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>How involved do you want to be when content comes in?</p>
+            </div>
+          </div>
         </div>
       )}
 
-      {t2 && <Typing />}
-      {m2 && <Bubble>You can change this anytime in your settings.</Bubble>}
+      {showTyping2 && <TypingNoAvatar />}
 
-      {showSave && (
-        <ActionRow>
-          <SaveBtn disabled={!aiModeId || saving} onClick={onSave}>{saving ? "Saving..." : "Save"}</SaveBtn>
-        </ActionRow>
+      {showCard && (
+        <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="space-y-3 max-w-lg">
+            {AI_MODE_OPTIONS.map((m) => {
+              const sel = aiModeId === m.id;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setAiModeId(m.id)}
+                  className="w-full text-left px-4 py-3 rounded-xl transition-all duration-200 bg-white shadow-sm"
+                  style={{
+                    border: sel ? "2px solid #7A93FF" : "1px solid rgba(217, 224, 255, 0.4)",
+                    backgroundColor: sel ? "rgba(122, 147, 255, 0.05)" : "#fff",
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <h4 className="text-sm" style={{ color: "#000F4D", fontWeight: 500 }}>{m.label}</h4>
+                    {m.recommended && (
+                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "#D9E0FF", color: "#294FF6", fontWeight: 500 }}>Recommended</span>
+                    )}
+                  </div>
+                  <p className="text-xs leading-relaxed" style={{ color: "#001364", fontWeight: 300 }}>{m.description}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {showTyping3 && <TypingWithAvatar />}
+
+      {showMessage2 && (
+        <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="flex gap-2.5 items-start">
+            <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
+            <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>You can change this anytime in your settings.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showButton && (
+        <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <Button
+            onClick={onSave}
+            disabled={!aiModeId || saving}
+            className="text-sm py-2 px-5 shadow-sm hover:shadow-md transition-all duration-300"
+            style={{
+              backgroundColor: !aiModeId ? "#D9E0FF" : "#7A93FF",
+              color: "#fff", borderRadius: 8, fontWeight: 500,
+              cursor: !aiModeId ? "not-allowed" : "pointer",
+            }}
+          >
+            {saving ? "Saving..." : "Save"}
+          </Button>
+        </div>
       )}
     </div>
   );
 }
 
 // =====================================================================
-// Step 3 - How Brieflee works (skippable)
+// Step 3 - How Brieflee works (lifted from screen-5, skippable)
 // =====================================================================
 function Step3({ active, done, skipped, onGotIt, onSkip }) {
-  const [t1, setT1] = useState(false);
-  const [m1, setM1] = useState(false);
+  const [showTyping1, setShowTyping1] = useState(false);
+  const [showMessage1, setShowMessage1] = useState(false);
+  const [showTyping2, setShowTyping2] = useState(false);
+  const [showVideo, setShowVideo] = useState(false);
+  const [showTyping3, setShowTyping3] = useState(false);
   const [showCards, setShowCards] = useState(false);
-  const [t2, setT2] = useState(false);
-  const [m2, setM2] = useState(false);
-  const [t3, setT3] = useState(false);
-  const [m3, setM3] = useState(false);
+  const [showTyping4, setShowTyping4] = useState(false);
+  const [showMessage2, setShowMessage2] = useState(false);
+  const [showTyping5, setShowTyping5] = useState(false);
+  const [showMessage3, setShowMessage3] = useState(false);
   const [showActions, setShowActions] = useState(false);
 
   useEffect(() => {
     if (!active) return;
     const t = [];
-    t.push(setTimeout(() => setT1(true), 500));
-    t.push(setTimeout(() => { setT1(false); setM1(true); }, 2200));
-    t.push(setTimeout(() => setShowCards(true), 2800));
-    t.push(setTimeout(() => setT2(true), 3300));
-    t.push(setTimeout(() => { setT2(false); setM2(true); }, 5000));
-    t.push(setTimeout(() => setT3(true), 5500));
-    t.push(setTimeout(() => { setT3(false); setM3(true); }, 6300));
-    t.push(setTimeout(() => setShowActions(true), 6800));
+    t.push(setTimeout(() => setShowTyping1(true), 300));
+    t.push(setTimeout(() => { setShowTyping1(false); setShowMessage1(true); }, 1500));
+    t.push(setTimeout(() => setShowTyping2(true), 2000));
+    t.push(setTimeout(() => { setShowTyping2(false); setShowVideo(true); }, 3800));
+    t.push(setTimeout(() => setShowTyping3(true), 4300));
+    t.push(setTimeout(() => { setShowTyping3(false); setShowCards(true); }, 6500));
+    t.push(setTimeout(() => setShowTyping4(true), 7000));
+    t.push(setTimeout(() => { setShowTyping4(false); setShowMessage2(true); }, 9200));
+    t.push(setTimeout(() => setShowTyping5(true), 9700));
+    t.push(setTimeout(() => { setShowTyping5(false); setShowMessage3(true); }, 10500));
+    t.push(setTimeout(() => setShowActions(true), 11000));
     return () => t.forEach(clearTimeout);
   }, [active]);
 
@@ -899,41 +974,123 @@ function Step3({ active, done, skipped, onGotIt, onSkip }) {
 
   return (
     <div>
-      {t1 && <Typing />}
-      {m1 && <Bubble>Before you dive in, here's two ways you can use Brieflee.</Bubble>}
+      {showTyping1 && <TypingWithAvatar />}
 
-      {showCards && (
-        <div className="mb-4 ml-10 space-y-2">
-          <div className="bg-white rounded-xl p-4 shadow-sm" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
-            <div className="text-sm font-medium mb-1" style={{ color: "#001364" }}>Campaigns</div>
-            <p className="text-xs leading-relaxed" style={{ color: "#001364", fontWeight: 300 }}>
-              When you want creators to submit content to you. Create a project, build your briefs, share the link. Creators upload directly and I review everything as it comes in.
-            </p>
-          </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
-            <div className="text-sm font-medium mb-1" style={{ color: "#001364" }}>Reviews</div>
-            <p className="text-xs leading-relaxed" style={{ color: "#001364", fontWeight: 300 }}>
-              When you already have the content. Upload videos you've received or created, paste in your brief, and I'll review them all in one go.
-            </p>
+      {showMessage1 && (
+        <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="flex gap-2.5 items-start">
+            <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
+            <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>Before you dive in, here's two ways you can use Brieflee.</p>
+            </div>
           </div>
         </div>
       )}
 
-      {t2 && <Typing />}
-      {m2 && (
-        <Bubble>
-          Want to brief creators? Go to Campaigns. Want to check content quickly yourself? Go to Reviews. Simple.
-        </Bubble>
+      {showTyping2 && <TypingNoAvatar />}
+
+      {showVideo && (
+        <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="max-w-lg rounded-xl overflow-hidden shadow-sm" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+            <div style={{ position: "relative", paddingBottom: "56.25%", height: 0 }}>
+              <iframe
+                src="https://www.youtube.com/embed/1r2MMI8BsQ8"
+                title="Brieflee overview"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }}
+              />
+            </div>
+          </div>
+        </div>
       )}
 
-      {t3 && <Typing />}
-      {m3 && <Bubble>Got it?</Bubble>}
+      {showTyping3 && <TypingNoAvatar />}
+
+      {showCards && (
+        <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="space-y-3 max-w-lg">
+            <div className="bg-white rounded-xl px-4 py-3 shadow-sm" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ backgroundColor: "#294FF6" }}>
+                  <Megaphone className="w-3.5 h-3.5 text-white" />
+                </div>
+                <h4 className="text-sm" style={{ color: "#000F4D", fontWeight: 500 }}>Campaigns</h4>
+              </div>
+              <p className="text-xs leading-relaxed" style={{ color: "#001364", fontWeight: 300 }}>
+                When you want creators to submit content to you. Create a project, build your briefs, share the link. Creators upload directly and I review everything as it comes in.
+              </p>
+            </div>
+            <div className="bg-white rounded-xl px-4 py-3 shadow-sm" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ backgroundColor: "#294FF6" }}>
+                  <Zap className="w-3.5 h-3.5 text-white" />
+                </div>
+                <h4 className="text-sm" style={{ color: "#000F4D", fontWeight: 500 }}>Quick reviews</h4>
+              </div>
+              <p className="text-xs leading-relaxed" style={{ color: "#001364", fontWeight: 300 }}>
+                When you already have the content. Upload videos you've received or created, paste in your brief, and I'll review them all in one go.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTyping4 && <TypingWithAvatar />}
+
+      {showMessage2 && (
+        <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="flex gap-2.5 items-start">
+            <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
+            <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>
+                Want to brief creators? Go to Campaigns. Want to check content quickly yourself? Go to Reviews. Simple.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTyping5 && <TypingNoAvatar />}
+
+      {showMessage3 && (
+        <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="flex gap-2.5 items-start">
+            <div className="w-8 h-8 flex-shrink-0" />
+            <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>Got it?</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showActions && (
-        <ActionRow>
-          <SkipBtn onClick={onSkip}>Skip</SkipBtn>
-          <SaveBtn onClick={onGotIt}>Got it</SaveBtn>
-        </ActionRow>
+        <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={onGotIt}
+              className="text-xs px-4 py-1.5 shadow-sm hover:shadow-md transition-all duration-300"
+              style={{ backgroundColor: "#7A93FF", color: "#fff", borderRadius: 16, fontWeight: 500 }}
+            >
+              👍 Got it
+            </Button>
+            <Button
+              onClick={onGotIt}
+              className="text-xs px-4 py-1.5 shadow-sm hover:shadow-md transition-all duration-300"
+              style={{ backgroundColor: "#fff", color: "#7A93FF", border: "1px solid #7A93FF", borderRadius: 16, fontWeight: 500 }}
+            >
+              🙌 Makes sense
+            </Button>
+            <Button
+              onClick={onSkip}
+              className="text-xs px-4 py-1.5 shadow-sm hover:shadow-md transition-all duration-300"
+              style={{ backgroundColor: "#fff", color: "#7A93FF", border: "1px solid #7A93FF", borderRadius: 16, fontWeight: 500 }}
+            >
+              Skip
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -943,30 +1100,30 @@ function Step3({ active, done, skipped, onGotIt, onSkip }) {
 // Step 4 - QA Checklist (skippable)
 // =====================================================================
 function Step4({ active, done, skipped, qaIds, setQaIds, onSave, onSkip, saving }) {
-  const [t1, setT1] = useState(false);
+  const [s1, setS1] = useState(false);
   const [m1, setM1] = useState(false);
-  const [t2, setT2] = useState(false);
+  const [s2, setS2] = useState(false);
   const [m2, setM2] = useState(false);
-  const [t3, setT3] = useState(false);
+  const [s3, setS3] = useState(false);
   const [m3, setM3] = useState(false);
   const [showCard, setShowCard] = useState(false);
-  const [t4, setT4] = useState(false);
+  const [s4, setS4] = useState(false);
   const [m4, setM4] = useState(false);
   const [showActions, setShowActions] = useState(false);
 
   useEffect(() => {
     if (!active) return;
     const t = [];
-    t.push(setTimeout(() => setT1(true), 500));
-    t.push(setTimeout(() => { setT1(false); setM1(true); }, 2200));
-    t.push(setTimeout(() => setT2(true), 2700));
-    t.push(setTimeout(() => { setT2(false); setM2(true); }, 4500));
-    t.push(setTimeout(() => setT3(true), 5000));
-    t.push(setTimeout(() => { setT3(false); setM3(true); }, 6800));
-    t.push(setTimeout(() => setShowCard(true), 7300));
-    t.push(setTimeout(() => setT4(true), 7800));
-    t.push(setTimeout(() => { setT4(false); setM4(true); }, 9000));
-    t.push(setTimeout(() => setShowActions(true), 9500));
+    t.push(setTimeout(() => setS1(true), 300));
+    t.push(setTimeout(() => { setS1(false); setM1(true); }, 1800));
+    t.push(setTimeout(() => setS2(true), 2300));
+    t.push(setTimeout(() => { setS2(false); setM2(true); }, 4100));
+    t.push(setTimeout(() => setS3(true), 4600));
+    t.push(setTimeout(() => { setS3(false); setM3(true); }, 6500));
+    t.push(setTimeout(() => setShowCard(true), 7000));
+    t.push(setTimeout(() => setS4(true), 7500));
+    t.push(setTimeout(() => { setS4(false); setM4(true); }, 8800));
+    t.push(setTimeout(() => setShowActions(true), 9300));
     return () => t.forEach(clearTimeout);
   }, [active]);
 
@@ -977,25 +1134,23 @@ function Step4({ active, done, skipped, qaIds, setQaIds, onSave, onSkip, saving 
 
   return (
     <div>
-      {t1 && <Typing />}
-      {m1 && <Bubble>Now let's set your defaults for quick reviews.</Bubble>}
-
-      {t2 && <Typing />}
+      {s1 && <TypingWithAvatar />}
+      {m1 && <BubbleWithAvatar>Now let's set your defaults for quick reviews.</BubbleWithAvatar>}
+      {s2 && <TypingNoAvatar />}
       {m2 && (
-        <Bubble>
+        <BubbleNoAvatar>
           Quick reviews are for one-off videos with no brief attached. Like when a creator sends you something and you just want to check it.
-        </Bubble>
+        </BubbleNoAvatar>
       )}
-
-      {t3 && <Typing />}
+      {s3 && <TypingNoAvatar />}
       {m3 && (
-        <Bubble>
-          Pick the checks you'd always want running on those. If you attach a brief later, the brief's checks take over - so don't overthink this.
-        </Bubble>
+        <BubbleNoAvatar>
+          Pick the checks you'd always want running on those. If you attach a brief later, the brief's checks take over — so don't overthink this.
+        </BubbleNoAvatar>
       )}
 
       {showCard && (
-        <div className="mb-4 ml-10">
+        <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
           <div className="bg-white rounded-xl p-4 shadow-sm" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
             <div className="mb-3">
               <h3 className="text-base font-medium" style={{ color: "#001364" }}>QA Checklist</h3>
@@ -1016,28 +1171,40 @@ function Step4({ active, done, skipped, qaIds, setQaIds, onSave, onSkip, saving 
                       fontWeight: on ? 600 : 400,
                     }}
                   >
-                    {on ? "v " : ""}{opt.label}
+                    {on ? "✓ " : ""}{opt.label}
                   </button>
                 );
               })}
             </div>
             <div className="text-xs mt-3" style={{ color: "#7A93FF" }}>
-              {qaIds.length === 0
-                ? "None selected - you'll pick checks each time."
-                : `${qaIds.length} check${qaIds.length === 1 ? "" : "s"} will run on every quick review.`}
+              {qaIds.length === 0 ? "None selected — you'll pick checks each time." : `${qaIds.length} check${qaIds.length === 1 ? "" : "s"} will run on every quick review.`}
             </div>
           </div>
         </div>
       )}
 
-      {t4 && <Typing />}
-      {m4 && <Bubble>Or skip and pick checks each time.</Bubble>}
+      {s4 && <TypingWithAvatar />}
+      {m4 && <BubbleWithAvatar>Or skip and pick checks each time.</BubbleWithAvatar>}
 
       {showActions && (
-        <ActionRow>
-          <SkipBtn onClick={onSkip}>Skip</SkipBtn>
-          <SaveBtn disabled={saving} onClick={onSave}>{saving ? "Saving..." : "Save"}</SaveBtn>
-        </ActionRow>
+        <div className="mb-4 ml-10 flex gap-2 items-center animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <Button
+            onClick={onSkip}
+            disabled={saving}
+            className="text-sm py-2 px-5"
+            style={{ background: "#fff", color: "#001364", border: "1px solid rgba(217, 224, 255, 0.7)", borderRadius: 8, fontWeight: 500 }}
+          >
+            Skip
+          </Button>
+          <Button
+            onClick={onSave}
+            disabled={saving}
+            className="text-sm py-2 px-5 shadow-sm hover:shadow-md transition-all duration-300"
+            style={{ background: "#7A93FF", color: "#fff", borderRadius: 8, fontWeight: 500 }}
+          >
+            {saving ? "Saving..." : "Save"}
+          </Button>
+        </div>
       )}
     </div>
   );
@@ -1047,26 +1214,26 @@ function Step4({ active, done, skipped, qaIds, setQaIds, onSave, onSkip, saving 
 // Step 5 - Thresholds (skippable)
 // =====================================================================
 function Step5({ active, done, skipped, thresholds, setThresholds, onSave, onSkip, saving }) {
-  const [t1, setT1] = useState(false);
+  const [s1, setS1] = useState(false);
   const [m1, setM1] = useState(false);
-  const [t2, setT2] = useState(false);
+  const [s2, setS2] = useState(false);
   const [m2, setM2] = useState(false);
   const [showCard, setShowCard] = useState(false);
-  const [t3, setT3] = useState(false);
+  const [s3, setS3] = useState(false);
   const [m3, setM3] = useState(false);
   const [showActions, setShowActions] = useState(false);
 
   useEffect(() => {
     if (!active) return;
     const t = [];
-    t.push(setTimeout(() => setT1(true), 500));
-    t.push(setTimeout(() => { setT1(false); setM1(true); }, 2200));
-    t.push(setTimeout(() => setT2(true), 2700));
-    t.push(setTimeout(() => { setT2(false); setM2(true); }, 4500));
-    t.push(setTimeout(() => setShowCard(true), 5000));
-    t.push(setTimeout(() => setT3(true), 5500));
-    t.push(setTimeout(() => { setT3(false); setM3(true); }, 7300));
-    t.push(setTimeout(() => setShowActions(true), 7800));
+    t.push(setTimeout(() => setS1(true), 300));
+    t.push(setTimeout(() => { setS1(false); setM1(true); }, 1800));
+    t.push(setTimeout(() => setS2(true), 2300));
+    t.push(setTimeout(() => { setS2(false); setM2(true); }, 4100));
+    t.push(setTimeout(() => setShowCard(true), 4600));
+    t.push(setTimeout(() => setS3(true), 5100));
+    t.push(setTimeout(() => { setS3(false); setM3(true); }, 6900));
+    t.push(setTimeout(() => setShowActions(true), 7400));
     return () => t.forEach(clearTimeout);
   }, [active]);
 
@@ -1079,23 +1246,21 @@ function Step5({ active, done, skipped, thresholds, setThresholds, onSave, onSki
       else next[rowKey] = optId;
       return next;
     });
-
   const selected = Object.keys(thresholds).length;
 
   return (
     <div>
-      {t1 && <Typing />}
-      {m1 && <Bubble>Now how strict each check should be.</Bubble>}
-
-      {t2 && <Typing />}
+      {s1 && <TypingWithAvatar />}
+      {m1 && <BubbleWithAvatar>Now how strict each check should be.</BubbleWithAvatar>}
+      {s2 && <TypingNoAvatar />}
       {m2 && (
-        <Bubble>
+        <BubbleNoAvatar>
           Set a threshold for the ones you care about. Leave the rest blank and we'll ignore them.
-        </Bubble>
+        </BubbleNoAvatar>
       )}
 
       {showCard && (
-        <div className="mb-4 ml-10">
+        <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
           <div className="bg-white rounded-xl p-4 shadow-sm space-y-4" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
             <div>
               <h3 className="text-base font-medium" style={{ color: "#001364" }}>Default standards</h3>
@@ -1147,67 +1312,132 @@ function Step5({ active, done, skipped, thresholds, setThresholds, onSave, onSki
         </div>
       )}
 
-      {t3 && <Typing />}
-      {m3 && <Bubble>Briefs override these too, so this is just your safety net for quick reviews.</Bubble>}
+      {s3 && <TypingWithAvatar />}
+      {m3 && <BubbleWithAvatar>Briefs override these too, so this is just your safety net for quick reviews.</BubbleWithAvatar>}
 
       {showActions && (
-        <ActionRow>
-          <SkipBtn onClick={onSkip}>Skip</SkipBtn>
-          <SaveBtn disabled={saving} onClick={onSave}>{saving ? "Saving..." : "Save"}</SaveBtn>
-        </ActionRow>
+        <div className="mb-4 ml-10 flex gap-2 items-center animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <Button
+            onClick={onSkip}
+            disabled={saving}
+            className="text-sm py-2 px-5"
+            style={{ background: "#fff", color: "#001364", border: "1px solid rgba(217, 224, 255, 0.7)", borderRadius: 8, fontWeight: 500 }}
+          >
+            Skip
+          </Button>
+          <Button
+            onClick={onSave}
+            disabled={saving}
+            className="text-sm py-2 px-5 shadow-sm hover:shadow-md transition-all duration-300"
+            style={{ background: "#7A93FF", color: "#fff", borderRadius: 8, fontWeight: 500 }}
+          >
+            {saving ? "Saving..." : "Save"}
+          </Button>
+        </div>
       )}
     </div>
   );
 }
 
 // =====================================================================
-// Step 6 - Review your content blueprint
+// Step 6 - Content blueprint review (lifted from screen-3 blueprint half)
 // =====================================================================
-const BLUEPRINT_FIELDS = [
-  { key: "brandBio",           label: "Brand bio",       placeholder: "What you sell, who it's for, why it exists." },
-  { key: "brandVoice",         label: "Brand voice",     placeholder: "A few words on tone." },
-  { key: "brandCta",           label: "Primary CTA",     placeholder: "What you want viewers to do at the end of every video." },
-  { key: "niche",              label: "Niche",           placeholder: "Category, vertical or audience tag." },
-  { key: "targetAudience",     label: "Target audience", placeholder: "Who you're talking to." },
-  { key: "audiencePainPoints", label: "Pain points",     placeholder: "What problems they face." },
-  { key: "audienceObjectives", label: "Objectives",      placeholder: "What they're trying to achieve." },
+const BLUEPRINT_FIELDS_CONFIG = [
+  { key: "brandBio",           label: "Brand Bio",            placeholder: "Describe your brand..." },
+  { key: "brandVoice",         label: "Brand Voice",          placeholder: "Describe your brand voice..." },
+  { key: "brandCta",           label: "Brand CTA",            placeholder: "Your call to action..." },
+  { key: "targetAudience",     label: "Target Audience",      placeholder: "Who is your target audience..." },
+  { key: "audiencePainPoints", label: "Audience Pain Points", placeholder: "What problems do they face..." },
+  { key: "audienceObjectives", label: "Audience Objectives",  placeholder: "What are their goals..." },
+  { key: "niche",              label: "Niche",                placeholder: "Your niche..." },
 ];
 
-function Step6({ active, done, blueprintReady, brandBio, setBrandBio, brandVoice, setBrandVoice, brandCta, setBrandCta, niche, setNiche, targetAudience, setTargetAudience, audiencePainPoints, setAudiencePainPoints, audienceObjectives, setAudienceObjectives, onFinish, onRefetch, saving }) {
-  const [t1, setT1] = useState(false);
-  const [m1, setM1] = useState(false);
-  const [t2, setT2] = useState(false);
-  const [m2, setM2] = useState(false);
+function formatTextWithBullets(text) {
+  if (!text) return null;
+  let cleaned = text.replace(/<br\s*\/?>/gi, "\n");
+  const lines = cleaned.split("\n").filter((l) => l.trim());
+  if (lines.length === 0) return null;
+  const elements = [];
+  let currentList = [];
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    const bullet = trimmed.match(/^([•\-\*])\s+(.+)$/);
+    if (bullet) {
+      currentList.push(bullet[2]);
+    } else {
+      if (currentList.length > 0) {
+        elements.push(
+          <ul key={`list-${elements.length}`} className="list-disc list-inside space-y-1 my-2">
+            {currentList.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        );
+        currentList = [];
+      }
+      elements.push(<div key={`text-${elements.length}`}>{trimmed}</div>);
+    }
+  });
+  if (currentList.length > 0) {
+    elements.push(
+      <ul key={`list-${elements.length}`} className="list-disc list-inside space-y-1 my-2">
+        {currentList.map((item, i) => <li key={i}>{item}</li>)}
+      </ul>
+    );
+  }
+  return elements.length > 0 ? elements : null;
+}
+
+function Step6({ active, done, blueprintReady, record, editingField, setEditingField, editedValues, setEditedValues, onFinish, onRefetch, saving }) {
+  const [showTyping0, setShowTyping0] = useState(false);
+  const [showMessage1, setShowMessage1] = useState(false);
+  const [showTyping1, setShowTyping1] = useState(false);
   const [showCard, setShowCard] = useState(false);
-  const [showActions, setShowActions] = useState(false);
+  const [showTyping2, setShowTyping2] = useState(false);
+  const [showMessage2, setShowMessage2] = useState(false);
+  const [showButton, setShowButton] = useState(false);
 
   useEffect(() => {
     if (!active) return;
     const t = [];
-    t.push(setTimeout(() => setT1(true), 500));
-    t.push(setTimeout(() => { setT1(false); setM1(true); }, 2400));
-    t.push(setTimeout(() => setT2(true), 2900));
-    t.push(setTimeout(() => { setT2(false); setM2(true); }, 4700));
-    t.push(setTimeout(() => setShowCard(true), 5200));
-    t.push(setTimeout(() => setShowActions(true), 5700));
+    t.push(setTimeout(() => setShowTyping0(true), 500));
+    t.push(setTimeout(() => { setShowTyping0(false); setShowMessage1(true); }, 3000));
+    t.push(setTimeout(() => setShowTyping1(true), 3500));
+    t.push(setTimeout(() => { setShowTyping1(false); setShowCard(true); }, 5000));
+    t.push(setTimeout(() => setShowTyping2(true), 5500));
+    t.push(setTimeout(() => { setShowTyping2(false); setShowMessage2(true); }, 7000));
+    t.push(setTimeout(() => setShowButton(true), 7500));
     return () => t.forEach(clearTimeout);
   }, [active]);
 
   if (done) return <Collapsed text={STEP_LABELS[6]} />;
 
-  const setters = { brandBio: setBrandBio, brandVoice: setBrandVoice, brandCta: setBrandCta, niche: setNiche, targetAudience: setTargetAudience, audiencePainPoints: setAudiencePainPoints, audienceObjectives: setAudienceObjectives };
-  const values  = { brandBio, brandVoice, brandCta, niche, targetAudience, audiencePainPoints, audienceObjectives };
+  const getFieldValue = (key) => {
+    if (editedValues[key] !== undefined) return editedValues[key];
+    const v = record?.[key];
+    if (typeof v === "object" && v?.label) return v.label;
+    return v || "";
+  };
 
   return (
     <div>
-      {t1 && <Typing />}
-      {m1 && <Bubble>Alright, last step. I've drafted your content blueprint from your website.</Bubble>}
+      {showTyping0 && <TypingWithAvatar />}
 
-      {t2 && <Typing />}
-      {m2 && <Bubble>Anything look off? Edit whatever you need - I'll use this to review every video that comes through.</Bubble>}
+      {showMessage1 && (
+        <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="flex gap-2.5 items-start">
+            <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
+            <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>
+                Great! I've analyzed your brand and created a content blueprint. Please review the fields below and edit anything that needs adjustment.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTyping1 && <TypingNoAvatar />}
 
       {showCard && (
-        <div className="mb-4 ml-10">
+        <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
           {!blueprintReady && (
             <div className="bg-white rounded-xl p-3 mb-3 text-xs flex items-center justify-between gap-2" style={{ border: "1px solid rgba(217, 224, 255, 0.4)", color: "#001364" }}>
               <span>Still drafting your blueprint...</span>
@@ -1217,30 +1447,101 @@ function Step6({ active, done, blueprintReady, brandBio, setBrandBio, brandVoice
             </div>
           )}
           <div className="bg-white rounded-xl p-4 shadow-sm space-y-4" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
-            <div>
-              <h3 className="text-base font-medium" style={{ color: "#001364" }}>Content Blueprint</h3>
-              <p className="text-xs" style={{ color: "#7A93FF", fontWeight: 300 }}>Edit anything off</p>
-            </div>
-            {BLUEPRINT_FIELDS.map(({ key, label, placeholder }) => (
-              <div key={key} className="space-y-1">
-                <label className="text-xs font-medium block" style={{ color: "#001364" }}>{label}</label>
-                <Textarea
-                  rows={3}
-                  value={values[key]}
-                  onChange={(e) => setters[key](e.target.value)}
-                  placeholder={placeholder}
-                  style={{ background: "#fff", borderColor: "rgba(217, 224, 255, 0.6)", color: "#001364", fontSize: 13 }}
+            {/* Brand Name heading */}
+            <div className="space-y-2 pb-3 border-b" style={{ borderColor: "rgba(217, 224, 255, 0.4)" }}>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium" style={{ color: "#001364" }}>Brand Name</label>
+                {editingField !== "name" && (
+                  <button
+                    onClick={() => setEditingField("name")}
+                    className="p-1 hover:bg-gray-100 rounded transition-colors"
+                    style={{ background: "transparent", border: "none", cursor: "pointer" }}
+                  >
+                    <Edit2 className="w-3.5 h-3.5" style={{ color: "#7A93FF" }} />
+                  </button>
+                )}
+              </div>
+              {editingField === "name" ? (
+                <input
+                  type="text"
+                  value={getFieldValue("name")}
+                  onChange={(e) => setEditedValues({ ...editedValues, name: e.target.value })}
+                  onBlur={() => setEditingField(null)}
+                  placeholder="Enter brand name..."
+                  className="w-full text-2xl font-medium border rounded-lg px-3 py-2"
+                  style={{ borderColor: "#7A93FF", color: "#001364" }}
+                  autoFocus
                 />
+              ) : (
+                <h2 className="text-2xl font-medium" style={{ color: "#001364" }}>
+                  {getFieldValue("name") || "Enter brand name..."}
+                </h2>
+              )}
+            </div>
+
+            {BLUEPRINT_FIELDS_CONFIG.map(({ key, label, placeholder }) => (
+              <div key={key} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium" style={{ color: "#001364" }}>{label}</label>
+                  {editingField !== key && (
+                    <button
+                      onClick={() => setEditingField(key)}
+                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                      style={{ background: "transparent", border: "none", cursor: "pointer" }}
+                    >
+                      <Edit2 className="w-3.5 h-3.5" style={{ color: "#7A93FF" }} />
+                    </button>
+                  )}
+                </div>
+                {editingField === key ? (
+                  <Textarea
+                    value={getFieldValue(key)}
+                    onChange={(e) => setEditedValues({ ...editedValues, [key]: e.target.value })}
+                    onBlur={() => setEditingField(null)}
+                    placeholder={placeholder}
+                    className="text-sm min-h-[80px]"
+                    style={{ borderColor: "#7A93FF" }}
+                    autoFocus
+                  />
+                ) : (
+                  <div className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>
+                    {formatTextWithBullets(getFieldValue(key)) || (
+                      <span style={{ color: "rgba(0, 19, 100, 0.4)" }}>{placeholder}</span>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {showActions && (
-        <ActionRow>
-          <SaveBtn disabled={saving} onClick={onFinish}>{saving ? "Finishing..." : "Finish setup"}</SaveBtn>
-        </ActionRow>
+      {showTyping2 && <TypingWithAvatar />}
+
+      {showMessage2 && (
+        <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="flex gap-2.5 items-start">
+            <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
+            <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>
+                Anything look off? Edit whatever you need — I'll use this to review every video that comes through.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showButton && (
+        <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <Button
+            onClick={onFinish}
+            disabled={saving}
+            className="text-sm py-2 px-5 shadow-sm hover:shadow-md transition-all duration-300"
+            style={{ backgroundColor: "#7A93FF", color: "#fff", borderRadius: 8, fontWeight: 500 }}
+          >
+            {saving ? "Finishing..." : "Finish setup →"}
+          </Button>
+        </div>
       )}
     </div>
   );
@@ -1249,9 +1550,9 @@ function Step6({ active, done, blueprintReady, brandBio, setBrandBio, brandVoice
 // =====================================================================
 // Shared chat primitives
 // =====================================================================
-function Bubble({ children }) {
+function BubbleWithAvatar({ children }) {
   return (
-    <div className="mb-4">
+    <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
       <div className="flex gap-2.5 items-start">
         <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
         <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
@@ -1262,50 +1563,50 @@ function Bubble({ children }) {
   );
 }
 
-function Typing() {
+function BubbleNoAvatar({ children }) {
   return (
-    <div className="mb-4">
+    <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
       <div className="flex gap-2.5 items-start">
-        <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
-        <div className="bg-white rounded-2xl rounded-tl-sm p-3 px-5 shadow-sm" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
-          <div className="flex gap-1.5">
-            <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: "#7A93FF" }} />
-            <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: "#7A93FF" }} />
-            <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: "#7A93FF" }} />
-          </div>
+        <div className="w-8 h-8 flex-shrink-0" />
+        <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+          <p className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>{children}</p>
         </div>
       </div>
     </div>
   );
 }
 
-function ActionRow({ children }) {
-  return <div className="mb-4 ml-10 flex gap-2 items-center">{children}</div>;
-}
-
-function SaveBtn({ children, onClick, disabled }) {
+function TypingWithAvatar() {
   return (
-    <Button
-      onClick={onClick}
-      disabled={disabled}
-      className="text-sm py-2 px-5 shadow-sm hover:shadow-md transition-all duration-300"
-      style={{ backgroundColor: "#7A93FF", color: "#fff", borderRadius: 8, fontWeight: 500 }}
-    >
-      {children}
-    </Button>
+    <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-300">
+      <div className="flex gap-2.5 items-start">
+        <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
+        <TypingDots />
+      </div>
+    </div>
   );
 }
 
-function SkipBtn({ children, onClick, disabled }) {
+function TypingNoAvatar() {
   return (
-    <Button
-      onClick={onClick}
-      disabled={disabled}
-      className="text-sm py-2 px-5 transition-all duration-300"
-      style={{ background: "#fff", color: "#001364", border: "1px solid rgba(217, 224, 255, 0.7)", borderRadius: 8, fontWeight: 500 }}
-    >
-      {children}
-    </Button>
+    <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-300">
+      <div className="flex gap-2.5 items-start">
+        <div className="w-8 h-8 flex-shrink-0" />
+        <TypingDots />
+      </div>
+    </div>
+  );
+}
+
+function TypingDots() {
+  return (
+    <div className="bg-white rounded-2xl rounded-tl-sm p-3 px-5 shadow-sm" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+      <div className="flex gap-1.5">
+        <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: "#7A93FF" }} />
+        <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: "#7A93FF" }} />
+        <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: "#7A93FF" }} />
+      </div>
+    </div>
   );
 }
 
@@ -1322,26 +1623,24 @@ function Collapsed({ text, skipped }) {
           fontWeight: 600,
         }}
       >
-        {skipped ? "(skipped)" : "v"} {text} {skipped ? "" : "saved"}
+        {skipped ? "(skipped)" : "✓"} {text} {skipped ? "" : "saved"}
       </div>
     </div>
   );
 }
 
-function ProgressDots({ active, total }) {
+function ProgressDots({ currentStep }) {
+  // 7 dots so the dot cadence matches screen-1/screen-2/screen-3 visually.
+  // First dot = welcome reached. Dots 2-7 = sub-steps 1-6.
   return (
     <div className="flex justify-center gap-2 py-6">
-      {Array.from({ length: total }).map((_, i) => {
-        const stepNum = i + 1;
-        const reached = stepNum <= active;
+      {[0, 1, 2, 3, 4, 5, 6].map((i) => {
+        const reached = i <= currentStep;
         return (
           <div
             key={i}
-            className="w-1.5 h-1.5 rounded-full"
-            style={{
-              backgroundColor: reached ? "#7A93FF" : "#D9E0FF",
-              opacity: reached ? 1 : 0.5,
-            }}
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ backgroundColor: reached ? "#7A93FF" : "#D9E0FF", opacity: reached ? 1 : 0.5 }}
           />
         );
       })}
