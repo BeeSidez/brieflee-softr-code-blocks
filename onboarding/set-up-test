@@ -249,7 +249,8 @@ const THRESHOLD_ROWS = [
 
 // ---- Constants ----------------------------------------------------
 const LEE_AVATAR = "https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png";
-const FINISH_URL = "/new";
+// FINISH_URL omitted in preview mode - no redirect happens (PreviewComplete
+// stays on the page).
 // Softr-hosted explainer video. No YouTube UI -> no distractions, can't click out.
 const HOW_VIDEO_URL = "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/c84a1dcc-34aa-4dd0-8871-a72c7d64bd92.mp4";
 
