@@ -1,0 +1,361 @@
+// /settings · "+ New workspace" button (separate Vibe Code block).
+//
+// Shows a single button. Click → in-block form expands. Submit →
+// creates a new ACCOUNTS record. The Softr workflow watching the
+// accounts table picks it up and triggers the AI content-blueprint
+// build automatically; this block doesn't need to know about that.
+//
+// Place this block above (or beside) the workspace switcher. Set
+// VISIBILITY in Softr to user groups whose plan allows multiple
+// workspaces — single-workspace plans never see the button.
+//
+// SOFTR CONFIG REQUIRED:
+//   Source tab: bind to ACCOUNTS table. The Source filter doesn't
+//   matter for the create — what matters is that the Actions tab
+//   below picks up the q.select() aliases.
+//
+//   Actions tab: should auto-populate from createFields. If Softr
+//   doesn't auto-link the new account to the logged-in user, you'll
+//   need to add the `users` field ID below (uncomment the line in
+//   createFields and set the real field ID).
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { useRecordCreate, q } from "@/lib/datasource";
+import { useCurrentUser } from "@/lib/user";
+import { toast } from "sonner";
+
+const createFields = q.select({
+  name:        "aAKkT",
+  website:     "RaK4B",
+  description: "RQcNB",
+  // users:    "REPLACE_WITH_FIELD_ID",  // uncomment if Softr doesn't auto-link
+});
+
+export default function Block() {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [hasWebsite, setHasWebsite] = useState(true);
+  const [website, setWebsite] = useState("");
+  const [description, setDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const user = useCurrentUser();
+  const createRecord = useRecordCreate({ fields: createFields });
+
+  const reset = () => {
+    setName("");
+    setWebsite("");
+    setDescription("");
+    setHasWebsite(true);
+  };
+
+  const handleClose = () => {
+    reset();
+    setOpen(false);
+  };
+
+  const handleSubmit = async () => {
+    if (!name.trim()) {
+      toast.error("Workspace name is required");
+      return;
+    }
+    if (hasWebsite && !website.trim()) {
+      toast.error("Website is required (or switch to description)");
+      return;
+    }
+    if (!hasWebsite && !description.trim()) {
+      toast.error("Description is required (or switch to website)");
+      return;
+    }
+    if (!user?.id) {
+      toast.error("Please log in to create a workspace");
+      return;
+    }
+    if (!createRecord.enabled) {
+      toast.error("Cannot create records right now");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const fields = { name: name.trim() };
+      if (hasWebsite) {
+        fields.website = website.trim();
+      } else {
+        fields.description = description.trim();
+      }
+      // If Softr doesn't auto-link, uncomment:
+      // fields.users = [{ id: user.id }];
+
+      await createRecord.mutateAsync(fields);
+      toast.success("Workspace created — Brieflee is building your content blueprint.");
+      reset();
+      setOpen(false);
+    } catch (e) {
+      toast.error("Couldn't create workspace", {
+        description: e?.message || "Try again.",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "flex-end",
+        padding: "12px 24px",
+        width: "100%",
+      }}
+    >
+      <Style />
+
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="newws-trigger"
+        >
+          <span aria-hidden="true">+</span> New workspace
+        </button>
+      ) : (
+        <div className="newws-form">
+          <header className="newws-form-header">
+            <div>
+              <h3 className="newws-form-title">New workspace</h3>
+              <p className="newws-form-sub">
+                Brieflee will build a fresh content blueprint for it.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleClose}
+              className="newws-close"
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </header>
+
+          <div className="newws-fields">
+            <div>
+              <label className="newws-label">Workspace name</label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. My Brand"
+                disabled={submitting}
+              />
+            </div>
+
+            <div>
+              <label className="newws-label">How should we set this up?</label>
+              <div className="newws-toggle-row">
+                <button
+                  type="button"
+                  onClick={() => setHasWebsite(true)}
+                  className={"newws-toggle " + (hasWebsite ? "active" : "")}
+                  disabled={submitting}
+                >
+                  From a website
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHasWebsite(false)}
+                  className={"newws-toggle " + (!hasWebsite ? "active" : "")}
+                  disabled={submitting}
+                >
+                  From a description
+                </button>
+              </div>
+            </div>
+
+            {hasWebsite ? (
+              <div>
+                <label className="newws-label">Website URL</label>
+                <Input
+                  type="url"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                  placeholder="https://example.com"
+                  disabled={submitting}
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="newws-label">Brand description</label>
+                <Textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="A few sentences on what this brand is and who it's for."
+                  rows={3}
+                  disabled={submitting}
+                />
+              </div>
+            )}
+          </div>
+
+          <footer className="newws-form-footer">
+            <button
+              type="button"
+              onClick={handleClose}
+              disabled={submitting}
+              className="newws-cancel"
+            >
+              Cancel
+            </button>
+            <Button
+              onClick={handleSubmit}
+              disabled={submitting || !name.trim() || !createRecord.enabled}
+            >
+              {submitting ? "Creating…" : "Create workspace"}
+            </Button>
+          </footer>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Style() {
+  return (
+    <style>
+      {`
+        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+        .newws-trigger,
+        .newws-form,
+        .newws-form * { font-family: 'League Spartan', sans-serif; }
+
+        .newws-trigger {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 9px 16px;
+          background: #7A93FF;
+          color: #FFFFFF;
+          border: none;
+          border-radius: 999px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          box-shadow: 0 2px 8px rgba(122, 147, 255, 0.30);
+          transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .newws-trigger:hover {
+          background: #294FF6;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 14px rgba(41, 79, 246, 0.35);
+        }
+
+        .newws-form {
+          width: 100%;
+          max-width: 460px;
+          background: #FFFFFF;
+          border: 1px solid rgba(217, 224, 255, 0.6);
+          border-radius: 18px;
+          padding: 22px 24px 20px;
+          box-shadow: 0 12px 32px rgba(0, 15, 77, 0.08);
+        }
+        .newws-form-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+        .newws-form-title {
+          font-size: 16px;
+          font-weight: 600;
+          color: #000F4D;
+          margin: 0;
+        }
+        .newws-form-sub {
+          font-size: 12px;
+          color: #7A93FF;
+          margin: 4px 0 0;
+        }
+        .newws-close {
+          width: 28px;
+          height: 28px;
+          background: transparent;
+          color: #7A93FF;
+          border: none;
+          border-radius: 999px;
+          font-size: 22px;
+          line-height: 1;
+          cursor: pointer;
+          padding: 0;
+          transition: background 0.2s ease, color 0.2s ease;
+        }
+        .newws-close:hover {
+          background: rgba(122, 147, 255, 0.10);
+          color: #294FF6;
+        }
+
+        .newws-fields {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+        .newws-label {
+          display: block;
+          font-size: 12px;
+          font-weight: 600;
+          color: #001364;
+          margin-bottom: 6px;
+        }
+
+        .newws-toggle-row {
+          display: flex;
+          gap: 6px;
+        }
+        .newws-toggle {
+          flex: 1;
+          padding: 9px 12px;
+          background: #FFFFFF;
+          color: #001364;
+          border: 1px solid rgba(217, 224, 255, 0.7);
+          border-radius: 10px;
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+        }
+        .newws-toggle.active {
+          background: rgba(122, 147, 255, 0.10);
+          color: #294FF6;
+          border-color: #7A93FF;
+          font-weight: 600;
+        }
+        .newws-toggle:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .newws-form-footer {
+          display: flex;
+          justify-content: flex-end;
+          align-items: center;
+          gap: 8px;
+          margin-top: 20px;
+          padding-top: 16px;
+          border-top: 1px solid rgba(217, 224, 255, 0.55);
+        }
+        .newws-cancel {
+          background: transparent;
+          color: #7A93FF;
+          border: none;
+          font-size: 13px;
+          font-weight: 500;
+          padding: 8px 14px;
+          border-radius: 999px;
+          cursor: pointer;
+          transition: color 0.2s ease;
+        }
+        .newws-cancel:hover:not(:disabled) { color: #294FF6; }
+        .newws-cancel:disabled { color: #C5CFE8; cursor: not-allowed; }
+      `}
+    </style>
+  );
+}

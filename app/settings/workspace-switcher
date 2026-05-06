@@ -49,6 +49,16 @@ export default function Block() {
     data?.pages?.flatMap((p) => p?.items ?? []) ??
     (Array.isArray(data) ? data : []);
 
+  // Debug: log the raw account shape once so we can see exactly
+  // what Softr returns for the name field. Open the browser console
+  // (Cmd+Opt+I → Console) to see this.
+  useEffect(() => {
+    if (accounts.length > 0) {
+      // eslint-disable-next-line no-console
+      console.log("[workspace-switcher] accounts:", accounts);
+    }
+  }, [accounts.length]);
+
   // Current selection — initialised from URL, kept in sync with it
   const [currentId, setCurrentId] = useState(() => {
     if (typeof window === "undefined") return "";
@@ -183,17 +193,37 @@ export default function Block() {
   );
 }
 
-// Account name comes back from Softr as a plain string OR (for
-// relation/lookup fields) as { id, label } / [{ id, label }].
+// Account name lookup — tries common Softr access paths.
+// Softr can surface the primary field as `name` (when in q.select()),
+// `title` (in some hooks), or nested under `.fields`. Try all of them.
 function extractName(account) {
-  const raw = account?.name;
-  if (raw == null) return "";
-  if (typeof raw === "string") return raw;
-  if (Array.isArray(raw)) {
-    const first = raw[0];
-    if (typeof first === "string") return first;
-    return first?.label ?? "";
+  const candidates = [
+    account?.name,
+    account?.title,
+    account?.fields?.name,
+    account?.fields?.title,
+  ];
+  for (const raw of candidates) {
+    const value = unwrap(raw);
+    if (value) return value;
   }
-  if (typeof raw === "object") return raw.label ?? "";
-  return String(raw);
+  return "";
+}
+
+function unwrap(raw) {
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw.trim();
+  if (Array.isArray(raw)) {
+    const f = raw[0];
+    if (typeof f === "string") return f.trim();
+    if (f?.label) return String(f.label).trim();
+    if (f?.name) return String(f.name).trim();
+    return "";
+  }
+  if (typeof raw === "object") {
+    if (raw.label) return String(raw.label).trim();
+    if (raw.name) return String(raw.name).trim();
+    return "";
+  }
+  return String(raw).trim();
 }

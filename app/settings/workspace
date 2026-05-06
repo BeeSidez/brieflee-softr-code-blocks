@@ -9,23 +9,16 @@
 //   wired up the multi-workspace switcher block).
 //   Actions tab: auto-populated from updateFields aliases below.
 //
-// LOGO UPLOAD (deferred):
-//   Flip SHOW_LOGO_UPLOAD = true AND uncomment the `logo` lines in
-//   both q.select() calls below, replacing "REPLACE_WITH_FIELD_ID"
-//   with the actual Softr field ID for accounts.logo (ATTACHMENT).
-
 import { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useRecords, useRecordUpdate, q } from "@/lib/datasource";
+import { useRecords, useRecordUpdate, useUpload, q } from "@/lib/datasource";
 import { toast } from "sonner";
-
-const SHOW_LOGO_UPLOAD = false;
 
 // ---- Field map (ACCOUNTS) -----------------------------------------
 const select = q.select({
   name:               "aAKkT",
-  website:            "RaK4B",
+  logo:               "q1B5K",
   niche:              "vOp4b",
   brandBio:           "iVPat",
   brandVoice:         "ybmp8",
@@ -33,12 +26,11 @@ const select = q.select({
   targetAudience:     "6g1Vd",
   audiencePainPoints: "B4zya",
   audienceObjectives: "5Wq2k",
-  // logo:            "REPLACE_WITH_FIELD_ID",
 });
 
 const updateFields = q.select({
   name:               "aAKkT",
-  website:            "RaK4B",
+  logo:               "q1B5K",
   niche:              "vOp4b",
   brandBio:           "iVPat",
   brandVoice:         "ybmp8",
@@ -46,12 +38,10 @@ const updateFields = q.select({
   targetAudience:     "6g1Vd",
   audiencePainPoints: "B4zya",
   audienceObjectives: "5Wq2k",
-  // logo:            "REPLACE_WITH_FIELD_ID",
 });
 
 const EMPTY_DRAFT = {
   name: "",
-  website: "",
   niche: "",
   brandBio: "",
   brandVoice: "",
@@ -75,6 +65,11 @@ export default function Block() {
   // Draft state — what the user is editing right now
   const [draft, setDraft] = useState(EMPTY_DRAFT);
 
+  // Logo state (handled separately — not a plain string)
+  const [logoSaved, setLogoSaved] = useState(null); // attachment array or null
+  const [logoPending, setLogoPending] = useState(null); // File object pending save
+  const [logoCleared, setLogoCleared] = useState(false); // user removed it
+
   // Save lifecycle
   const [savingSection, setSavingSection] = useState(null);
   const [recentlySavedSection, setRecentlySavedSection] = useState(null);
@@ -82,6 +77,10 @@ export default function Block() {
   const hydratedRef = useRef(false);
   const pendingSaveContextRef = useRef(null);
   const savedFlashTimerRef = useRef(null);
+  const logoInputRef = useRef(null);
+
+  // ---- File upload hook --------------------------------------------
+  const upload = useUpload();
 
   // ---- Hydrate local state once when the record arrives -----------
   useEffect(() => {
@@ -90,7 +89,6 @@ export default function Block() {
 
     const next = {
       name: extractText(record.name),
-      website: extractText(record.website),
       niche: extractText(record.niche),
       brandBio: extractText(record.brandBio),
       brandVoice: extractText(record.brandVoice),
@@ -101,6 +99,7 @@ export default function Block() {
     };
     setSaved(next);
     setDraft(next);
+    setLogoSaved(record.logo ?? null);
   }, [record]);
 
   // ---- Update hook -------------------------------------------------
@@ -142,8 +141,9 @@ export default function Block() {
   }, []);
 
   // ---- Per-section dirty checks ------------------------------------
+  const isLogoDirty = logoPending !== null || logoCleared;
   const isIdentityDirty =
-    draft.name !== saved.name || draft.website !== saved.website;
+    draft.name !== saved.name || isLogoDirty;
   const isBrandDirty =
     draft.brandBio !== saved.brandBio ||
     draft.brandVoice !== saved.brandVoice ||
@@ -167,19 +167,74 @@ export default function Block() {
   const setField = (key, value) =>
     setDraft((cur) => ({ ...cur, [key]: value }));
 
-  const saveIdentity = () => {
+  const saveIdentity = async () => {
+    if (!record?.id) {
+      toast.error("Couldn't find your account record.");
+      return;
+    }
+
+    let logoForWrite = undefined; // undefined = don't touch the field
+    try {
+      if (logoPending) {
+        setSavingSection("identity");
+        const uploaded = await upload.mutateAsync(logoPending);
+        logoForWrite = Array.isArray(uploaded) ? uploaded : [uploaded];
+      } else if (logoCleared) {
+        logoForWrite = null;
+      }
+    } catch (err) {
+      setSavingSection(null);
+      toast.error("Couldn't upload logo", {
+        description: err?.message || "Try again.",
+      });
+      return;
+    }
+
+    const fields = { name: draft.name.trim() };
+    if (logoForWrite !== undefined) fields.logo = logoForWrite;
+
     performSave(
       "identity",
-      { name: draft.name.trim(), website: draft.website.trim() },
-      () => setSaved((cur) => ({
-        ...cur,
-        name: draft.name,
-        website: draft.website,
-      })),
+      fields,
+      () => {
+        setSaved((cur) => ({ ...cur, name: draft.name }));
+        if (logoForWrite !== undefined) {
+          setLogoSaved(logoForWrite);
+        }
+        setLogoPending(null);
+        setLogoCleared(false);
+        if (logoInputRef.current) logoInputRef.current.value = "";
+      },
     );
   };
-  const discardIdentity = () =>
-    setDraft((cur) => ({ ...cur, name: saved.name, website: saved.website }));
+  const discardIdentity = () => {
+    setDraft((cur) => ({ ...cur, name: saved.name }));
+    setLogoPending(null);
+    setLogoCleared(false);
+    if (logoInputRef.current) logoInputRef.current.value = "";
+  };
+
+  // ---- Logo handlers ----------------------------------------------
+  const handleLogoFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoPending(file);
+    setLogoCleared(false);
+  };
+
+  const handleLogoRemove = () => {
+    setLogoPending(null);
+    setLogoCleared(true);
+    if (logoInputRef.current) logoInputRef.current.value = "";
+  };
+
+  const currentLogoUrl = (() => {
+    if (logoCleared) return null;
+    if (logoPending) {
+      return URL.createObjectURL(logoPending);
+    }
+    return extractAttachmentUrl(logoSaved);
+  })();
 
   const saveBrand = () => {
     performSave(
@@ -248,7 +303,7 @@ export default function Block() {
       {/* ── Section 1 · Identity ────────────────────────────────────── */}
       <SectionCard
         title="Workspace identity"
-        subtitle="The name and website that anchor this workspace."
+        subtitle="The name and logo that anchor this workspace."
         dirty={isIdentityDirty}
         saving={savingSection === "identity"}
         justSaved={recentlySavedSection === "identity"}
@@ -263,22 +318,48 @@ export default function Block() {
           />
         </FieldRow>
 
-        <FieldRow label="Website">
-          <Input
-            value={draft.website}
-            onChange={(e) => setField("website", e.target.value)}
-            placeholder="https://example.com"
-            type="url"
-          />
+        <FieldRow label="Logo">
+          <div className="workspace-logo-row">
+            <div className="workspace-logo-preview">
+              {currentLogoUrl ? (
+                <img src={currentLogoUrl} alt="Workspace logo" />
+              ) : (
+                <span className="workspace-logo-placeholder">No logo yet</span>
+              )}
+            </div>
+            <div className="workspace-logo-actions">
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleLogoFileChange}
+                style={{ display: "none" }}
+              />
+              <button
+                type="button"
+                onClick={() => logoInputRef.current?.click()}
+                className="workspace-logo-btn"
+              >
+                {currentLogoUrl ? "Change logo" : "Upload logo"}
+              </button>
+              {currentLogoUrl && (
+                <button
+                  type="button"
+                  onClick={handleLogoRemove}
+                  className="workspace-logo-btn workspace-logo-btn-ghost"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+          <p
+            className="text-xs"
+            style={{ color: "#7A93FF", fontWeight: 400, marginTop: 6 }}
+          >
+            Square image works best. Click Save changes to upload.
+          </p>
         </FieldRow>
-
-        {SHOW_LOGO_UPLOAD && (
-          <FieldRow label="Logo">
-            <p className="text-xs" style={{ color: "#7A93FF", fontWeight: 400 }}>
-              Logo upload coming soon.
-            </p>
-          </FieldRow>
-        )}
       </SectionCard>
 
       {/* ── Section 2 · Brand ───────────────────────────────────────── */}
@@ -519,6 +600,21 @@ function Loading({ message, error }) {
   );
 }
 
+function extractAttachmentUrl(raw) {
+  if (raw == null) return null;
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw)) {
+    const first = raw[0];
+    if (!first) return null;
+    if (typeof first === "string") return first;
+    return first.url || first.thumbnailUrl || null;
+  }
+  if (typeof raw === "object") {
+    return raw.url || raw.thumbnailUrl || null;
+  }
+  return null;
+}
+
 function extractText(raw) {
   if (raw == null) return "";
   if (typeof raw === "string") return raw;
@@ -587,6 +683,69 @@ function Style() {
         .workspace-discard-btn:disabled {
           color: #C5CFE8;
           cursor: not-allowed;
+        }
+
+        /* ── Logo upload ──────────────────────────────────────── */
+        .workspace-logo-row {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          flex-wrap: wrap;
+        }
+        .workspace-logo-preview {
+          width: 72px;
+          height: 72px;
+          border-radius: 14px;
+          background: rgba(217, 224, 255, 0.30);
+          border: 1px solid rgba(217, 224, 255, 0.6);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          flex-shrink: 0;
+        }
+        .workspace-logo-preview img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .workspace-logo-placeholder {
+          font-size: 10px;
+          color: #7A93FF;
+          font-weight: 500;
+          text-align: center;
+          padding: 0 6px;
+        }
+        .workspace-logo-actions {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .workspace-logo-btn {
+          padding: 8px 14px;
+          background: #FFFFFF;
+          color: #7A93FF;
+          border: 1px solid rgba(122, 147, 255, 0.45);
+          border-radius: 999px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+        }
+        .workspace-logo-btn:hover {
+          background: rgba(122, 147, 255, 0.10);
+          color: #294FF6;
+          border-color: rgba(41, 79, 246, 0.55);
+        }
+        .workspace-logo-btn-ghost {
+          color: #C97D3F;
+          border-color: rgba(232, 155, 92, 0.45);
+        }
+        .workspace-logo-btn-ghost:hover {
+          background: rgba(232, 155, 92, 0.10);
+          color: #B86A33;
+          border-color: rgba(232, 155, 92, 0.65);
         }
       `}
     </style>
