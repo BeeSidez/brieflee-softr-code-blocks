@@ -41,6 +41,7 @@ const ADD_WORKSPACE_MODAL_SIZE = "lg"; // 'sm' | 'md' | 'lg' | 'xl'
 
 const select = q.select({
   name: "aAKkT",
+  logo: "q1B5K",
 });
 
 export default function Block() {
@@ -49,15 +50,6 @@ export default function Block() {
     data?.pages?.flatMap((p) => p?.items ?? []) ??
     (Array.isArray(data) ? data : []);
 
-  // Debug: log the raw account shape once so we can see exactly
-  // what Softr returns for the name field. Open the browser console
-  // (Cmd+Opt+I → Console) to see this.
-  useEffect(() => {
-    if (accounts.length > 0) {
-      // eslint-disable-next-line no-console
-      console.log("[workspace-switcher] accounts:", accounts);
-    }
-  }, [accounts.length]);
 
   // Current selection — initialised from URL, kept in sync with it
   const [currentId, setCurrentId] = useState(() => {
@@ -113,6 +105,11 @@ export default function Block() {
   const showSelect = accounts.length > 1;
   if (!showSelect && !SHOW_ADD_WORKSPACE) return null;
 
+  // Logo for the currently-selected workspace (if any)
+  const currentAccount =
+    accounts.find((a) => a.id === currentId) ?? accounts[0];
+  const currentLogoUrl = extractLogoUrl(currentAccount);
+
   return (
     <div
       style={{
@@ -147,6 +144,21 @@ export default function Block() {
             >
               Workspace
             </span>
+            {currentLogoUrl ? (
+              <img
+                src={currentLogoUrl}
+                alt=""
+                style={{
+                  width: "26px",
+                  height: "26px",
+                  borderRadius: "8px",
+                  objectFit: "contain",
+                  background: "rgba(217, 224, 255, 0.35)",
+                  border: "1px solid rgba(217, 224, 255, 0.6)",
+                  flexShrink: 0,
+                }}
+              />
+            ) : null}
             <Select value={currentId} onValueChange={handleSelect}>
               <SelectTrigger
                 style={{
@@ -211,6 +223,31 @@ function extractName(account) {
     if (value) return value;
   }
   return "";
+}
+
+function extractLogoUrl(account) {
+  const candidates = [
+    account?.logo,
+    account?.fields?.logo,
+    account?.fields?.q1B5K,
+    account?.q1B5K,
+  ];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    if (typeof raw === "string") return raw;
+    if (Array.isArray(raw)) {
+      const first = raw[0];
+      if (!first) continue;
+      if (typeof first === "string") return first;
+      if (first.url) return first.url;
+      if (first.thumbnailUrl) return first.thumbnailUrl;
+    }
+    if (typeof raw === "object") {
+      if (raw.url) return raw.url;
+      if (raw.thumbnailUrl) return raw.thumbnailUrl;
+    }
+  }
+  return null;
 }
 
 function unwrap(raw) {

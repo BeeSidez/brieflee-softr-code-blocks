@@ -239,28 +239,73 @@ export default function Block() {
   const [savingSection, setSavingSection] = useState(null);
   const [recentlySavedSection, setRecentlySavedSection] = useState(null);
 
-  const hydratedRef = useRef(false);
+  // Hydration is keyed by record.id so workspace switches re-hydrate
+  const hydratedForRecordIdRef = useRef(null);
   const pendingSaveContextRef = useRef(null);
   const savedFlashTimerRef = useRef(null);
 
-  // ---- Hydrate local state once when the record arrives -----------
+  // ---- Hydrate from record (re-runs when record.id changes) -------
+  // Reads by alias first, then falls back to record.fields[snake_case]
+  // and record.fields[fieldId]. Field IDs verified via the Softr
+  // Tables API — matches the live database schema.
   useEffect(() => {
-    if (!record || hydratedRef.current) return;
-    hydratedRef.current = true;
+    if (!record) return;
+    if (hydratedForRecordIdRef.current === record.id) return;
+    hydratedForRecordIdRef.current = record.id;
 
-    const aiId = record.aiMode?.id || null;
+    // ai_mode (single SELECT). Field ID O9x4n.
+    const aiRaw =
+      record.aiMode ??
+      record.fields?.ai_mode ??
+      record.fields?.O9x4n ??
+      record.O9x4n;
+    const aiId = aiRaw?.id || null;
     setAiModeId(aiId);
     setAiModeIdSaved(aiId);
 
-    const qa = Array.isArray(record.qaChecklist)
-      ? record.qaChecklist.map((x) => x?.id ?? x).filter(Boolean)
+    // qa_checklist (multi-SELECT). Field ID mZaRc.
+    const qaRaw =
+      record.qaChecklist ??
+      record.fields?.qa_checklist ??
+      record.fields?.mZaRc ??
+      record.mZaRc;
+    const qa = Array.isArray(qaRaw)
+      ? qaRaw.map((x) => x?.id ?? x).filter(Boolean)
       : [];
     setQaIds(qa);
     setQaIdsSaved(qa);
 
+    // Thresholds — each row's key is its alias; field ID and snake_case
+    // built from the alias the same way set-up uses them.
+    const SNAKE = {
+      productScreenTime:  "product_screen_time_threshold",
+      hookSpeed:          "hook_speed_threshold",
+      visualHook:         "visual_hook_threshold",
+      ctaPlacement:       "cta_placement_threshold",
+      faceTime:           "face_time_threshold",
+      textLegibility:     "text_legibility_threshold",
+      audioClarity:       "audio_clarity_threshold",
+      engagementPacing:   "engagement_pacing_threshold",
+      brandMentionCount:  "brand_mention_count_threshold",
+    };
+    const FIELD_ID = {
+      productScreenTime:  "AFgpo",
+      hookSpeed:          "wthaW",
+      visualHook:         "Nq4ZX",
+      ctaPlacement:       "FA452",
+      faceTime:           "FH27O",
+      textLegibility:     "TNRuM",
+      audioClarity:       "dMTrN",
+      engagementPacing:   "bR5PL",
+      brandMentionCount:  "HCvZw",
+    };
     const t = {};
     THRESHOLD_ROWS.forEach((row) => {
-      const v = record[row.key];
+      const v =
+        record[row.key] ??
+        record.fields?.[SNAKE[row.key]] ??
+        record.fields?.[FIELD_ID[row.key]] ??
+        record[FIELD_ID[row.key]];
       if (v?.id) t[row.key] = v.id;
     });
     setThresholds(t);
