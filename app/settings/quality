@@ -1,14 +1,12 @@
 // /settings · Quality tab — single Vibe Code block.
-// Three sub-sections in one card stack: Review mode → QA checklist →
-// Thresholds. All three are fields on the user's ACCOUNTS record.
+// Three sub-sections: Review mode → QA Checklist → Thresholds.
+// Each section has its own Save / Discard buttons; nothing persists
+// until the user explicitly hits Save. beforeunload warns on close
+// if there are unsaved changes (won't catch in-app tab switches).
 //
 // SOFTR CONFIG REQUIRED:
 //   Source tab: bind to ACCOUNTS in "brieflee beta", filter to logged-in user.
 //   Actions tab: auto-populated from updateFields aliases below.
-//
-// Constants (AI_MODE_OPTIONS / QA_CHECK_OPTIONS / THRESHOLD_ROWS) and the
-// row UI patterns are lifted from onboarding/new/set-up so the look + data
-// shape stay in lockstep with the onboarding flow.
 
 import { useState, useEffect, useRef } from "react";
 import { Switch } from "@/components/ui/switch";
@@ -205,6 +203,19 @@ const THRESHOLD_ROWS = [
   },
 ];
 
+// ---- Helpers ------------------------------------------------------
+const arraysEqualUnordered = (a, b) => {
+  if (a.length !== b.length) return false;
+  const setB = new Set(b);
+  return a.every((x) => setB.has(x));
+};
+const objectsEqualShallow = (a, b) => {
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  return ak.every((k) => a[k] === b[k]);
+};
+
 // =====================================================================
 // Block
 // =====================================================================
@@ -214,41 +225,38 @@ export default function Block() {
     data?.pages?.[0]?.items?.[0] ??
     (Array.isArray(data) ? data[0] : null);
 
-  // Hydrated local state — single source of truth for the UI
+  // Saved state — mirrors the record after each successful save
+  const [aiModeIdSaved, setAiModeIdSaved] = useState(null);
+  const [qaIdsSaved, setQaIdsSaved] = useState([]);
+  const [thresholdsSaved, setThresholdsSaved] = useState({});
+
+  // Draft state — what the user is editing right now
   const [aiModeId, setAiModeId] = useState(null);
   const [qaIds, setQaIds] = useState([]);
   const [thresholds, setThresholds] = useState({});
-  const [savingState, setSavingState] = useState("idle"); // idle | saving | saved
+
+  // Save lifecycle
+  const [savingSection, setSavingSection] = useState(null);
+  const [recentlySavedSection, setRecentlySavedSection] = useState(null);
 
   const hydratedRef = useRef(false);
-  const pendingFieldsRef = useRef({});
-  const saveTimerRef = useRef(null);
-  const savedClearTimerRef = useRef(null);
+  const pendingSaveContextRef = useRef(null);
+  const savedFlashTimerRef = useRef(null);
 
-  const updateRecord = useRecordUpdate({
-    fields: updateFields,
-    onSuccess: () => {
-      setSavingState("saved");
-      refetch();
-      if (savedClearTimerRef.current) clearTimeout(savedClearTimerRef.current);
-      savedClearTimerRef.current = setTimeout(() => setSavingState("idle"), 1800);
-    },
-    onError: (err) => {
-      setSavingState("idle");
-      toast.error("Couldn't save", { description: err?.message || "Try again." });
-    },
-  });
-
-  // ---- Hydrate local state once when the record first arrives -----
+  // ---- Hydrate local state once when the record arrives -----------
   useEffect(() => {
     if (!record || hydratedRef.current) return;
     hydratedRef.current = true;
 
-    if (record.aiMode?.id) setAiModeId(record.aiMode.id);
+    const aiId = record.aiMode?.id || null;
+    setAiModeId(aiId);
+    setAiModeIdSaved(aiId);
 
-    if (Array.isArray(record.qaChecklist)) {
-      setQaIds(record.qaChecklist.map((x) => x?.id ?? x).filter(Boolean));
-    }
+    const qa = Array.isArray(record.qaChecklist)
+      ? record.qaChecklist.map((x) => x?.id ?? x).filter(Boolean)
+      : [];
+    setQaIds(qa);
+    setQaIdsSaved(qa);
 
     const t = {};
     THRESHOLD_ROWS.forEach((row) => {
@@ -256,72 +264,134 @@ export default function Block() {
       if (v?.id) t[row.key] = v.id;
     });
     setThresholds(t);
+    setThresholdsSaved(t);
   }, [record]);
 
-  // ---- Debounced save ----------------------------------------------
-  const queueSave = (newFields) => {
-    if (!record?.id) return;
-    Object.assign(pendingFieldsRef.current, newFields);
-    setSavingState("saving");
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      const fields = pendingFieldsRef.current;
-      pendingFieldsRef.current = {};
-      updateRecord.mutate({ recordId: record.id, fields });
-    }, 800);
+  // ---- Update hook -------------------------------------------------
+  const updateRecord = useRecordUpdate({
+    fields: updateFields,
+    onSuccess: () => {
+      const ctx = pendingSaveContextRef.current;
+      pendingSaveContextRef.current = null;
+      setSavingSection(null);
+      if (!ctx) { refetch(); return; }
+      ctx.onComplete?.();
+      setRecentlySavedSection(ctx.section);
+      if (savedFlashTimerRef.current) clearTimeout(savedFlashTimerRef.current);
+      savedFlashTimerRef.current = setTimeout(() => {
+        setRecentlySavedSection((cur) => (cur === ctx.section ? null : cur));
+      }, 1800);
+      refetch();
+    },
+    onError: (err) => {
+      pendingSaveContextRef.current = null;
+      setSavingSection(null);
+      toast.error("Couldn't save", { description: err?.message || "Try again." });
+    },
+  });
+
+  const performSave = (section, fields, onComplete) => {
+    if (!record?.id) {
+      toast.error("Couldn't find your account record.");
+      return;
+    }
+    pendingSaveContextRef.current = { section, onComplete };
+    setSavingSection(section);
+    updateRecord.mutate({ recordId: record.id, fields });
   };
 
   // ---- Cleanup -----------------------------------------------------
   useEffect(() => () => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    if (savedClearTimerRef.current) clearTimeout(savedClearTimerRef.current);
+    if (savedFlashTimerRef.current) clearTimeout(savedFlashTimerRef.current);
   }, []);
 
-  // ---- Handlers ----------------------------------------------------
-  const setReviewMode = (id) => {
-    setAiModeId(id);
-    const m = AI_MODE_OPTIONS.find((x) => x.id === id);
-    queueSave({ aiMode: m ? { id: m.id, label: m.label } : null });
-  };
+  // ---- Dirty checks ------------------------------------------------
+  const isReviewDirty = aiModeId !== aiModeIdSaved;
+  const isQaDirty = !arraysEqualUnordered(qaIds, qaIdsSaved);
+  const isThresholdsDirty = !objectsEqualShallow(thresholds, thresholdsSaved);
+  const anyDirty = isReviewDirty || isQaDirty || isThresholdsDirty;
 
-  const toggleQA = (id) => {
-    setQaIds((cur) => {
-      const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
-      queueSave({ qaChecklist: next });
-      return next;
+  // ---- beforeunload guard (browser-close / hard navigation) -------
+  useEffect(() => {
+    if (!anyDirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [anyDirty]);
+
+  // ---- Save / discard handlers per section -----------------------
+  const saveReview = () => {
+    const m = AI_MODE_OPTIONS.find((x) => x.id === aiModeId);
+    performSave(
+      "review",
+      { aiMode: m ? { id: m.id, label: m.label } : null },
+      () => setAiModeIdSaved(aiModeId),
+    );
+  };
+  const discardReview = () => setAiModeId(aiModeIdSaved);
+
+  const saveQA = () => {
+    performSave(
+      "qa",
+      { qaChecklist: qaIds },
+      () => setQaIdsSaved([...qaIds]),
+    );
+  };
+  const discardQA = () => setQaIds([...qaIdsSaved]);
+
+  const saveThresholds = () => {
+    // Send only the keys that actually changed
+    const fields = {};
+    const allKeys = new Set([
+      ...Object.keys(thresholds),
+      ...Object.keys(thresholdsSaved),
+    ]);
+    allKeys.forEach((k) => {
+      const cur = thresholds[k];
+      const sav = thresholdsSaved[k];
+      if (cur === sav) return;
+      if (cur) {
+        const row = THRESHOLD_ROWS.find((r) => r.key === k);
+        const opt = row?.options.find((o) => o.id === cur);
+        if (opt) fields[k] = { id: opt.id, label: opt.label };
+      } else {
+        fields[k] = null;
+      }
     });
+    performSave(
+      "thresholds",
+      fields,
+      () => setThresholdsSaved({ ...thresholds }),
+    );
   };
+  const discardThresholds = () => setThresholds({ ...thresholdsSaved });
 
-  const setThresholdValue = (rowKey, optId) => {
+  // ---- Draft mutators (just update local state) -------------------
+  const setReviewMode = (id) => setAiModeId(id);
+
+  const toggleQA = (id) =>
+    setQaIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+
+  const setThresholdValue = (rowKey, optId) =>
     setThresholds((cur) => {
       const next = { ...cur };
       if (cur[rowKey] === optId) delete next[rowKey];
       else next[rowKey] = optId;
-
-      const row = THRESHOLD_ROWS.find((r) => r.key === rowKey);
-      const opt = row?.options.find((o) => o.id === next[rowKey]);
-      queueSave({ [rowKey]: opt ? { id: opt.id, label: opt.label } : null });
       return next;
     });
-  };
 
-  const setThresholdRequired = (rowKey, on) => {
+  const setThresholdRequired = (rowKey, on) =>
     setThresholds((cur) => {
       const next = { ...cur };
       if (!on) {
         delete next[rowKey];
-        queueSave({ [rowKey]: null });
       } else {
         const row = THRESHOLD_ROWS.find((r) => r.key === rowKey);
         const firstReal = row?.options.find((o) => o.label !== "None") || row?.options[0];
-        if (firstReal) {
-          next[rowKey] = firstReal.id;
-          queueSave({ [rowKey]: { id: firstReal.id, label: firstReal.label } });
-        }
+        if (firstReal) next[rowKey] = firstReal.id;
       }
       return next;
     });
-  };
 
   // ---- Render guards -----------------------------------------------
   if (status === "pending") return <BlockShell><Loading /></BlockShell>;
@@ -338,12 +408,15 @@ export default function Block() {
 
   return (
     <BlockShell>
-      <SaveIndicator state={savingState} />
-
       {/* ── Section 1 · Review mode ─────────────────────────────────── */}
       <SectionCard
         title="Review mode"
         subtitle="How involved you want to be when content comes in."
+        dirty={isReviewDirty}
+        saving={savingSection === "review"}
+        justSaved={recentlySavedSection === "review"}
+        onSave={saveReview}
+        onDiscard={discardReview}
       >
         <div className="space-y-3">
           {AI_MODE_OPTIONS.map((m) => {
@@ -368,20 +441,13 @@ export default function Block() {
                   {m.recommended && (
                     <span
                       className="text-xs px-2 py-0.5 rounded-full"
-                      style={{
-                        backgroundColor: "#D9E0FF",
-                        color: "#294FF6",
-                        fontWeight: 500,
-                      }}
+                      style={{ backgroundColor: "#D9E0FF", color: "#294FF6", fontWeight: 500 }}
                     >
                       Recommended
                     </span>
                   )}
                 </div>
-                <p
-                  className="text-xs leading-relaxed"
-                  style={{ color: "#001364", fontWeight: 300 }}
-                >
+                <p className="text-xs leading-relaxed" style={{ color: "#001364", fontWeight: 300 }}>
                   {m.description}
                 </p>
               </button>
@@ -394,6 +460,11 @@ export default function Block() {
       <SectionCard
         title="QA Checklist"
         subtitle="Default checks Brieflee runs on every quick review."
+        dirty={isQaDirty}
+        saving={savingSection === "qa"}
+        justSaved={recentlySavedSection === "qa"}
+        onSave={saveQA}
+        onDiscard={discardQA}
       >
         <div className="flex flex-wrap gap-1.5">
           {QA_CHECK_OPTIONS.map((opt) => {
@@ -426,6 +497,11 @@ export default function Block() {
       <SectionCard
         title="Default standards"
         subtitle="Quality bar for each check. Briefs override these for full reviews — this is your safety net for quick reviews."
+        dirty={isThresholdsDirty}
+        saving={savingSection === "thresholds"}
+        justSaved={recentlySavedSection === "thresholds"}
+        onSave={saveThresholds}
+        onDiscard={discardThresholds}
       >
         <div className="space-y-4">
           {THRESHOLD_ROWS.map((row) => {
@@ -438,24 +514,16 @@ export default function Block() {
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <label
-                      className="text-xs font-medium block"
-                      style={{ color: "#001364" }}
-                    >
+                    <label className="text-xs font-medium block" style={{ color: "#001364" }}>
                       {row.label}
                     </label>
-                    <p
-                      className="text-xs leading-relaxed"
-                      style={{ color: "#000F4D", fontWeight: 300 }}
-                    >
+                    <p className="text-xs leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>
                       {row.description}
                     </p>
                   </div>
                   <Switch
                     checked={required}
-                    onCheckedChange={(checked) =>
-                      setThresholdRequired(row.key, checked)
-                    }
+                    onCheckedChange={(checked) => setThresholdRequired(row.key, checked)}
                   />
                 </div>
                 {required && (
@@ -510,7 +578,6 @@ function BlockShell({ children }) {
         background: "#FAFBFF",
         borderRadius: "16px",
         padding: "32px 0 48px",
-        position: "relative",
       }}
     >
       <Style />
@@ -521,10 +588,17 @@ function BlockShell({ children }) {
   );
 }
 
-function SectionCard({ title, subtitle, children }) {
+function SectionCard({
+  title, subtitle, dirty, saving, justSaved, onSave, onDiscard, children,
+}) {
+  // Pill priority: saving > justSaved > dirty
+  let pill = null;
+  if (saving) pill = <StatusPill tone="loading" label="Saving…" />;
+  else if (justSaved) pill = <StatusPill tone="success" label="Saved" />;
+  else if (dirty) pill = <StatusPill tone="warning" label="Unsaved" />;
+
   return (
     <section
-      className="quality-card"
       style={{
         background: "#FFFFFF",
         border: "1px solid rgba(217, 224, 255, 0.55)",
@@ -533,62 +607,88 @@ function SectionCard({ title, subtitle, children }) {
         boxShadow: "0 1px 3px rgba(0, 15, 77, 0.04)",
       }}
     >
-      <header className="mb-4">
-        <h3
-          className="text-base"
-          style={{ color: "#000F4D", fontWeight: 600, letterSpacing: "-0.005em" }}
-        >
-          {title}
-        </h3>
-        {subtitle && (
-          <p
-            className="text-xs mt-0.5"
-            style={{ color: "#7A93FF", fontWeight: 400, lineHeight: 1.5 }}
+      <header className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3
+            className="text-base"
+            style={{ color: "#000F4D", fontWeight: 600, letterSpacing: "-0.005em" }}
           >
-            {subtitle}
-          </p>
-        )}
+            {title}
+          </h3>
+          {subtitle && (
+            <p
+              className="text-xs mt-0.5"
+              style={{ color: "#7A93FF", fontWeight: 400, lineHeight: 1.5 }}
+            >
+              {subtitle}
+            </p>
+          )}
+        </div>
+        {pill && <div style={{ flexShrink: 0 }}>{pill}</div>}
       </header>
+
       {children}
+
+      <footer
+        className="mt-5 pt-4 flex items-center justify-end gap-2"
+        style={{ borderTop: "1px solid rgba(217, 224, 255, 0.5)" }}
+      >
+        <button
+          type="button"
+          onClick={onDiscard}
+          disabled={!dirty || saving}
+          className="quality-discard-btn"
+        >
+          Discard
+        </button>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={!dirty || saving}
+          className="quality-save-btn"
+        >
+          {saving ? "Saving…" : "Save changes"}
+        </button>
+      </footer>
     </section>
   );
 }
 
-function SaveIndicator({ state }) {
-  if (state === "idle") return null;
-  const isSaving = state === "saving";
+function StatusPill({ tone, label }) {
+  const palette =
+    tone === "success"
+      ? { fg: "#22A06B", dot: "#22A06B", border: "rgba(34, 160, 107, 0.30)" }
+      : tone === "warning"
+      ? { fg: "#C97D3F", dot: "#E89B5C", border: "rgba(232, 155, 92, 0.45)" }
+      : { fg: "#7A93FF", dot: "#7A93FF", border: "rgba(122, 147, 255, 0.45)" };
+
   return (
-    <div
-      className="quality-save-indicator"
+    <span
       style={{
-        position: "absolute",
-        top: 16,
-        right: 24,
         display: "inline-flex",
         alignItems: "center",
         gap: 6,
-        fontSize: 12,
-        fontWeight: 500,
-        color: isSaving ? "#7A93FF" : "#22A06B",
-        padding: "5px 10px",
+        fontSize: 11,
+        fontWeight: 600,
+        color: palette.fg,
+        padding: "4px 10px",
         background: "#FFFFFF",
-        border: "1px solid rgba(217, 224, 255, 0.6)",
+        border: `1px solid ${palette.border}`,
         borderRadius: 999,
-        boxShadow: "0 1px 4px rgba(0, 15, 77, 0.05)",
-        zIndex: 5,
+        whiteSpace: "nowrap",
       }}
     >
       <span
         style={{
-          width: 6,
-          height: 6,
+          width: 5,
+          height: 5,
           borderRadius: "50%",
-          background: isSaving ? "#7A93FF" : "#22A06B",
-          animation: isSaving ? "qPulse 1.2s ease-in-out infinite" : "none",
+          background: palette.dot,
+          animation: tone === "loading" ? "qPulse 1.2s ease-in-out infinite" : "none",
         }}
       />
-      {isSaving ? "Saving…" : "Saved"}
-    </div>
+      {label}
+    </span>
   );
 }
 
@@ -613,6 +713,52 @@ function Style() {
         @keyframes qPulse {
           0%, 100% { opacity: 0.5; transform: scale(0.85); }
           50%      { opacity: 1;   transform: scale(1.15); }
+        }
+
+        .quality-save-btn {
+          background: #7A93FF;
+          color: #FFFFFF;
+          font-size: 13px;
+          font-weight: 600;
+          padding: 8px 18px;
+          border-radius: 999px;
+          border: none;
+          cursor: pointer;
+          box-shadow: 0 2px 6px rgba(122, 147, 255, 0.3);
+          transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .quality-save-btn:hover:not(:disabled) {
+          background: #294FF6;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(41, 79, 246, 0.35);
+        }
+        .quality-save-btn:active:not(:disabled) {
+          transform: translateY(0);
+        }
+        .quality-save-btn:disabled {
+          background: #D9E0FF;
+          color: #FFFFFF;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+
+        .quality-discard-btn {
+          background: transparent;
+          color: #7A93FF;
+          font-size: 13px;
+          font-weight: 500;
+          padding: 8px 14px;
+          border-radius: 999px;
+          border: none;
+          cursor: pointer;
+          transition: color 0.2s ease;
+        }
+        .quality-discard-btn:hover:not(:disabled) {
+          color: #294FF6;
+        }
+        .quality-discard-btn:disabled {
+          color: #C5CFE8;
+          cursor: not-allowed;
         }
       `}
     </style>
