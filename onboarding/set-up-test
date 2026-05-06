@@ -1,16 +1,6 @@
-// /set-up-test -- preview-mode clone of /set-up.
-// Same UI, every step skippable, NO writes to the database (the saves are
-// stubbed out so the AI website scanner does not fire). Use it to walk
-// through every page visually without polluting any real account.
-//
-// SOFTR CONFIG:
-//   Source tab: same as /set-up (ACCOUNTS, filtered to logged-in user).
-//   Visibility tab: gate to is_internal=true so only staff see this page.
-//   Actions tab: still wires updateFields, but the code never calls
-//                updateRecord.mutate -- writes are no-ops.
-//
-// Final step shows a "Preview complete" message instead of redirecting
-// to /new, so you can step out of the preview at your own pace.
+// /set-up-test -- preview clone of /set-up. save() is a no-op so the AI
+// scanner never fires. Otherwise IDENTICAL to /set-up.
+// Bind to accounts; gate the page to is_internal users in Softr.
 
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -249,8 +239,7 @@ const THRESHOLD_ROWS = [
 
 // ---- Constants ----------------------------------------------------
 const LEE_AVATAR = "https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png";
-// FINISH_URL omitted in preview mode - no redirect happens (PreviewComplete
-// stays on the page).
+const FINISH_URL = "/new";
 // Softr-hosted explainer video. No YouTube UI -> no distractions, can't click out.
 const HOW_VIDEO_URL = "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/c84a1dcc-34aa-4dd0-8871-a72c7d64bd92.mp4";
 
@@ -336,9 +325,6 @@ export default function Block() {
   const markSavedAndAdvance = (step) => { setSavedSteps((c) => ({ ...c, [step]: true })); advance(step + 1); };
   const markSkippedAndAdvance = (step) => { setSkippedSteps((c) => ({ ...c, [step]: true })); advance(step + 1); };
 
-  // Preview mode: never call updateRecord.mutate. Log the would-be payload
-  // and call the success callback after a short fake delay so the UI still
-  // shows "Saving..." for a beat. No DB write -> AI scanner doesn't fire.
   const save = (fieldsObj, after) => {
     console.log("[set-up-test] preview save (no-op):", fieldsObj);
     setTimeout(() => after?.(), 350);
@@ -381,15 +367,19 @@ export default function Block() {
     save(fields, () => markSavedAndAdvance(5));
   };
   const [showConfetti, setShowConfetti] = useState(false);
-
-  // Preview mode: confetti briefly, then drop to PreviewComplete (no redirect).
-  const handleStep6 = () => {
-    setSavedSteps((c2) => ({ ...c2, 6: true }));
+  const finishWithConfetti = () => {
     setShowConfetti(true);
-    setTimeout(() => {
-      setShowConfetti(false);
-      setCurrentStep(7);
-    }, 2600);
+    setTimeout(() => { window.location.href = FINISH_URL; }, 2600);
+  };
+
+  const handleStep6 = () => {
+    const blueprintKeys = ["name", "brandBio", "brandVoice", "brandCta", "niche", "targetAudience", "audiencePainPoints", "audienceObjectives"];
+    const updates = {};
+    blueprintKeys.forEach((k) => {
+      if (editedValues[k] !== undefined) updates[k] = editedValues[k];
+    });
+    if (Object.keys(updates).length === 0) { finishWithConfetti(); return; }
+    save(updates, finishWithConfetti);
   };
 
   if (status === "pending") return <Loading />;
@@ -400,15 +390,6 @@ export default function Block() {
     <div className="min-h-screen flex flex-col" style={{ background: "linear-gradient(to bottom, rgba(217, 224, 255, 0.15), rgba(255, 255, 255, 1))" }}>
       <Style />
       {showConfetti && <Confetti />}
-
-      {/* Preview banner -- sticky at top so you always know nothing is being saved. */}
-      <div
-        className="text-center py-2 px-4 text-xs"
-        style={{ background: "#FEF3C7", color: "#92400E", fontWeight: 600, borderBottom: "1px solid #FDE68A" }}
-      >
-        PREVIEW MODE - Nothing is saved - AI website scan is not triggered - Visible to is_internal users only
-      </div>
-
       <ProgressDots currentStep={currentStep} />
 
       <div className="flex-1 overflow-y-auto pb-32">
@@ -501,45 +482,6 @@ export default function Block() {
               />
             </section>
           )}
-
-          {/* Preview complete state - stays on the page so Bev can replay. */}
-          {currentStep >= 7 && <PreviewComplete onReset={() => { setCurrentStep(0); setSavedSteps({}); setSkippedSteps({}); }} />}
-        </div>
-      </div>
-
-      {/* Floating "Skip this step" - preview-only, always available. */}
-      {currentStep > 0 && currentStep < 7 ? (
-        <button
-          onClick={() => markSkippedAndAdvance(currentStep)}
-          className="fixed bottom-6 right-6 text-xs px-4 py-2 rounded-full shadow-lg"
-          style={{ background: "#001364", color: "#fff", border: "none", fontWeight: 600, cursor: "pointer", zIndex: 50 }}
-        >
-          Skip this step ->
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-function PreviewComplete({ onReset }) {
-  return (
-    <div className="mb-4 mt-8 animate-in fade-in slide-in-from-bottom-3 duration-500">
-      <div className="flex gap-2.5 items-start">
-        <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
-        <div className="bg-white rounded-2xl rounded-tl-sm p-4 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
-          <p className="text-sm leading-relaxed mb-3" style={{ color: "#000F4D", fontWeight: 500 }}>
-            Preview complete.
-          </p>
-          <p className="text-sm leading-relaxed mb-4" style={{ color: "#000F4D", fontWeight: 300 }}>
-            You walked through every page without saving anything to the database. The AI website scanner was not triggered.
-          </p>
-          <Button
-            onClick={onReset}
-            className="text-xs py-2 px-4 shadow-sm hover:shadow-md transition-all duration-300"
-            style={{ backgroundColor: "#7A93FF", color: "#fff", borderRadius: 8, fontWeight: 500 }}
-          >
-            Start preview again
-          </Button>
         </div>
       </div>
     </div>
