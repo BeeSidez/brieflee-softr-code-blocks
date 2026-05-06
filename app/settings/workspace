@@ -87,6 +87,19 @@ export default function Block() {
     if (!record || hydratedRef.current) return;
     hydratedRef.current = true;
 
+    // Debug: log the raw record so we can see exactly what Softr is
+    // returning. Open dev tools → Console (Cmd+Opt+I) to inspect.
+    // Remove this log once data loads correctly.
+    // eslint-disable-next-line no-console
+    console.log("[workspace] hydrating from record:", record);
+    // eslint-disable-next-line no-console
+    console.log("[workspace] field samples:", {
+      name: record.name,
+      brandBio: record.brandBio,
+      logo: record.logo,
+      raw_keys: Object.keys(record || {}),
+    });
+
     const next = {
       name: extractText(record.name),
       niche: extractText(record.niche),

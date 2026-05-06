@@ -108,113 +108,128 @@ export default function Block() {
       style={{
         display: "flex",
         justifyContent: "flex-end",
-        padding: "12px 24px",
+        padding: "8px 24px 0",
         width: "100%",
       }}
     >
       <Style />
 
-      {!open ? (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="newws-trigger"
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="newws-trigger"
+      >
+        <span aria-hidden="true">+</span> New workspace
+      </button>
+
+      {open && (
+        <div
+          className="newws-backdrop"
+          onClick={handleClose}
+          role="presentation"
         >
-          <span aria-hidden="true">+</span> New workspace
-        </button>
-      ) : (
-        <div className="newws-form">
-          <header className="newws-form-header">
-            <div>
-              <h3 className="newws-form-title">New workspace</h3>
-              <p className="newws-form-sub">
-                Brieflee will build a fresh content blueprint for it.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleClose}
-              className="newws-close"
-              aria-label="Close"
-            >
-              ×
-            </button>
-          </header>
-
-          <div className="newws-fields">
-            <div>
-              <label className="newws-label">Workspace name</label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. My Brand"
-                disabled={submitting}
-              />
-            </div>
-
-            <div>
-              <label className="newws-label">How should we set this up?</label>
-              <div className="newws-toggle-row">
-                <button
-                  type="button"
-                  onClick={() => setHasWebsite(true)}
-                  className={"newws-toggle " + (hasWebsite ? "active" : "")}
-                  disabled={submitting}
-                >
-                  From a website
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setHasWebsite(false)}
-                  className={"newws-toggle " + (!hasWebsite ? "active" : "")}
-                  disabled={submitting}
-                >
-                  From a description
-                </button>
-              </div>
-            </div>
-
-            {hasWebsite ? (
+          <div
+            className="newws-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="newws-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="newws-form-header">
               <div>
-                <label className="newws-label">Website URL</label>
+                <h3 id="newws-title" className="newws-form-title">
+                  New workspace
+                </h3>
+                <p className="newws-form-sub">
+                  Brieflee will build a fresh content blueprint for it.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleClose}
+                className="newws-close"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="newws-fields">
+              <div>
+                <label className="newws-label">Workspace name</label>
                 <Input
-                  type="url"
-                  value={website}
-                  onChange={(e) => setWebsite(e.target.value)}
-                  placeholder="https://example.com"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. My Brand"
                   disabled={submitting}
+                  autoFocus
                 />
               </div>
-            ) : (
-              <div>
-                <label className="newws-label">Brand description</label>
-                <Textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="A few sentences on what this brand is and who it's for."
-                  rows={3}
-                  disabled={submitting}
-                />
-              </div>
-            )}
-          </div>
 
-          <footer className="newws-form-footer">
-            <button
-              type="button"
-              onClick={handleClose}
-              disabled={submitting}
-              className="newws-cancel"
-            >
-              Cancel
-            </button>
-            <Button
-              onClick={handleSubmit}
-              disabled={submitting || !name.trim() || !createRecord.enabled}
-            >
-              {submitting ? "Creating…" : "Create workspace"}
-            </Button>
-          </footer>
+              <div>
+                <label className="newws-label">How should we set this up?</label>
+                <div className="newws-toggle-row">
+                  <button
+                    type="button"
+                    onClick={() => setHasWebsite(true)}
+                    className={"newws-toggle " + (hasWebsite ? "active" : "")}
+                    disabled={submitting}
+                  >
+                    From a website
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHasWebsite(false)}
+                    className={"newws-toggle " + (!hasWebsite ? "active" : "")}
+                    disabled={submitting}
+                  >
+                    From a description
+                  </button>
+                </div>
+              </div>
+
+              {hasWebsite ? (
+                <div>
+                  <label className="newws-label">Website URL</label>
+                  <Input
+                    type="url"
+                    value={website}
+                    onChange={(e) => setWebsite(e.target.value)}
+                    placeholder="https://example.com"
+                    disabled={submitting}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="newws-label">Brand description</label>
+                  <Textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="A few sentences on what this brand is and who it's for."
+                    rows={3}
+                    disabled={submitting}
+                  />
+                </div>
+              )}
+            </div>
+
+            <footer className="newws-form-footer">
+              <button
+                type="button"
+                onClick={handleClose}
+                disabled={submitting}
+                className="newws-cancel"
+              >
+                Cancel
+              </button>
+              <Button
+                onClick={handleSubmit}
+                disabled={submitting || !name.trim() || !createRecord.enabled}
+              >
+                {submitting ? "Creating…" : "Create workspace"}
+              </Button>
+            </footer>
+          </div>
         </div>
       )}
     </div>
@@ -227,8 +242,8 @@ function Style() {
       {`
         @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
         .newws-trigger,
-        .newws-form,
-        .newws-form * { font-family: 'League Spartan', sans-serif; }
+        .newws-modal,
+        .newws-modal * { font-family: 'League Spartan', sans-serif; }
 
         .newws-trigger {
           display: inline-flex;
@@ -251,14 +266,39 @@ function Style() {
           box-shadow: 0 4px 14px rgba(41, 79, 246, 0.35);
         }
 
-        .newws-form {
+        @keyframes newwsBackdropFade {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes newwsModalRise {
+          from { opacity: 0; transform: translateY(8px) scale(0.98); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .newws-backdrop {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: rgba(0, 15, 77, 0.45);
+          backdrop-filter: blur(2px);
+          -webkit-backdrop-filter: blur(2px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          padding: 20px;
+          animation: newwsBackdropFade 0.18s ease-out;
+        }
+        .newws-modal {
           width: 100%;
-          max-width: 460px;
+          max-width: 480px;
           background: #FFFFFF;
           border: 1px solid rgba(217, 224, 255, 0.6);
-          border-radius: 18px;
-          padding: 22px 24px 20px;
-          box-shadow: 0 12px 32px rgba(0, 15, 77, 0.08);
+          border-radius: 20px;
+          padding: 24px 28px 22px;
+          box-shadow: 0 24px 60px rgba(0, 15, 77, 0.30), 0 0 0 1px rgba(122, 147, 255, 0.20);
+          animation: newwsModalRise 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+          max-height: calc(100vh - 40px);
+          overflow-y: auto;
         }
         .newws-form-header {
           display: flex;
