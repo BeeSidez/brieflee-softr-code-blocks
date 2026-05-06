@@ -1,0 +1,1082 @@
+// /set-up — multi-step Vibe Code block. Stage 3 of onboarding (after Stripe
+// redirect). Five sub-steps inside this block:
+//   1. Set up your brand           (brand_bio / brand_voice / brand_cta / niche)
+//   2. Choose your review mode     (ai_mode)
+//   3. Review your content blueprint  (target_audience / pain_points / objectives)
+//   4. QA Checklist                (qa_checklist multi-select — pick default checks)
+//   5. Thresholds                  (9 threshold selects — strictness per check)
+//
+// SOFTR CONFIG REQUIRED:
+//   Source tab: bind to ACCOUNTS table in "brieflee beta", filter to the
+//               logged-in user's account (where owner contains current user).
+//   Actions tab: auto-populated from q.select aliases below.
+//
+// "Try your first review" used to be step 6 — Bev cut it. Welcome / "How
+// Brieflee works" is also out. After step 5 saves we send the user to
+// /new (the dashboard).
+
+import { useState, useEffect } from "react";
+import { useRecords, useRecordUpdate, q } from "@/lib/datasource";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+
+// ─── Brand palette (from docs/brand-guidelines.md) ──────────────────
+const BL = {
+  blue:        "#294ff6",
+  blue4:       "#7a93ff",
+  blue5:       "#879cf7",
+  navy:        "#000f4d",
+  navy2:       "#001364",
+  light1:      "#f8fbff",
+  light2:      "#eef4fd",
+  ice:         "#ccedff",
+  lavender:    "#d8d8ff",
+  periwinkle:  "#d9e0ff",
+  border:      "#eef4fd",
+  fgBody:      "#1a1a2e",
+  fgMuted:     "#6b7280",
+  success:     "#16a34a",
+};
+
+// ─── Field map (ACCOUNTS table) ─────────────────────────────────────
+const select = q.select({
+  // Brand
+  brandBio:        "iVPat",
+  brandVoice:      "ybmp8",
+  brandCta:        "s9vzj",
+  niche:           "vOp4b",
+  // Review mode
+  aiMode:          "O9x4n",
+  // Blueprint (audience)
+  targetAudience:    "6g1Vd",
+  audiencePainPoints:"B4zya",
+  audienceObjectives:"5Wq2k",
+  blueprintStatus:   "fElW1",
+  // QA checklist (multi-select)
+  qaChecklist:     "mZaRc",
+  // Thresholds (single-selects)
+  productScreenTime:    "AFgpo",
+  hookSpeed:            "wthaW",
+  visualHook:           "Nq4ZX",
+  ctaPlacement:         "FA452",
+  faceTime:             "FH27O",
+  textLegibility:       "TNRuM",
+  audioClarity:         "dMTrN",
+  engagementPacing:     "bR5PL",
+  brandMentionCount:    "HCvZw",
+});
+
+// ─── Cloudinary icons ───────────────────────────────────────────────
+const CLD = "https://res.cloudinary.com/dchroynzv/image/upload";
+const LOGO_WORDMARK = `${CLD}/brieflee_logo_brieflee-wordmark-deep-blue-with-periwinkle-lee-and-smile_2025-03.png`;
+const LOGO_COMPACT  = `${CLD}/brieflee_app-icon_app-icon-blue-gradient-smiley-mark-v5_2025-04.png`;
+
+// ─── ai_mode option UUIDs ───────────────────────────────────────────
+const AI_MODE_OPTIONS = [
+  {
+    id: "5b1b9734-20b6-4070-bd32-a3a4d31d0ed9",
+    label: "Autonomous",
+    sub: "Brieflee approves or rejects every video for you.",
+    body: "Best when you trust the brief and just want a clean queue. Reviews run hands-off; you only step in for edge cases.",
+  },
+  {
+    id: "cf1fb41e-7deb-4a1a-aff4-02290407b432",
+    label: "Hybrid",
+    sub: "Brieflee scores every video, you make the final call.",
+    body: "Best for teams who want the time saving without giving up final sign-off. Recommended.",
+    recommended: true,
+  },
+  {
+    id: "b840eef9-5174-415b-981e-16b37ede1eb5",
+    label: "Manual",
+    sub: "Brieflee surfaces issues, you decide how to handle each one.",
+    body: "Best when brand sensitivity is high or you're still calibrating thresholds. Slower but maximum control.",
+  },
+];
+
+// ─── qa_checklist option UUIDs ──────────────────────────────────────
+const QA_CHECK_OPTIONS = [
+  { id: "1c014e7b-fc4b-462a-8081-9c485045b748", label: "Product visibility" },
+  { id: "4b7319f2-9c96-4216-98b9-54b4ec4ed9a9", label: "Product usage" },
+  { id: "ab481105-a6c9-4f62-82da-57420ae197f6", label: "Hook quality" },
+  { id: "63856e72-bb9c-4de5-927b-3afc30a88551", label: "Visual hook" },
+  { id: "5961652d-1e74-409b-af7a-968e2385895b", label: "Audio clarity" },
+  { id: "a1457ddb-710d-4c63-ada8-0f5a571c8543", label: "Audio delivery" },
+  { id: "265bfda9-da30-4251-bf2c-2ba87d1b2af4", label: "Pronunciation" },
+  { id: "355ea7e9-f86f-42d3-9ee8-1a89a044e8db", label: "Music & sound balance" },
+  { id: "07ef7746-1c9a-4438-923e-49ab63c3ce57", label: "Follows the brief" },
+  { id: "78fe815c-c0fa-4433-95c9-78fb0d3cfb73", label: "Brand name mentioned" },
+  { id: "8b17d1b1-b2b7-4dd1-b70e-49e415e1afe5", label: "Lighting & camera" },
+  { id: "fe2b01a1-d876-4283-afd4-92c1ade28878", label: "Setting & background" },
+  { id: "7135f0d2-3c8b-4ba9-aadd-95dbbfc21cbd", label: "Distracting elements" },
+  { id: "06508651-5488-4fe3-bc9c-cf0417f65bcd", label: "Text legibility" },
+  { id: "474a5dd4-fe33-4bb8-9544-a7adfb5bfee2", label: "Closed captions" },
+  { id: "c7f14d97-fbab-44a8-b524-31de975cee16", label: "Safe zones" },
+  { id: "e7443f15-4c43-42b4-9ed2-226371525c91", label: "Scene pacing" },
+  { id: "28b4d084-fb7d-414c-b51f-c229856a7fb2", label: "Video length" },
+  { id: "c9f111c2-3a56-44ad-82e8-211db1c2df4a", label: "Watchable on mute" },
+  { id: "d5e005f5-b4f4-4d24-a9fe-560d21adb216", label: "Creator visability" },
+  { id: "4875c5d3-4d5c-4f9d-881e-4aa558549d41", label: "Energy & authenticity" },
+  { id: "44769cff-9feb-452c-a69d-a8bc204eb768", label: "Wardrobe & appearance" },
+  { id: "bca11db7-edf0-4b0a-94ea-5f05f80aadcb", label: "CTA present" },
+  { id: "3981544e-a463-4b80-b8df-28540b987501", label: "Brand alignment" },
+  { id: "165f1575-d6b3-485b-b08b-58600de3041f", label: "Copyright check" },
+  { id: "cff021c4-bf63-4ac9-993a-eb80b83b7965", label: "Inspiration link match" },
+];
+
+// ─── Threshold select option UUIDs (single-selects) ─────────────────
+const THRESH = {
+  productScreenTime: [
+    { id: "b35780d0-cf0c-4ad5-9819-88509bbcea7b", label: "40%" },
+    { id: "adf5f58d-f355-456a-956e-bb3606953ca4", label: "50%" },
+    { id: "ab1858bf-81ba-4d74-9299-05aee5ca27cc", label: "60%" },
+    { id: "c9e7411b-92ad-4e9f-b307-0e2237a9d729", label: "70%" },
+    { id: "61c37e78-9569-40de-8714-c988ebbfc9c5", label: "80%" },
+    { id: "8ef83ca6-7faf-45ff-965b-dadff26490ed", label: "90%" },
+    { id: "f7d50c89-87f3-4b8f-a2b1-ddaea2c5cec8", label: "100%" },
+    { id: "5a044cc4-e9d8-400b-8327-a07908b873c4", label: "None" },
+  ],
+  hookSpeed: [
+    { id: "9df2a4cf-8700-4429-b511-a683203b0c09", label: "1 second" },
+    { id: "d3b4b86b-17d9-4d6e-845d-ead62d45f9cb", label: "2 seconds" },
+    { id: "7679470f-b9ef-4e1f-94b2-b62cda5b2c45", label: "3 seconds" },
+    { id: "03dc29a7-e098-4b92-882b-fb9a95cea132", label: "5 seconds" },
+    { id: "209d018e-2dcd-45d6-a643-ac78109ff33e", label: "None" },
+  ],
+  visualHook: [
+    { id: "9df2a4cf-8700-4429-b511-a683203b0c09", label: "60%" },
+    { id: "f29966f4-72fe-419a-8174-45236991748e", label: "65%" },
+    { id: "0ac7e1e4-3835-4213-bf1b-969041655ced", label: "70%" },
+    { id: "19bff3f1-e5f8-419e-a338-6668211cc873", label: "75%" },
+    { id: "f3f93ac8-7edc-47f4-b896-bdbee78da235", label: "80%" },
+    { id: "9018f787-8e85-497a-86a7-2ba9810bada4", label: "85%" },
+    { id: "237d1a0d-11bd-4ab8-8189-3dd22ab87127", label: "90%" },
+    { id: "d3b4b86b-17d9-4d6e-845d-ead62d45f9cb", label: "None" },
+  ],
+  ctaPlacement: [
+    { id: "33bfa39e-0740-4aa8-acf0-900305019279", label: "Last 3 seconds" },
+    { id: "193e4f66-7852-4fca-960a-f8642773b828", label: "Last 5 seconds" },
+    { id: "cd4956a2-5f0a-4d21-9a4c-a7b95f8f059b", label: "Last 7 seconds" },
+    { id: "4b841326-cdb4-455a-a144-d7c3f2b31f0b", label: "Last 10 seconds" },
+    { id: "8f234b73-3c77-444c-9cac-3a06a8201121", label: "None" },
+  ],
+  faceTime: [
+    { id: "df9abb2d-d48b-41bb-a579-f1c37dd657e2", label: "20%" },
+    { id: "48c105c0-e7ae-4a55-89b2-13fee1ea247a", label: "30%" },
+    { id: "c6aa7f4f-1dce-4946-8d20-31dba36d8f3f", label: "40%" },
+    { id: "b8c2c9b1-f745-4b0f-9636-557eea3d60b5", label: "50%" },
+    { id: "b993622a-0760-466b-a2a0-dd54e332596e", label: "60%" },
+    { id: "d2d7cd50-f83c-4442-9e84-b189088931be", label: "70%" },
+    { id: "7994d112-b9d3-4307-b6b7-cbc353852132", label: "None" },
+  ],
+  textLegibility: [
+    { id: "172419f7-1149-490a-a44e-d13537cf6786", label: "70%" },
+    { id: "82a7dafa-d93e-4dd9-9168-490cb66058eb", label: "80%" },
+    { id: "b891de6f-d9da-4d6c-a963-d87ff2bd8621", label: "90%" },
+    { id: "d94e5bdb-6850-4ecb-b316-aceee396e539", label: "100%" },
+    { id: "bf8aaa4d-923f-4330-803a-877a29149922", label: "None" },
+  ],
+  audioClarity: [
+    { id: "160aa42f-ad5f-4721-8d3c-a2db8e09fcd9", label: "70%" },
+    { id: "e95cc790-2106-4f40-b2e6-971aa256618d", label: "80%" },
+    { id: "393fe9bc-6206-4fd5-a952-ed6587763dca", label: "90%" },
+    { id: "f317b2bc-7c04-43f9-859d-6db37b7628a9", label: "100%" },
+    { id: "6b88224d-9a3f-4bfa-9e47-3143551d73ab", label: "None" },
+  ],
+  engagementPacing: [
+    { id: "6fa82020-d6e2-4ff3-a0d3-94c783c4f680", label: "Every 2 seconds" },
+    { id: "6a1ff582-aa09-40da-ba82-6212c86f99e6", label: "Every 3 seconds" },
+    { id: "5528fc87-d2d3-4273-ba37-da90fae5bf3e", label: "Every 4 seconds" },
+    { id: "a0034690-8372-4676-96c6-43e8a4c167cd", label: "Every 5 seconds" },
+    { id: "0d707c11-b7fd-42cf-9450-c1293cd851b7", label: "None" },
+  ],
+  brandMentionCount: [
+    { id: "16e85382-54ad-4559-9b07-e42f920faf40", label: "1" },
+    { id: "206736be-aad0-430f-98c7-3f0011390e86", label: "2" },
+    { id: "d83d7d2f-00cc-4c1a-92ec-a362c5a47580", label: "3" },
+    { id: "98ce1d25-8cf6-4879-a396-d6f57b065fa1", label: "4+" },
+    { id: "1673c553-d650-47d3-b42b-3fa1be8f19dd", label: "0" },
+  ],
+};
+
+// blueprint_status UUIDs
+const BLUEPRINT_COMPLETE_ID = "2a218d15-27e5-4a5d-bd23-150d92b05484";
+const BLUEPRINT_PENDING_ID  = "e237ed0f-7454-41ba-926f-5b3601d3fac2";
+
+// ─── Stage stepper (five overall onboarding dots) ───────────────────
+const STAGES = [
+  { id: "team",        label: "Team" },
+  { id: "personalize", label: "Personalize" },
+  { id: "pricing",     label: "Plan" },
+  { id: "checkout",    label: "Confirm" },
+  { id: "setup",       label: "Setup" },
+];
+
+// ─── Setup sub-steps ────────────────────────────────────────────────
+const SUB_STEPS = [
+  { id: "brand",      label: "Brand" },
+  { id: "mode",       label: "Review mode" },
+  { id: "blueprint",  label: "Blueprint" },
+  { id: "qa",         label: "QA Checklist" },
+  { id: "thresholds", label: "Thresholds" },
+];
+
+const toIdLabel = (options, id) => {
+  if (!id) return null;
+  const opt = options.find((o) => o.id === id);
+  return opt ? { id: opt.id, label: opt.label } : null;
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// Main Block
+// ═══════════════════════════════════════════════════════════════════
+export default function Block() {
+  const { data: rows, refetch } = useRecords({ select, count: 1 });
+  const account = rows?.[0] ?? null;
+
+  const updateRecord = useRecordUpdate({
+    fields: select,
+    onError(err) {
+      console.error("=== set-up save error:", err);
+      toast.error("Save failed", { description: err?.message || "Open the console for details." });
+      setSaving(false);
+    },
+  });
+
+  const [step, setStep] = useState("brand");
+  const [saving, setSaving] = useState(false);
+
+  // ─── Brand state ────────────────────────────────────────────────
+  const [brandBio, setBrandBio] = useState("");
+  const [brandVoice, setBrandVoice] = useState("");
+  const [brandCta, setBrandCta] = useState("");
+  const [niche, setNiche] = useState("");
+
+  // ─── Mode state ─────────────────────────────────────────────────
+  const [aiModeId, setAiModeId] = useState(null);
+
+  // ─── Blueprint state ────────────────────────────────────────────
+  const [targetAudience, setTargetAudience] = useState("");
+  const [audiencePainPoints, setAudiencePainPoints] = useState("");
+  const [audienceObjectives, setAudienceObjectives] = useState("");
+
+  // ─── QA Checklist state (array of UUIDs) ────────────────────────
+  const [qaIds, setQaIds] = useState([]);
+
+  // ─── Thresholds state (each is a UUID or null) ──────────────────
+  const [thresholds, setThresholds] = useState({
+    productScreenTime: null,
+    hookSpeed: null,
+    visualHook: null,
+    ctaPlacement: null,
+    faceTime: null,
+    textLegibility: null,
+    audioClarity: null,
+    engagementPacing: null,
+    brandMentionCount: null,
+  });
+
+  // Pre-fill from account record on first load
+  useEffect(() => {
+    if (!account) return;
+    if (account.brandBio && !brandBio)             setBrandBio(account.brandBio);
+    if (account.brandVoice && !brandVoice)         setBrandVoice(account.brandVoice);
+    if (account.brandCta && !brandCta)             setBrandCta(account.brandCta);
+    if (account.niche && !niche)                   setNiche(account.niche);
+    if (account.aiMode?.id && !aiModeId)           setAiModeId(account.aiMode.id);
+    if (account.targetAudience && !targetAudience) setTargetAudience(account.targetAudience);
+    if (account.audiencePainPoints && !audiencePainPoints) setAudiencePainPoints(account.audiencePainPoints);
+    if (account.audienceObjectives && !audienceObjectives) setAudienceObjectives(account.audienceObjectives);
+    if (Array.isArray(account.qaChecklist) && qaIds.length === 0) {
+      setQaIds(account.qaChecklist.map((c) => c.id || c));
+    }
+    setThresholds((prev) => {
+      const next = { ...prev };
+      Object.keys(prev).forEach((k) => {
+        if (account[k]?.id && !prev[k]) next[k] = account[k].id;
+      });
+      return next;
+    });
+  }, [account]); // eslint-disable-line
+
+  const blueprintReady = account?.blueprintStatus?.id === BLUEPRINT_COMPLETE_ID;
+
+  const goNext = () => {
+    const i = SUB_STEPS.findIndex((s) => s.id === step);
+    if (i < SUB_STEPS.length - 1) setStep(SUB_STEPS[i + 1].id);
+    setSaving(false);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const goBack = () => {
+    const i = SUB_STEPS.findIndex((s) => s.id === step);
+    if (i > 0) setStep(SUB_STEPS[i - 1].id);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // ─── Save handlers per step ────────────────────────────────────
+  const saveAndAdvance = (fieldsObj, after) => {
+    if (!account?.id) {
+      toast.error("Couldn't find your account record.");
+      return;
+    }
+    setSaving(true);
+    updateRecord.mutate(
+      { recordId: account.id, fields: fieldsObj },
+      {
+        onSuccess() {
+          refetch?.();
+          if (after) after();
+          else goNext();
+        },
+      },
+    );
+  };
+
+  const handleBrandNext = () =>
+    saveAndAdvance({
+      brandBio: brandBio.trim(),
+      brandVoice: brandVoice.trim(),
+      brandCta: brandCta.trim(),
+      niche: niche.trim(),
+    });
+
+  const handleModeNext = () => {
+    if (!aiModeId) return;
+    saveAndAdvance({ aiMode: toIdLabel(AI_MODE_OPTIONS, aiModeId) });
+  };
+
+  const handleBlueprintNext = () =>
+    saveAndAdvance({
+      targetAudience: targetAudience.trim(),
+      audiencePainPoints: audiencePainPoints.trim(),
+      audienceObjectives: audienceObjectives.trim(),
+    });
+
+  const handleQaNext = ({ skip } = {}) => {
+    if (skip) {
+      saveAndAdvance({ qaChecklist: [] });
+      return;
+    }
+    saveAndAdvance({ qaChecklist: qaIds });
+  };
+
+  const handleThresholdsFinish = ({ skip } = {}) => {
+    const fields = {};
+    if (!skip) {
+      Object.entries(thresholds).forEach(([key, id]) => {
+        const optsKey = key;
+        if (id && THRESH[optsKey]) {
+          fields[key] = toIdLabel(THRESH[optsKey], id);
+        }
+      });
+    }
+    saveAndAdvance(fields, () => {
+      window.location.href = "/new";
+    });
+  };
+
+  return (
+    <div className="su-root">
+      <Style />
+      <Topbar />
+      <StageStepper currentId="setup" />
+      <SubStepper currentId={step} />
+
+      <main className="su-page">
+        {step === "brand" && (
+          <BrandStep
+            ready={blueprintReady}
+            brandBio={brandBio} setBrandBio={setBrandBio}
+            brandVoice={brandVoice} setBrandVoice={setBrandVoice}
+            brandCta={brandCta} setBrandCta={setBrandCta}
+            niche={niche} setNiche={setNiche}
+            onNext={handleBrandNext}
+            saving={saving}
+          />
+        )}
+
+        {step === "mode" && (
+          <ModeStep
+            valueId={aiModeId}
+            onSelect={setAiModeId}
+            onBack={goBack}
+            onNext={handleModeNext}
+            saving={saving}
+          />
+        )}
+
+        {step === "blueprint" && (
+          <BlueprintStep
+            ready={blueprintReady}
+            targetAudience={targetAudience} setTargetAudience={setTargetAudience}
+            audiencePainPoints={audiencePainPoints} setAudiencePainPoints={setAudiencePainPoints}
+            audienceObjectives={audienceObjectives} setAudienceObjectives={setAudienceObjectives}
+            onBack={goBack}
+            onNext={handleBlueprintNext}
+            saving={saving}
+            onRefetch={() => refetch?.()}
+          />
+        )}
+
+        {step === "qa" && (
+          <QaStep
+            qaIds={qaIds}
+            setQaIds={setQaIds}
+            onBack={goBack}
+            onNext={() => handleQaNext()}
+            onSkip={() => handleQaNext({ skip: true })}
+            saving={saving}
+          />
+        )}
+
+        {step === "thresholds" && (
+          <ThresholdsStep
+            thresholds={thresholds}
+            setThresholds={setThresholds}
+            onBack={goBack}
+            onFinish={() => handleThresholdsFinish()}
+            onSkip={() => handleThresholdsFinish({ skip: true })}
+            saving={saving}
+          />
+        )}
+      </main>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Topbar + steppers
+// ═══════════════════════════════════════════════════════════════════
+function Topbar() {
+  return (
+    <header className="su-topbar">
+      <div className="su-topbar-inner">
+        <img src={LOGO_WORDMARK} alt="Brieflee" className="su-logo" />
+        <div className="su-help">Need help? <a href="/book-a-demo">Contact us</a></div>
+      </div>
+    </header>
+  );
+}
+
+function StageStepper({ currentId }) {
+  const idx = STAGES.findIndex((s) => s.id === currentId);
+  return (
+    <div className="stage-stepper">
+      {STAGES.map((s, i) => {
+        const done = i < idx;
+        const active = i === idx;
+        const reached = done || active;
+        return (
+          <div key={s.id} className="stage-step">
+            <div className="stage-dot-row">
+              <span
+                className="stage-dot"
+                style={{
+                  background: done ? BL.success : (active ? BL.blue : "transparent"),
+                  border: reached ? "none" : `1.5px solid ${BL.border}`,
+                  color: "#fff",
+                }}
+              >
+                {done ? "✓" : (i + 1)}
+              </span>
+              <span style={{ color: reached ? BL.navy : BL.fgMuted, fontWeight: active ? 700 : 500 }}>
+                {s.label}
+              </span>
+            </div>
+            {i < STAGES.length - 1 && <div className="stage-bar" />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SubStepper({ currentId }) {
+  const idx = SUB_STEPS.findIndex((s) => s.id === currentId);
+  return (
+    <div className="sub-stepper">
+      <div className="sub-stepper-pill">
+        Step {idx + 1} of {SUB_STEPS.length} · <strong>{SUB_STEPS[idx]?.label}</strong>
+      </div>
+      <div className="sub-stepper-track">
+        {SUB_STEPS.map((s, i) => (
+          <span
+            key={s.id}
+            className="sub-stepper-seg"
+            style={{ background: i <= idx ? BL.blue : BL.border }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Step 1 — Brand
+// ═══════════════════════════════════════════════════════════════════
+function BrandStep({ ready, brandBio, setBrandBio, brandVoice, setBrandVoice, brandCta, setBrandCta, niche, setNiche, onNext, saving }) {
+  const canNext = brandBio.trim().length > 0;
+  return (
+    <div className="su-card-page">
+      <div className="su-hero">
+        <div className="su-hero-icon"><img src={LOGO_COMPACT} alt="" /></div>
+        <h1 className="su-title">Set up your brand</h1>
+        <p className="su-sub">
+          We've drafted these from your website so the AI knows the language you write in. Tweak anything that doesn't sound like you.
+        </p>
+      </div>
+
+      {!ready && (
+        <div className="su-callout">
+          <strong>Generating your brand profile…</strong> You can keep typing — we'll keep yours and ignore the AI version.
+        </div>
+      )}
+
+      <div className="stack gap-4">
+        <Field
+          label="Brand bio"
+          help="One paragraph. What you sell, who it's for, why it exists."
+          required
+        >
+          <Textarea
+            rows={4}
+            value={brandBio}
+            onChange={(e) => setBrandBio(e.target.value)}
+            placeholder="We help DTC brands turn UGC into ads that convert…"
+          />
+        </Field>
+
+        <Field
+          label="Brand voice"
+          help="A few words on tone — playful / authoritative / dry / warm / etc."
+        >
+          <Textarea
+            rows={3}
+            value={brandVoice}
+            onChange={(e) => setBrandVoice(e.target.value)}
+            placeholder="Direct, energetic, never corporate. Laughs at itself."
+          />
+        </Field>
+
+        <Field
+          label="Primary CTA"
+          help="What do you want viewers to do at the end of every video?"
+        >
+          <Input
+            value={brandCta}
+            onChange={(e) => setBrandCta(e.target.value)}
+            placeholder="Try it free for 7 days"
+          />
+        </Field>
+
+        <Field
+          label="Niche"
+          help="Category, vertical, or audience tag."
+        >
+          <Input
+            value={niche}
+            onChange={(e) => setNiche(e.target.value)}
+            placeholder="Beauty · DTC · Gen Z"
+          />
+        </Field>
+      </div>
+
+      <NavRow
+        right={
+          <Button
+            onClick={onNext}
+            disabled={!canNext || saving}
+            className="su-cta"
+            style={{ background: BL.blue, color: "#fff", opacity: canNext && !saving ? 1 : 0.4 }}
+          >
+            {saving ? "Saving…" : "Continue"}
+          </Button>
+        }
+      />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Step 2 — Review mode
+// ═══════════════════════════════════════════════════════════════════
+function ModeStep({ valueId, onSelect, onBack, onNext, saving }) {
+  const canNext = Boolean(valueId);
+  return (
+    <div className="su-card-page">
+      <div className="su-hero">
+        <h1 className="su-title">Choose your review mode</h1>
+        <p className="su-sub">How much should Brieflee do on its own? You can change this any time in settings.</p>
+      </div>
+
+      <div className="mode-grid">
+        {AI_MODE_OPTIONS.map((m) => {
+          const selected = valueId === m.id;
+          return (
+            <button
+              key={m.id}
+              onClick={() => onSelect(m.id)}
+              className="mode-card"
+              style={{
+                border: selected ? `2px solid ${BL.blue}` : `1px solid ${BL.border}`,
+                background: "#fff",
+                boxShadow: m.recommended ? "0 8px 24px rgba(41,79,246,0.10)" : "0 2px 8px rgba(0,15,77,0.04)",
+              }}
+            >
+              {m.recommended && (
+                <div className="mode-rec">Recommended</div>
+              )}
+              <div className="mode-title">{m.label}</div>
+              <div className="mode-sub">{m.sub}</div>
+              <div className="mode-body">{m.body}</div>
+              <div
+                className="mode-pill"
+                style={{
+                  background: selected ? BL.blue : BL.light2,
+                  color: selected ? "#fff" : BL.navy,
+                }}
+              >
+                {selected ? "Selected" : "Choose"}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <NavRow
+        left={<Button onClick={onBack} variant="ghost" className="su-back">← Back</Button>}
+        right={
+          <Button
+            onClick={onNext}
+            disabled={!canNext || saving}
+            className="su-cta"
+            style={{ background: BL.blue, color: "#fff", opacity: canNext && !saving ? 1 : 0.4 }}
+          >
+            {saving ? "Saving…" : "Continue"}
+          </Button>
+        }
+      />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Step 3 — Content blueprint
+// ═══════════════════════════════════════════════════════════════════
+function BlueprintStep({ ready, targetAudience, setTargetAudience, audiencePainPoints, setAudiencePainPoints, audienceObjectives, setAudienceObjectives, onBack, onNext, saving, onRefetch }) {
+  return (
+    <div className="su-card-page">
+      <div className="su-hero">
+        <h1 className="su-title">Review your content blueprint</h1>
+        <p className="su-sub">
+          We've drafted who you're talking to and what they care about. Edit anything off — this drives every brief and review from here.
+        </p>
+      </div>
+
+      {!ready && (
+        <div className="su-callout">
+          <strong>Drafting your blueprint…</strong> Refresh in a moment to see the AI's draft. Anything you type stays.
+          <Button onClick={onRefetch} variant="ghost" className="ml-2" style={{ color: BL.blue }}>Refresh</Button>
+        </div>
+      )}
+
+      <div className="stack gap-4">
+        <Field label="Target audience" required>
+          <Textarea
+            rows={4}
+            value={targetAudience}
+            onChange={(e) => setTargetAudience(e.target.value)}
+            placeholder="Women 25-40, DTC skincare buyers, value ingredient education over hype…"
+          />
+        </Field>
+        <Field label="Pain points">
+          <Textarea
+            rows={4}
+            value={audiencePainPoints}
+            onChange={(e) => setAudiencePainPoints(e.target.value)}
+            placeholder="Confused by ingredient lists. Burned by trends that didn't work. Sceptical of celebrity endorsements…"
+          />
+        </Field>
+        <Field label="Objectives">
+          <Textarea
+            rows={4}
+            value={audienceObjectives}
+            onChange={(e) => setAudienceObjectives(e.target.value)}
+            placeholder="Find a routine they can stick with. Clearer skin in 30 days. Trust the brand long-term…"
+          />
+        </Field>
+      </div>
+
+      <NavRow
+        left={<Button onClick={onBack} variant="ghost" className="su-back">← Back</Button>}
+        right={
+          <Button
+            onClick={onNext}
+            disabled={saving || !targetAudience.trim()}
+            className="su-cta"
+            style={{ background: BL.blue, color: "#fff", opacity: saving || !targetAudience.trim() ? 0.4 : 1 }}
+          >
+            {saving ? "Saving…" : "Continue"}
+          </Button>
+        }
+      />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Step 4 — QA Checklist
+// ═══════════════════════════════════════════════════════════════════
+function QaStep({ qaIds, setQaIds, onBack, onNext, onSkip, saving }) {
+  const toggle = (id) =>
+    setQaIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+
+  return (
+    <div className="su-card-page">
+      <div className="su-hero">
+        <h1 className="su-title">Pick your default QA checks</h1>
+        <p className="su-sub">
+          Quick reviews are for one-off videos with no brief attached — when a creator sends you something and you want a fast take. Pick the checks you'd always want running on those. If you attach a brief later, the brief's checks take over — so don't overthink this.
+        </p>
+      </div>
+
+      <div className="qa-grid">
+        {QA_CHECK_OPTIONS.map((c) => {
+          const selected = qaIds.includes(c.id);
+          return (
+            <button
+              key={c.id}
+              onClick={() => toggle(c.id)}
+              className="qa-chip"
+              style={{
+                background: selected ? BL.blue : "#fff",
+                color: selected ? "#fff" : BL.navy,
+                border: selected ? `1.5px solid ${BL.blue}` : `1.5px solid ${BL.border}`,
+              }}
+            >
+              <span className="qa-check" style={{ background: selected ? "#fff" : BL.light2, color: selected ? BL.blue : BL.fgMuted }}>
+                {selected ? "✓" : ""}
+              </span>
+              {c.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="qa-summary">
+        {qaIds.length === 0
+          ? "No checks selected. You can also skip and pick checks each time you do a quick review."
+          : `${qaIds.length} check${qaIds.length === 1 ? "" : "s"} selected for every quick review.`}
+      </div>
+
+      <NavRow
+        left={<Button onClick={onBack} variant="ghost" className="su-back">← Back</Button>}
+        center={
+          <Button onClick={onSkip} disabled={saving} variant="ghost" className="su-skip">
+            Skip
+          </Button>
+        }
+        right={
+          <Button
+            onClick={onNext}
+            disabled={saving}
+            className="su-cta"
+            style={{ background: BL.blue, color: "#fff", opacity: saving ? 0.4 : 1 }}
+          >
+            {saving ? "Saving…" : "Continue"}
+          </Button>
+        }
+      />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Step 5 — Thresholds
+// ═══════════════════════════════════════════════════════════════════
+const THRESHOLD_ROWS = [
+  { key: "productScreenTime", label: "Product screen time", help: "How much of the video the product is on screen." },
+  { key: "hookSpeed",          label: "Hook speed",          help: "When the hook lands." },
+  { key: "visualHook",         label: "Visual hook strength",help: "How visually striking the first frames are." },
+  { key: "ctaPlacement",       label: "CTA placement",       help: "Where the call-to-action should hit." },
+  { key: "faceTime",           label: "Face time",           help: "How much of the video shows a person." },
+  { key: "textLegibility",     label: "Text legibility",     help: "How readable on-screen text is." },
+  { key: "audioClarity",       label: "Audio clarity",       help: "How clean the audio is." },
+  { key: "engagementPacing",   label: "Engagement pacing",   help: "How often something visually changes." },
+  { key: "brandMentionCount",  label: "Brand mentions",      help: "Minimum brand mentions in the video." },
+];
+
+function ThresholdsStep({ thresholds, setThresholds, onBack, onFinish, onSkip, saving }) {
+  const setOne = (key, id) => setThresholds((cur) => ({ ...cur, [key]: id }));
+
+  return (
+    <div className="su-card-page">
+      <div className="su-hero">
+        <h1 className="su-title">Set your thresholds</h1>
+        <p className="su-sub">
+          How strict each check should be. Set the ones you care about — leave the rest blank and we'll ignore them. Briefs override these too, so this is just your safety net for quick reviews.
+        </p>
+      </div>
+
+      <div className="thresh-grid">
+        {THRESHOLD_ROWS.map((row) => {
+          const opts = THRESH[row.key] || [];
+          const value = thresholds[row.key];
+          return (
+            <div key={row.key} className="thresh-row">
+              <div>
+                <div className="thresh-label">{row.label}</div>
+                <div className="thresh-help">{row.help}</div>
+              </div>
+              <div className="thresh-options">
+                {opts.map((o) => {
+                  const selected = value === o.id;
+                  return (
+                    <button
+                      key={o.id}
+                      onClick={() => setOne(row.key, selected ? null : o.id)}
+                      className="thresh-chip"
+                      style={{
+                        background: selected ? BL.blue : "#fff",
+                        color: selected ? "#fff" : BL.navy,
+                        border: selected ? `1.5px solid ${BL.blue}` : `1px solid ${BL.border}`,
+                      }}
+                    >
+                      {o.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <NavRow
+        left={<Button onClick={onBack} variant="ghost" className="su-back">← Back</Button>}
+        center={
+          <Button onClick={onSkip} disabled={saving} variant="ghost" className="su-skip">
+            Skip
+          </Button>
+        }
+        right={
+          <Button
+            onClick={onFinish}
+            disabled={saving}
+            className="su-cta"
+            style={{ background: BL.blue, color: "#fff", opacity: saving ? 0.4 : 1 }}
+          >
+            {saving ? "Finishing…" : "Finish setup"}
+          </Button>
+        }
+      />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Shared bits
+// ═══════════════════════════════════════════════════════════════════
+function Field({ label, help, required, children }) {
+  return (
+    <div className="su-field">
+      <Label className="su-field-label">
+        {label}{required && <span style={{ color: BL.blue }}> *</span>}
+      </Label>
+      {help && <div className="su-field-help">{help}</div>}
+      <div className="su-field-control">{children}</div>
+    </div>
+  );
+}
+
+function NavRow({ left, center, right }) {
+  return (
+    <div className="su-nav-row">
+      <div>{left}</div>
+      <div>{center}</div>
+      <div>{right}</div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Style
+// ═══════════════════════════════════════════════════════════════════
+function Style() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+      .su-root, .su-root * { font-family: 'Plus Jakarta Sans', sans-serif; }
+      .su-root { min-height: 100vh; background: ${BL.light1}; }
+
+      .su-topbar { padding: 16px 24px; border-bottom: 1px solid ${BL.border}; background: #fff; }
+      .su-topbar-inner {
+        max-width: 1120px; margin: 0 auto;
+        display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 24px;
+      }
+      .su-logo { height: 26px; justify-self: start; }
+      .su-help { color: ${BL.fgMuted}; font-size: 14px; justify-self: end; }
+      .su-help a { color: ${BL.blue}; font-weight: 600; text-decoration: none; }
+
+      .stage-stepper {
+        display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+        gap: 12px; padding: 24px 24px 8px;
+        background: ${BL.light1};
+      }
+      .stage-step { display: flex; align-items: center; gap: 12px; }
+      .stage-dot-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+      .stage-dot {
+        width: 22px; height: 22px; border-radius: 999px;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 12px; font-weight: 700;
+      }
+      .stage-bar { width: 32px; height: 1px; background: ${BL.border}; }
+
+      .sub-stepper {
+        max-width: 720px; margin: 8px auto 0;
+        padding: 0 24px;
+      }
+      .sub-stepper-pill {
+        display: inline-block;
+        background: ${BL.periwinkle}; color: ${BL.blue};
+        font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+        padding: 5px 12px; border-radius: 999px;
+        margin-bottom: 10px;
+      }
+      .sub-stepper-track { display: grid; grid-template-columns: repeat(${SUB_STEPS.length}, 1fr); gap: 4px; }
+      .sub-stepper-seg { height: 4px; border-radius: 999px; }
+
+      .su-page {
+        max-width: 720px; margin: 0 auto; padding: 32px 24px 96px;
+      }
+      .su-card-page { display: flex; flex-direction: column; gap: 28px; }
+
+      .su-hero { text-align: center; }
+      .su-hero-icon {
+        width: 72px; height: 72px;
+        margin: 0 auto 20px;
+        border-radius: 20px;
+        background: linear-gradient(180deg, ${BL.periwinkle} 0%, rgba(135,156,247,0.4) 100%);
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 12px 32px -10px rgba(135,156,247,0.4);
+      }
+      .su-hero-icon img { width: 48px; height: 48px; object-fit: contain; }
+      .su-title {
+        font-size: 32px; line-height: 1.1; letter-spacing: -0.02em;
+        font-weight: 800; color: ${BL.navy}; margin: 0 0 10px;
+      }
+      .su-sub {
+        font-size: 15px; line-height: 1.55;
+        color: ${BL.fgBody}; margin: 0 auto;
+        max-width: 560px;
+      }
+
+      .su-callout {
+        background: ${BL.periwinkle}; color: ${BL.navy};
+        border-radius: 12px; padding: 12px 16px;
+        font-size: 13px; line-height: 1.5;
+      }
+      .su-callout strong { color: ${BL.blue}; }
+
+      .stack { display: flex; flex-direction: column; }
+      .stack.gap-4 { gap: 16px; }
+
+      .su-field { display: flex; flex-direction: column; gap: 6px; }
+      .su-field-label { font-weight: 700; color: ${BL.navy}; font-size: 14px; }
+      .su-field-help { color: ${BL.fgMuted}; font-size: 13px; line-height: 1.45; }
+      .su-field-control { margin-top: 2px; }
+      .su-field-control textarea, .su-field-control input {
+        background: #fff !important;
+        border-color: ${BL.border} !important;
+        color: ${BL.navy} !important;
+        font-size: 14px;
+      }
+
+      .su-nav-row {
+        display: grid; grid-template-columns: 1fr auto 1fr;
+        align-items: center; gap: 12px; margin-top: 20px;
+      }
+      .su-nav-row > :first-child { justify-self: start; }
+      .su-nav-row > :last-child { justify-self: end; }
+      .su-nav-row > :nth-child(2) { justify-self: center; }
+      .su-cta {
+        padding: 14px 28px; border-radius: 12px; font-weight: 700;
+        font-size: 15px;
+      }
+      .su-back, .su-skip {
+        background: transparent; color: ${BL.fgMuted}; font-weight: 500; font-size: 14px;
+      }
+
+      /* Mode step */
+      .mode-grid {
+        display: grid; grid-template-columns: 1fr; gap: 12px;
+      }
+      .mode-card {
+        position: relative;
+        text-align: left;
+        padding: 18px 20px; border-radius: 16px;
+        cursor: pointer; background: #fff;
+        transition: all 200ms cubic-bezier(0.32, 0.72, 0, 1);
+      }
+      .mode-rec {
+        position: absolute; top: 12px; right: 14px;
+        background: ${BL.blue}; color: #fff;
+        padding: 3px 10px; border-radius: 999px;
+        font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .mode-title { font-size: 18px; font-weight: 800; color: ${BL.navy}; margin-bottom: 4px; }
+      .mode-sub { font-size: 14px; color: ${BL.blue}; font-weight: 600; margin-bottom: 8px; }
+      .mode-body { font-size: 13px; color: ${BL.fgBody}; line-height: 1.5; margin-bottom: 12px; }
+      .mode-pill {
+        display: inline-block; padding: 7px 14px; border-radius: 999px;
+        font-size: 13px; font-weight: 700;
+      }
+
+      /* QA step */
+      .qa-grid {
+        display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+      }
+      .qa-chip {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 9px 14px; border-radius: 999px;
+        font-size: 13px; font-weight: 600; cursor: pointer;
+        transition: all 180ms cubic-bezier(0.32, 0.72, 0, 1);
+      }
+      .qa-check {
+        width: 18px; height: 18px; border-radius: 999px;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 11px; font-weight: 800;
+      }
+      .qa-summary {
+        text-align: center; margin-top: 4px;
+        font-size: 13px; color: ${BL.fgMuted};
+      }
+
+      /* Thresholds */
+      .thresh-grid { display: flex; flex-direction: column; gap: 18px; }
+      .thresh-row {
+        display: grid; grid-template-columns: 220px 1fr; gap: 16px;
+        align-items: start; padding-bottom: 18px;
+        border-bottom: 1px dashed ${BL.border};
+      }
+      .thresh-row:last-child { border-bottom: none; }
+      .thresh-label { font-weight: 700; color: ${BL.navy}; font-size: 14px; }
+      .thresh-help { color: ${BL.fgMuted}; font-size: 12px; line-height: 1.4; margin-top: 2px; }
+      .thresh-options { display: flex; flex-wrap: wrap; gap: 6px; }
+      .thresh-chip {
+        padding: 6px 12px; border-radius: 999px;
+        font-size: 12px; font-weight: 600; cursor: pointer;
+        transition: all 160ms cubic-bezier(0.32, 0.72, 0, 1);
+      }
+      @media (max-width: 640px) {
+        .thresh-row { grid-template-columns: 1fr; }
+      }
+
+      .ml-2 { margin-left: 8px; }
+    `}</style>
+  );
+}
