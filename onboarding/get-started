@@ -1,26 +1,22 @@
 // Get Started — multi-step Vibe Code block at /get-started.
-// Steps: Team → Personalize → Plan → Checkout. One Softr page, internal step state.
-//
-// Ports brieflee-design-system/project/onboarding/Get Started.html into a
-// production Vibe Code block. Tokens / classes preserved (bl-input, plan-card,
-// etc.). Eyes/Mail icons replaced with the Brieflee compact logo.
-// Trust strip uses lucide icons that actually match their labels.
+// Steps inside this block: Team → Personalize → Plan → Confirm.
+// Setup is the 5th stepper dot — that lives on /set-up after the Stripe
+// payment-link redirect.
 //
 // SOFTR CONFIG REQUIRED:
 //   Source: bind to USERS table in "brieflee beta", filter to logged-in user.
 //   Actions: auto-populated from q.select aliases below.
 //
-// Cross-table caveat: team save targets ACCOUNTS — needs a Softr workflow.
-// Until TEAM_UPDATE_WORKFLOW_URL is wired, team data is collected and the
-// user advances without persisting (logged to console).
+// Team data lives on USERS now (team_name = ZOm63, team_emails = EuCXi) —
+// no separate workflow needed for the team step. Bev's plan: BL | Onboarding
+// will split the comma-joined team_emails into per-invite sends downstream.
 //
-// Checkout: the visual matches the design. The "Pay $0 and start trial"
-// button opens the matching Stripe Payment Link (with 7-day trial baked in)
-// in a new tab. For inline-iframe Stripe Embedded Checkout we'd need a
-// backend endpoint that creates Sessions — not built yet.
+// Confirm: the "Pay $0 and start trial" button navigates the same tab to the
+// matching Stripe Payment Link (7-day trial baked in). Stripe redirects to
+// /set-up after card collection, which is where the rest of onboarding runs.
 
 import { useState, useEffect, useMemo } from "react";
-import { useRecordUpdate, useLinkedRecords, q } from "@/lib/datasource";
+import { useRecordUpdate, useRecords, q } from "@/lib/datasource";
 import { useCurrentUser } from "@/lib/user";
 import { toast } from "sonner";
 
@@ -72,12 +68,14 @@ const CUSTOMER_LOGOS = [
 
 // ─── Field map (USERS table) ────────────────────────────────────────
 const select = q.select({
-  fullName: "Pk6Tx",
-  email: "PBrIP",
-  workType: "Xqhif",
+  fullName:     "Pk6Tx",
+  email:        "PBrIP",
+  workType:     "Xqhif",
   heardAboutUs: "B8uMy",
-  plan: "Ux1pf",      // LINKED_RECORD → pricing
-  accounts: "Nz6VX",  // LINKED_RECORD → accounts (read only)
+  plan:         "Ux1pf",   // LINKED_RECORD → pricing
+  teamName:     "ZOm63",   // SINGLE_LINE_TEXT
+  teamEmails:   "EuCXi",   // LONG_TEXT (comma-separated; BL | Onboarding workflow splits downstream)
+  accounts:     "Nz6VX",   // LINKED_RECORD → accounts (read only)
 });
 
 // ─── SELECT option UUIDs (captured at field creation 2026-05-05) ────
@@ -162,10 +160,9 @@ const STEPS = [
   { id: "team",        label: "Team" },
   { id: "personalize", label: "Personalize" },
   { id: "pricing",     label: "Plan" },
-  { id: "checkout",    label: "Checkout" },
+  { id: "checkout",    label: "Confirm" },
+  { id: "setup",       label: "Setup" },   // reached on /set-up after Stripe redirect
 ];
-
-const TEAM_UPDATE_WORKFLOW_URL = ""; // TODO: paste Softr workflow URL that updates accounts
 
 const yearlySavingsPct = (tier) => {
   const m = PLANS.find((p) => p.tier === tier && p.interval === "Monthly");
@@ -220,7 +217,7 @@ const I = {
 const FEATURE_ROWS = (plan) => [
   { iconUrl: FEAT_ICONS.aiReview,   label: "AI video review",    amount: `${plan.maxVideos}/mo` },
   { iconUrl: FEAT_ICONS.briefs,     label: "Briefs & checklists",amount: "Unlimited" },
-  { iconUrl: FEAT_ICONS.qa,         label: "AI QA Checklist",    amount: "26 items" },
+  { iconUrl: FEAT_ICONS.qa,         label: "AI QA Checklist",    amount: "Yes" },
   { iconUrl: FEAT_ICONS.revisions,  label: "Revisions",          amount: "Unlimited" },
   { iconUrl: FEAT_ICONS.storyboard, label: "Storyboard view",    amount: "Yes" },
   { iconUrl: FEAT_ICONS.remix,      label: "Remix",              amount: "Yes" },
@@ -251,14 +248,26 @@ export default function Block() {
   const [billingInterval, setBillingInterval] = useState("Yearly");
   const [selectedPlanId, setSelectedPlanId] = useState(null);
 
-  const { data: accountData } = useLinkedRecords({
-    select, field: "accounts", count: 1,
-  });
-  const userAccount = accountData?.pages.flatMap((p) => p.items)[0] ?? null;
+  // Pre-fill from the current user's record so refresh / re-entry doesn't wipe answers
+  const { data: userRows } = useRecords({ select, count: 1 });
+  const userRecord = userRows?.[0] ?? null;
 
   useEffect(() => {
-    if (userAccount?.title && !teamName) setTeamName(userAccount.title);
-  }, [userAccount]); // eslint-disable-line
+    if (!userRecord) return;
+    if (userRecord.teamName && !teamName) setTeamName(userRecord.teamName);
+    if (userRecord.teamEmails && teamEmails.every((x) => !x)) {
+      const parts = String(userRecord.teamEmails).split(",").map((s) => s.trim()).slice(0, 3);
+      while (parts.length < 3) parts.push("");
+      setTeamEmails(parts);
+    }
+    if (userRecord.workType?.id && !workTypeId) setWorkTypeId(userRecord.workType.id);
+    if (userRecord.heardAboutUs?.id && !heardAboutUsId) setHeardAboutUsId(userRecord.heardAboutUs.id);
+    if (Array.isArray(userRecord.plan) && userRecord.plan[0]?.id && !selectedPlanId) {
+      setSelectedPlanId(userRecord.plan[0].id);
+      const matched = PLANS.find((p) => p.id === userRecord.plan[0].id);
+      if (matched) setBillingInterval(matched.interval);
+    }
+  }, [userRecord]); // eslint-disable-line
 
   const updateRecord = useRecordUpdate({
     fields: select,
@@ -271,7 +280,9 @@ export default function Block() {
 
   const goNext = () => {
     const i = STEPS.findIndex((s) => s.id === step);
-    if (i < STEPS.length - 1) setStep(STEPS[i + 1].id);
+    // Setup is handled on /set-up, not here — the last in-block step is checkout (Confirm).
+    const lastInBlock = STEPS.findIndex((s) => s.id === "checkout");
+    if (i < lastInBlock) setStep(STEPS[i + 1].id);
     setSaving(false);
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -281,33 +292,21 @@ export default function Block() {
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleTeamNext = async ({ skip }) => {
+  // Team step writes to USERS.team_name + USERS.team_emails. Bev's plan:
+  // BL | New Workspace + Team workflow drops the team-creation half, BL | Onboarding
+  // workflow gains the email-split step that fans the addresses out into invites.
+  const handleTeamNext = ({ skip }) => {
     if (skip) { goNext(); return; }
-    if (!userAccount?.id) { goNext(); return; }
-    if (!TEAM_UPDATE_WORKFLOW_URL) {
-      console.warn("=== TEAM_UPDATE_WORKFLOW_URL is empty; team data not persisted to accounts");
-      goNext();
-      return;
-    }
+    if (!user?.id) { goNext(); return; }
     setSaving(true);
-    try {
-      const cleanedEmails = teamEmails.filter((e) => e && e.trim()).join(", ");
-      const res = await fetch(TEAM_UPDATE_WORKFLOW_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountId: userAccount.id,
-          teamName: teamName.trim() || userAccount.title || "",
-          teamEmails: cleanedEmails,
-        }),
-      });
-      if (!res.ok) throw new Error(`team workflow ${res.status}`);
-      goNext();
-    } catch (e) {
-      console.error("=== team save failed:", e);
-      toast.error("Couldn't save team", { description: e.message });
-      setSaving(false);
-    }
+    const cleanedEmails = teamEmails.map((e) => e.trim()).filter(Boolean).join(", ");
+    updateRecord.mutate(
+      {
+        recordId: user.id,
+        fields: { teamName: teamName.trim(), teamEmails: cleanedEmails },
+      },
+      { onSuccess: goNext },
+    );
   };
 
   const handlePersonalizeNext = () => {
@@ -791,7 +790,7 @@ function CheckoutStep({ selectedPlanId, billingInterval, user, onBack }) {
               {[1, 2, 3, 4, 5].map((i) => <I.Star key={i} size={14} fill="currentColor" stroke="currentColor" />)}
             </div>
             <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: "#001364" }}>
-              "Brieflee cut our UGC review queue from a full afternoon to 12 minutes. The 26-item QA score is the part our brand managers won't shut up about."
+              "Brieflee cut our UGC review queue from a full afternoon to 12 minutes. The QA scoring is the part our brand managers won't shut up about."
             </p>
             <div className="row gap-3 mt-4">
               <div style={{ width: 36, height: 36, borderRadius: 999, background: "#d9e0ff", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#294ff6", fontWeight: 700, fontSize: 14 }}>MR</div>
