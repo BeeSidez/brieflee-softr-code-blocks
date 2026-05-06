@@ -149,12 +149,10 @@ export default function Block() {
                 src={currentLogoUrl}
                 alt=""
                 style={{
-                  width: "26px",
-                  height: "26px",
-                  borderRadius: "8px",
+                  height: "28px",
+                  width: "auto",
+                  maxWidth: "60px",
                   objectFit: "contain",
-                  background: "rgba(217, 224, 255, 0.35)",
-                  border: "1px solid rgba(217, 224, 255, 0.6)",
                   flexShrink: 0,
                 }}
               />

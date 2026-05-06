@@ -589,7 +589,7 @@ function BlockShell({ children }) {
       }}
     >
       <Style />
-      <div className="settings-quality container mx-auto px-4 max-w-2xl w-full">
+      <div className="settings-quality container mx-auto px-4 max-w-4xl w-full">
         <div className="space-y-4">{children}</div>
       </div>
     </div>
