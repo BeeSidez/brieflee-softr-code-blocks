@@ -105,8 +105,15 @@ export default function Block() {
 
   return (
     <div
-      className="container mx-auto px-4 max-w-2xl"
-      style={{ padding: "20px 16px 0" }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        gap: "12px",
+        flexWrap: "wrap",
+        padding: "16px 24px",
+        width: "100%",
+      }}
     >
       <div
         style={{

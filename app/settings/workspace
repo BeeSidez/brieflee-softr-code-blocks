@@ -1,0 +1,594 @@
+// /settings · Workspace tab — single Vibe Code block.
+// Three sub-sections: Identity → Brand → Audience.
+// Each section has its own Save / Discard buttons; nothing persists
+// until the user explicitly hits Save.
+//
+// SOFTR CONFIG REQUIRED:
+//   Source tab: bind to ACCOUNTS in "brieflee beta", filter to logged-in
+//   user (or to the workspace from the URL param `workspace` if you've
+//   wired up the multi-workspace switcher block).
+//   Actions tab: auto-populated from updateFields aliases below.
+//
+// LOGO UPLOAD (deferred):
+//   Flip SHOW_LOGO_UPLOAD = true AND uncomment the `logo` lines in
+//   both q.select() calls below, replacing "REPLACE_WITH_FIELD_ID"
+//   with the actual Softr field ID for accounts.logo (ATTACHMENT).
+
+import { useState, useEffect, useRef } from "react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { useRecords, useRecordUpdate, q } from "@/lib/datasource";
+import { toast } from "sonner";
+
+const SHOW_LOGO_UPLOAD = false;
+
+// ---- Field map (ACCOUNTS) -----------------------------------------
+const select = q.select({
+  name:               "aAKkT",
+  website:            "RaK4B",
+  niche:              "vOp4b",
+  brandBio:           "iVPat",
+  brandVoice:         "ybmp8",
+  brandCta:           "s9vzj",
+  targetAudience:     "6g1Vd",
+  audiencePainPoints: "B4zya",
+  audienceObjectives: "5Wq2k",
+  // logo:            "REPLACE_WITH_FIELD_ID",
+});
+
+const updateFields = q.select({
+  name:               "aAKkT",
+  website:            "RaK4B",
+  niche:              "vOp4b",
+  brandBio:           "iVPat",
+  brandVoice:         "ybmp8",
+  brandCta:           "s9vzj",
+  targetAudience:     "6g1Vd",
+  audiencePainPoints: "B4zya",
+  audienceObjectives: "5Wq2k",
+  // logo:            "REPLACE_WITH_FIELD_ID",
+});
+
+const EMPTY_DRAFT = {
+  name: "",
+  website: "",
+  niche: "",
+  brandBio: "",
+  brandVoice: "",
+  brandCta: "",
+  targetAudience: "",
+  audiencePainPoints: "",
+  audienceObjectives: "",
+};
+
+// =====================================================================
+// Block
+// =====================================================================
+export default function Block() {
+  const { data, status, refetch } = useRecords({ select, count: 1 });
+  const record =
+    data?.pages?.[0]?.items?.[0] ??
+    (Array.isArray(data) ? data[0] : null);
+
+  // Saved state — mirrors the record after each successful save
+  const [saved, setSaved] = useState(EMPTY_DRAFT);
+  // Draft state — what the user is editing right now
+  const [draft, setDraft] = useState(EMPTY_DRAFT);
+
+  // Save lifecycle
+  const [savingSection, setSavingSection] = useState(null);
+  const [recentlySavedSection, setRecentlySavedSection] = useState(null);
+
+  const hydratedRef = useRef(false);
+  const pendingSaveContextRef = useRef(null);
+  const savedFlashTimerRef = useRef(null);
+
+  // ---- Hydrate local state once when the record arrives -----------
+  useEffect(() => {
+    if (!record || hydratedRef.current) return;
+    hydratedRef.current = true;
+
+    const next = {
+      name: extractText(record.name),
+      website: extractText(record.website),
+      niche: extractText(record.niche),
+      brandBio: extractText(record.brandBio),
+      brandVoice: extractText(record.brandVoice),
+      brandCta: extractText(record.brandCta),
+      targetAudience: extractText(record.targetAudience),
+      audiencePainPoints: extractText(record.audiencePainPoints),
+      audienceObjectives: extractText(record.audienceObjectives),
+    };
+    setSaved(next);
+    setDraft(next);
+  }, [record]);
+
+  // ---- Update hook -------------------------------------------------
+  const updateRecord = useRecordUpdate({
+    fields: updateFields,
+    onSuccess: () => {
+      const ctx = pendingSaveContextRef.current;
+      pendingSaveContextRef.current = null;
+      setSavingSection(null);
+      if (!ctx) { refetch(); return; }
+      ctx.onComplete?.();
+      setRecentlySavedSection(ctx.section);
+      if (savedFlashTimerRef.current) clearTimeout(savedFlashTimerRef.current);
+      savedFlashTimerRef.current = setTimeout(() => {
+        setRecentlySavedSection((cur) => (cur === ctx.section ? null : cur));
+      }, 1800);
+      refetch();
+    },
+    onError: (err) => {
+      pendingSaveContextRef.current = null;
+      setSavingSection(null);
+      toast.error("Couldn't save", { description: err?.message || "Try again." });
+    },
+  });
+
+  const performSave = (section, fields, onComplete) => {
+    if (!record?.id) {
+      toast.error("Couldn't find your account record.");
+      return;
+    }
+    pendingSaveContextRef.current = { section, onComplete };
+    setSavingSection(section);
+    updateRecord.mutate({ recordId: record.id, fields });
+  };
+
+  // ---- Cleanup -----------------------------------------------------
+  useEffect(() => () => {
+    if (savedFlashTimerRef.current) clearTimeout(savedFlashTimerRef.current);
+  }, []);
+
+  // ---- Per-section dirty checks ------------------------------------
+  const isIdentityDirty =
+    draft.name !== saved.name || draft.website !== saved.website;
+  const isBrandDirty =
+    draft.brandBio !== saved.brandBio ||
+    draft.brandVoice !== saved.brandVoice ||
+    draft.brandCta !== saved.brandCta ||
+    draft.niche !== saved.niche;
+  const isAudienceDirty =
+    draft.targetAudience !== saved.targetAudience ||
+    draft.audiencePainPoints !== saved.audiencePainPoints ||
+    draft.audienceObjectives !== saved.audienceObjectives;
+  const anyDirty = isIdentityDirty || isBrandDirty || isAudienceDirty;
+
+  // ---- beforeunload guard -----------------------------------------
+  useEffect(() => {
+    if (!anyDirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [anyDirty]);
+
+  // ---- Save / discard handlers ------------------------------------
+  const setField = (key, value) =>
+    setDraft((cur) => ({ ...cur, [key]: value }));
+
+  const saveIdentity = () => {
+    performSave(
+      "identity",
+      { name: draft.name.trim(), website: draft.website.trim() },
+      () => setSaved((cur) => ({
+        ...cur,
+        name: draft.name,
+        website: draft.website,
+      })),
+    );
+  };
+  const discardIdentity = () =>
+    setDraft((cur) => ({ ...cur, name: saved.name, website: saved.website }));
+
+  const saveBrand = () => {
+    performSave(
+      "brand",
+      {
+        brandBio: draft.brandBio.trim(),
+        brandVoice: draft.brandVoice.trim(),
+        brandCta: draft.brandCta.trim(),
+        niche: draft.niche.trim(),
+      },
+      () => setSaved((cur) => ({
+        ...cur,
+        brandBio: draft.brandBio,
+        brandVoice: draft.brandVoice,
+        brandCta: draft.brandCta,
+        niche: draft.niche,
+      })),
+    );
+  };
+  const discardBrand = () =>
+    setDraft((cur) => ({
+      ...cur,
+      brandBio: saved.brandBio,
+      brandVoice: saved.brandVoice,
+      brandCta: saved.brandCta,
+      niche: saved.niche,
+    }));
+
+  const saveAudience = () => {
+    performSave(
+      "audience",
+      {
+        targetAudience: draft.targetAudience.trim(),
+        audiencePainPoints: draft.audiencePainPoints.trim(),
+        audienceObjectives: draft.audienceObjectives.trim(),
+      },
+      () => setSaved((cur) => ({
+        ...cur,
+        targetAudience: draft.targetAudience,
+        audiencePainPoints: draft.audiencePainPoints,
+        audienceObjectives: draft.audienceObjectives,
+      })),
+    );
+  };
+  const discardAudience = () =>
+    setDraft((cur) => ({
+      ...cur,
+      targetAudience: saved.targetAudience,
+      audiencePainPoints: saved.audiencePainPoints,
+      audienceObjectives: saved.audienceObjectives,
+    }));
+
+  // ---- Render guards -----------------------------------------------
+  if (status === "pending") return <BlockShell><Loading /></BlockShell>;
+  if (status === "error") return <BlockShell><Loading error /></BlockShell>;
+  if (!record) {
+    return (
+      <BlockShell>
+        <Loading message="No account record found. Check the block's Source tab is bound to accounts with a filter to the logged-in user." />
+      </BlockShell>
+    );
+  }
+
+  return (
+    <BlockShell>
+      {/* ── Section 1 · Identity ────────────────────────────────────── */}
+      <SectionCard
+        title="Workspace identity"
+        subtitle="The name and website that anchor this workspace."
+        dirty={isIdentityDirty}
+        saving={savingSection === "identity"}
+        justSaved={recentlySavedSection === "identity"}
+        onSave={saveIdentity}
+        onDiscard={discardIdentity}
+      >
+        <FieldRow label="Workspace name">
+          <Input
+            value={draft.name}
+            onChange={(e) => setField("name", e.target.value)}
+            placeholder="e.g. Brieflee Beta"
+          />
+        </FieldRow>
+
+        <FieldRow label="Website">
+          <Input
+            value={draft.website}
+            onChange={(e) => setField("website", e.target.value)}
+            placeholder="https://example.com"
+            type="url"
+          />
+        </FieldRow>
+
+        {SHOW_LOGO_UPLOAD && (
+          <FieldRow label="Logo">
+            <p className="text-xs" style={{ color: "#7A93FF", fontWeight: 400 }}>
+              Logo upload coming soon.
+            </p>
+          </FieldRow>
+        )}
+      </SectionCard>
+
+      {/* ── Section 2 · Brand ───────────────────────────────────────── */}
+      <SectionCard
+        title="Brand"
+        subtitle="How Brieflee should think about your brand when reviewing content."
+        dirty={isBrandDirty}
+        saving={savingSection === "brand"}
+        justSaved={recentlySavedSection === "brand"}
+        onSave={saveBrand}
+        onDiscard={discardBrand}
+      >
+        <FieldRow label="Brand bio">
+          <Textarea
+            value={draft.brandBio}
+            onChange={(e) => setField("brandBio", e.target.value)}
+            placeholder="One or two sentences on what your brand is and who it's for."
+            rows={3}
+          />
+        </FieldRow>
+
+        <FieldRow label="Brand voice">
+          <Textarea
+            value={draft.brandVoice}
+            onChange={(e) => setField("brandVoice", e.target.value)}
+            placeholder="The tone of voice your content should hit."
+            rows={3}
+          />
+        </FieldRow>
+
+        <FieldRow label="Brand CTA">
+          <Textarea
+            value={draft.brandCta}
+            onChange={(e) => setField("brandCta", e.target.value)}
+            placeholder="The call-to-action your videos should drive towards."
+            rows={2}
+          />
+        </FieldRow>
+
+        <FieldRow label="Niche">
+          <Textarea
+            value={draft.niche}
+            onChange={(e) => setField("niche", e.target.value)}
+            placeholder="The category or vertical you operate in."
+            rows={2}
+          />
+        </FieldRow>
+      </SectionCard>
+
+      {/* ── Section 3 · Audience ───────────────────────────────────── */}
+      <SectionCard
+        title="Audience"
+        subtitle="Who you're talking to and what they care about."
+        dirty={isAudienceDirty}
+        saving={savingSection === "audience"}
+        justSaved={recentlySavedSection === "audience"}
+        onSave={saveAudience}
+        onDiscard={discardAudience}
+      >
+        <FieldRow label="Target audience">
+          <Textarea
+            value={draft.targetAudience}
+            onChange={(e) => setField("targetAudience", e.target.value)}
+            placeholder="Demographic, psychographic, where they spend time."
+            rows={3}
+          />
+        </FieldRow>
+
+        <FieldRow label="Audience pain points">
+          <Textarea
+            value={draft.audiencePainPoints}
+            onChange={(e) => setField("audiencePainPoints", e.target.value)}
+            placeholder="The problems your audience needs solving."
+            rows={3}
+          />
+        </FieldRow>
+
+        <FieldRow label="Audience objectives">
+          <Textarea
+            value={draft.audienceObjectives}
+            onChange={(e) => setField("audienceObjectives", e.target.value)}
+            placeholder="The outcomes your audience is trying to reach."
+            rows={3}
+          />
+        </FieldRow>
+      </SectionCard>
+    </BlockShell>
+  );
+}
+
+// =====================================================================
+// Sub-components
+// =====================================================================
+
+function BlockShell({ children }) {
+  return (
+    <div
+      className="flex flex-col"
+      style={{
+        background: "#FAFBFF",
+        borderRadius: "16px",
+        padding: "32px 0 48px",
+      }}
+    >
+      <Style />
+      <div className="settings-workspace container mx-auto px-4 max-w-2xl w-full">
+        <div className="space-y-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function SectionCard({
+  title, subtitle, dirty, saving, justSaved, onSave, onDiscard, children,
+}) {
+  let pill = null;
+  if (saving) pill = <StatusPill tone="loading" label="Saving…" />;
+  else if (justSaved) pill = <StatusPill tone="success" label="Saved" />;
+  else if (dirty) pill = <StatusPill tone="warning" label="Unsaved" />;
+
+  return (
+    <section
+      style={{
+        background: "#FFFFFF",
+        border: "1px solid rgba(217, 224, 255, 0.55)",
+        borderRadius: "18px",
+        padding: "22px 24px",
+        boxShadow: "0 1px 3px rgba(0, 15, 77, 0.04)",
+      }}
+    >
+      <header className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3
+            className="text-base"
+            style={{ color: "#000F4D", fontWeight: 600, letterSpacing: "-0.005em" }}
+          >
+            {title}
+          </h3>
+          {subtitle && (
+            <p
+              className="text-xs mt-0.5"
+              style={{ color: "#7A93FF", fontWeight: 400, lineHeight: 1.5 }}
+            >
+              {subtitle}
+            </p>
+          )}
+        </div>
+        {pill && <div style={{ flexShrink: 0 }}>{pill}</div>}
+      </header>
+
+      <div className="space-y-4">{children}</div>
+
+      <footer
+        className="mt-5 pt-4 flex items-center justify-end gap-2"
+        style={{ borderTop: "1px solid rgba(217, 224, 255, 0.5)" }}
+      >
+        <button
+          type="button"
+          onClick={onDiscard}
+          disabled={!dirty || saving}
+          className="workspace-discard-btn"
+        >
+          Discard
+        </button>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={!dirty || saving}
+          className="workspace-save-btn"
+        >
+          {saving ? "Saving…" : "Save changes"}
+        </button>
+      </footer>
+    </section>
+  );
+}
+
+function FieldRow({ label, children }) {
+  return (
+    <div className="space-y-1.5">
+      <label
+        className="text-xs font-medium block"
+        style={{ color: "#001364", fontWeight: 600 }}
+      >
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function StatusPill({ tone, label }) {
+  const palette =
+    tone === "success"
+      ? { fg: "#22A06B", dot: "#22A06B", border: "rgba(34, 160, 107, 0.30)" }
+      : tone === "warning"
+      ? { fg: "#C97D3F", dot: "#E89B5C", border: "rgba(232, 155, 92, 0.45)" }
+      : { fg: "#7A93FF", dot: "#7A93FF", border: "rgba(122, 147, 255, 0.45)" };
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        fontSize: 11,
+        fontWeight: 600,
+        color: palette.fg,
+        padding: "4px 10px",
+        background: "#FFFFFF",
+        border: `1px solid ${palette.border}`,
+        borderRadius: 999,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span
+        style={{
+          width: 5,
+          height: 5,
+          borderRadius: "50%",
+          background: palette.dot,
+          animation: tone === "loading" ? "wsPulse 1.2s ease-in-out infinite" : "none",
+        }}
+      />
+      {label}
+    </span>
+  );
+}
+
+function Loading({ message, error }) {
+  return (
+    <div
+      className="text-center"
+      style={{ padding: "60px 20px", color: error ? "#D14343" : "#7A93FF" }}
+    >
+      <p className="text-sm">{message || (error ? "Couldn't load workspace." : "Loading…")}</p>
+    </div>
+  );
+}
+
+function extractText(raw) {
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw)) {
+    const f = raw[0];
+    if (typeof f === "string") return f;
+    return f?.label ?? "";
+  }
+  if (typeof raw === "object") return raw.label ?? "";
+  return String(raw);
+}
+
+function Style() {
+  return (
+    <style>
+      {`
+        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+        .settings-workspace * { font-family: 'League Spartan', sans-serif; }
+
+        @keyframes wsPulse {
+          0%, 100% { opacity: 0.5; transform: scale(0.85); }
+          50%      { opacity: 1;   transform: scale(1.15); }
+        }
+
+        .workspace-save-btn {
+          background: #7A93FF;
+          color: #FFFFFF;
+          font-size: 13px;
+          font-weight: 600;
+          padding: 8px 18px;
+          border-radius: 999px;
+          border: none;
+          cursor: pointer;
+          box-shadow: 0 2px 6px rgba(122, 147, 255, 0.3);
+          transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .workspace-save-btn:hover:not(:disabled) {
+          background: #294FF6;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(41, 79, 246, 0.35);
+        }
+        .workspace-save-btn:active:not(:disabled) {
+          transform: translateY(0);
+        }
+        .workspace-save-btn:disabled {
+          background: #D9E0FF;
+          color: #FFFFFF;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+
+        .workspace-discard-btn {
+          background: transparent;
+          color: #7A93FF;
+          font-size: 13px;
+          font-weight: 500;
+          padding: 8px 14px;
+          border-radius: 999px;
+          border: none;
+          cursor: pointer;
+          transition: color 0.2s ease;
+        }
+        .workspace-discard-btn:hover:not(:disabled) {
+          color: #294FF6;
+        }
+        .workspace-discard-btn:disabled {
+          color: #C5CFE8;
+          cursor: not-allowed;
+        }
+      `}
+    </style>
+  );
+}
