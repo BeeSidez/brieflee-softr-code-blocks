@@ -1,0 +1,206 @@
+// Marketing site - PLAN block.
+// Anonymous; lives on the public marketing pricing page. No user state, no
+// useRecords / useCurrentUser. Click any "Start free trial" CTA -> /sign-up
+// (signup form picks the trial plan up via ?plan=<tier> in the query string).
+//
+// Hardcoded pricing data so the page renders for unauthenticated visitors
+// without exposing the pricing table to anonymous reads. If pricing changes,
+// update PLANS here AND in the Softr pricing table together.
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Check, Clock } from "lucide-react";
+
+const PLANS = [
+  {
+    tier: "Creator",
+    desc: "For solos and freelancers reviewing their own UGC.",
+    monthly: 59,  yearly: 588,
+    maxVideos: 30,  maxWorkspaces: 1,  maxUsers: 1,
+    hoursSaved: "10 hours / month",
+  },
+  {
+    tier: "Crew",
+    desc: "The winning ad workflow for growing brands and small teams.",
+    monthly: 99,  yearly: 1068,
+    maxVideos: 100, maxWorkspaces: 5,  maxUsers: 5,
+    hoursSaved: "33 hours / month",
+    popular: true,
+  },
+  {
+    tier: "Studio",
+    desc: "Scaled review for agencies running multiple brand accounts.",
+    monthly: 249, yearly: 2388,
+    maxVideos: 500, maxWorkspaces: 10, maxUsers: 10,
+    hoursSaved: "167 hours / month",
+  },
+];
+
+const FEATURES = (p) => [
+  `${p.maxVideos} videos / month`,
+  `${p.maxWorkspaces} ${p.maxWorkspaces === 1 ? "workspace" : "workspaces"}`,
+  `${p.maxUsers} ${p.maxUsers === 1 ? "seat" : "seats"}`,
+  "AI video review",
+  "Briefs & checklists",
+  "AI QA Checklist",
+  "Storyboard view",
+  "Remix & revisions",
+];
+
+const TRIAL_DAYS = 7;
+const SIGNUP_URL = "/sign-up";
+
+export default function Block() {
+  const [isYearly, setIsYearly] = useState(true);
+
+  const handleStart = (tier) => {
+    // Pass the picked tier into signup so the post-signup flow can resume on
+    // the correct plan. Same-tab navigation.
+    const interval = isYearly ? "yearly" : "monthly";
+    window.location.href = `${SIGNUP_URL}?plan=${tier.toLowerCase()}&interval=${interval}`;
+  };
+
+  return (
+    <div className="pm-root">
+      <Style />
+      <div className="container py-16">
+        <div className="content text-center">
+          <div className="pm-eyebrow">Pricing</div>
+          <h1 className="pm-title">Simple plans, scaled to your team</h1>
+          <p className="pm-sub">
+            Start free for {TRIAL_DAYS} days. Cancel any time. No credit card required to look around.
+          </p>
+
+          <IntervalToggle isYearly={isYearly} onChange={setIsYearly} />
+
+          <div className="pm-grid">
+            {PLANS.map((p) => {
+              const monthlyEquivalent = isYearly ? Math.round(p.yearly / 12) : p.monthly;
+              return (
+                <div
+                  key={p.tier}
+                  className={"pm-card" + (p.popular ? " pm-card-popular" : "")}
+                >
+                  {p.popular && <div className="pm-banner">Most popular</div>}
+                  <div className="pm-card-body">
+                    <div className="pm-tier">{p.tier}</div>
+                    <p className="pm-desc">{p.desc}</p>
+
+                    <div className="pm-price-row">
+                      <span className="pm-price">${monthlyEquivalent}</span>
+                      <span className="pm-per">/mo</span>
+                    </div>
+                    <div className="pm-billed">
+                      {isYearly ? `Billed $${p.yearly.toLocaleString()} annually` : "Billed monthly"}
+                    </div>
+
+                    <div className="pm-saves">
+                      <div className="pm-save">
+                        <Clock className="w-3.5 h-3.5" />
+                        Save {p.hoursSaved}
+                      </div>
+                    </div>
+
+                    <ul className="pm-features">
+                      {FEATURES(p).map((f) => (
+                        <li key={f}>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <Button onClick={() => handleStart(p.tier)} className="pm-cta">
+                      Start {TRIAL_DAYS}-day free trial
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="pm-trust">
+            <span>$0 today</span>
+            <span className="pm-dot">·</span>
+            <span>Cancel anytime</span>
+            <span className="pm-dot">·</span>
+            <span>Powered by Stripe</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IntervalToggle({ isYearly, onChange }) {
+  return (
+    <div className="pm-toggle-wrap">
+      <div className="pm-toggle">
+        <button onClick={() => onChange(false)} className={"pm-toggle-btn" + (!isYearly ? " on" : "")}>Monthly</button>
+        <button onClick={() => onChange(true)}  className={"pm-toggle-btn" + ( isYearly ? " on" : "")}>
+          Yearly
+          <span className="pm-toggle-badge">Save ~17%</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Style() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+      .pm-root, .pm-root * { font-family: 'Plus Jakarta Sans', sans-serif; }
+
+      .pm-eyebrow { font-size: 12px; letter-spacing: 0.08em; font-weight: 700; text-transform: uppercase; color: #879cf7; margin-bottom: 12px; }
+      .pm-title { font-size: 48px; line-height: 1.1; letter-spacing: -0.02em; font-weight: 800; color: #001364; margin: 0 0 14px; }
+      .pm-sub { font-size: 17px; line-height: 1.55; color: #555; max-width: 560px; margin: 0 auto 36px; }
+
+      .pm-toggle-wrap { display: flex; justify-content: center; margin-bottom: 40px; }
+      .pm-toggle { display: inline-flex; padding: 4px; border-radius: 999px; background: #eef4fd; border: 1px solid #d6defc; }
+      .pm-toggle-btn { display: inline-flex; align-items: center; gap: 8px; padding: 8px 18px; border-radius: 999px; background: transparent; color: #001364; font-size: 14px; font-weight: 500; cursor: pointer; border: none; transition: all 200ms cubic-bezier(0.32,0.72,0,1); }
+      .pm-toggle-btn.on { background: #fff; font-weight: 700; box-shadow: 0 1px 2px rgba(0,15,77,0.08); }
+      .pm-toggle-badge { font-size: 11px; font-weight: 700; background: #294ff6; color: #fff; padding: 2px 8px; border-radius: 999px; }
+
+      .pm-grid { display: grid; gap: 20px; grid-template-columns: 1fr; margin: 0 auto; max-width: 1100px; }
+      @media (min-width: 880px) { .pm-grid { grid-template-columns: repeat(3, 1fr); } }
+
+      .pm-card {
+        background: #fff; border: 1px solid #d6defc;
+        border-radius: 20px; overflow: hidden; text-align: left;
+        box-shadow: 0 2px 8px rgba(0,15,77,0.04);
+        transition: transform 200ms cubic-bezier(0.32,0.72,0,1), box-shadow 200ms;
+      }
+      .pm-card:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(41,79,246,0.10); }
+      .pm-card-popular { border: 2px solid #294ff6; box-shadow: 0 12px 32px rgba(41,79,246,0.14); }
+
+      .pm-banner { background: #294ff6; color: #fff; text-align: center; padding: 8px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+      .pm-card-body { padding: 28px 26px; }
+
+      .pm-tier { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; background: #d9e0ff; color: #294ff6; padding: 4px 10px; border-radius: 999px; margin-bottom: 12px; }
+      .pm-desc { font-size: 13px; line-height: 1.5; color: #555; margin: 0 0 18px; min-height: 38px; }
+      .pm-price-row { display: flex; align-items: baseline; gap: 4px; }
+      .pm-price { font-size: 44px; line-height: 1; font-weight: 800; color: #001364; letter-spacing: -0.02em; }
+      .pm-per { font-size: 14px; color: #555; font-weight: 500; }
+      .pm-billed { font-size: 12px; color: #555; margin: 6px 0 18px; }
+
+      .pm-saves { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+      .pm-save { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; background: #ECF0FF; color: #294ff6; }
+
+      .pm-features { list-style: none; padding: 0; margin: 0 0 24px; display: flex; flex-direction: column; gap: 8px; }
+      .pm-features li { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #001364; }
+      .pm-features li svg { color: #294ff6; flex-shrink: 0; }
+
+      .pm-cta {
+        width: 100%; padding: 14px 18px; font-size: 14px; font-weight: 700;
+        background: #294ff6; color: #fff; border-radius: 12px;
+        border: none; cursor: pointer;
+        transition: all 200ms cubic-bezier(0.32,0.72,0,1);
+      }
+      .pm-cta:hover { background: #001364; transform: translateY(-1px); box-shadow: 0 8px 18px rgba(41,79,246,0.25); }
+
+      .pm-trust { margin-top: 36px; display: flex; gap: 8px; align-items: center; justify-content: center; font-size: 13px; color: #555; }
+      .pm-dot { color: #d6defc; }
+    `}</style>
+  );
+}

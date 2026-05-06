@@ -1,0 +1,328 @@
+import { useState, useEffect } from 'react';
+import { useCurrentUser } from '@/lib/user';
+import { Megaphone, Zap } from 'lucide-react';
+
+export default function Block() {
+  const [showTyping1, setShowTyping1] = useState(false);
+  const [showMessage1, setShowMessage1] = useState(false);
+  const [showTyping2, setShowTyping2] = useState(false);
+  const [showVideo, setShowVideo] = useState(false);
+  const [showTyping3, setShowTyping3] = useState(false);
+  const [showCards, setShowCards] = useState(false);
+  const [showTyping4, setShowTyping4] = useState(false);
+  const [showMessage2, setShowMessage2] = useState(false);
+  const [showTyping5, setShowTyping5] = useState(false);
+  const [showMessage3, setShowMessage3] = useState(false);
+  const [showReactions, setShowReactions] = useState(false);
+  const user = useCurrentUser();
+
+  useEffect(() => {
+    // Message 1 - short intro (short typing)
+    setTimeout(() => setShowTyping1(true), 300);
+    setTimeout(() => {
+      setShowTyping1(false);
+      setShowMessage1(true);
+    }, 1500);
+
+    // Video embed (medium typing - loading feel)
+    setTimeout(() => setShowTyping2(true), 2000);
+    setTimeout(() => {
+      setShowTyping2(false);
+      setShowVideo(true);
+    }, 3800);
+
+    // Two info cards (longer typing - more content)
+    setTimeout(() => setShowTyping3(true), 4300);
+    setTimeout(() => {
+      setShowTyping3(false);
+      setShowCards(true);
+    }, 6500);
+
+    // Message 2 - longer explanation (longer typing)
+    setTimeout(() => setShowTyping4(true), 7000);
+    setTimeout(() => {
+      setShowTyping4(false);
+      setShowMessage2(true);
+    }, 9200);
+
+    // Message 3 - "Got it?" (very short typing)
+    setTimeout(() => setShowTyping5(true), 9700);
+    setTimeout(() => {
+      setShowTyping5(false);
+      setShowMessage3(true);
+    }, 10500);
+
+    // Emoji reactions
+    setTimeout(() => setShowReactions(true), 11000);
+  }, []);
+
+  return (
+    <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(to bottom, rgba(217, 224, 255, 0.15), rgba(255, 255, 255, 1))' }}>
+      <style>
+        {`
+          @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;500;800&display=swap');
+          * {
+            font-family: 'League Spartan', sans-serif;
+          }
+          @keyframes bounce {
+            0%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-8px); }
+          }
+          .typing-dot {
+            animation: bounce 1.4s infinite;
+          }
+          .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+          }
+          .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+          }
+        `}
+      </style>
+
+      <div className="flex-1 overflow-y-auto pb-48">
+        <div className="container mx-auto px-4 py-8 max-w-2xl">
+          {/* Progress indicator */}
+          <div className="mb-6">
+            <div className="flex items-center justify-center gap-2">
+              <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#7A93FF' }}></div>
+              <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#7A93FF' }}></div>
+              <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#7A93FF' }}></div>
+              <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#7A93FF' }}></div>
+              <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#7A93FF' }}></div>
+              <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#D9E0FF' }}></div>
+              <div className="h-1.5 w-1.5 rounded-full bg-gray-200"></div>
+            </div>
+          </div>
+
+          {/* Typing indicator 1 */}
+          {showTyping1 && (
+            <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-300">
+              <div className="flex gap-2.5 items-start">
+                <img 
+                  src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" 
+                  alt="Lee" 
+                  className="w-8 h-8 rounded-full flex-shrink-0"
+                />
+                <div className="bg-white rounded-2xl rounded-tl-sm p-3 px-5 shadow-sm" style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}>
+                  <div className="flex gap-1.5">
+                    <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#7A93FF' }}></div>
+                    <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#7A93FF' }}></div>
+                    <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#7A93FF' }}></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Message 1 */}
+          {showMessage1 && (
+            <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
+              <div className="flex gap-2.5 items-start">
+                <img 
+                  src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" 
+                  alt="Lee" 
+                  className="w-8 h-8 rounded-full flex-shrink-0"
+                />
+                <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}>
+                  <p className="text-sm leading-relaxed" style={{ color: '#000F4D', fontWeight: 300 }}>
+                    Before you dive in, here's two ways you can use Brieflee.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Typing indicator 2 */}
+          {showTyping2 && (
+            <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-300">
+              <div className="flex gap-2.5 items-start">
+                <div className="w-8 h-8 flex-shrink-0"></div>
+                <div className="bg-white rounded-2xl rounded-tl-sm p-3 px-5 shadow-sm" style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}>
+                  <div className="flex gap-1.5">
+                    <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#7A93FF' }}></div>
+                    <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#7A93FF' }}></div>
+                    <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#7A93FF' }}></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Video embed */}
+          {showVideo && (
+            <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
+              <div className="max-w-lg rounded-xl overflow-hidden shadow-sm" style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}>
+                <div className="relative" style={{ paddingBottom: '56.25%' }}>
+                  <iframe
+                    src="https://www.youtube.com/embed/1r2MMI8BsQ8"
+                    title="How Brieflee Works"
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    className="absolute inset-0 w-full h-full"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Typing indicator 3 */}
+          {showTyping3 && (
+            <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-300">
+              <div className="flex gap-2.5 items-start">
+                <div className="w-8 h-8 flex-shrink-0"></div>
+                <div className="bg-white rounded-2xl rounded-tl-sm p-3 px-5 shadow-sm" style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}>
+                  <div className="flex gap-1.5">
+                    <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#7A93FF' }}></div>
+                    <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#7A93FF' }}></div>
+                    <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#7A93FF' }}></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Two info cards */}
+          {showCards && (
+            <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
+              <div className="space-y-3 max-w-lg">
+                {/* Campaigns card */}
+                <div 
+                  className="bg-white rounded-xl px-4 py-3 shadow-sm"
+                  style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#294FF6' }}>
+                      <Megaphone className="w-3 h-3 text-white" />
+                    </div>
+                    <span className="text-sm" style={{ color: '#000F4D', fontWeight: 500 }}>
+                      Campaigns
+                    </span>
+                  </div>
+                  <p className="text-xs leading-relaxed" style={{ color: '#001364', fontWeight: 300 }}>
+                    When you want creators to submit content to you. Create a project, build your briefs, share the link. Creators upload directly and I review everything as it comes in.
+                  </p>
+                </div>
+
+                {/* Quick reviews card */}
+                <div 
+                  className="bg-white rounded-xl px-4 py-3 shadow-sm"
+                  style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#294FF6' }}>
+                      <Zap className="w-3 h-3 text-white" />
+                    </div>
+                    <span className="text-sm" style={{ color: '#000F4D', fontWeight: 500 }}>
+                      Quick reviews
+                    </span>
+                  </div>
+                  <p className="text-xs leading-relaxed" style={{ color: '#001364', fontWeight: 300 }}>
+                    When you already have the content. Upload videos you've received or created, paste in your brief, and I'll review them all in one go.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Typing indicator 4 */}
+          {showTyping4 && (
+            <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-300">
+              <div className="flex gap-2.5 items-start">
+                <img 
+                  src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" 
+                  alt="Lee" 
+                  className="w-8 h-8 rounded-full flex-shrink-0"
+                />
+                <div className="bg-white rounded-2xl rounded-tl-sm p-3 px-5 shadow-sm" style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}>
+                  <div className="flex gap-1.5">
+                    <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#7A93FF' }}></div>
+                    <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#7A93FF' }}></div>
+                    <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#7A93FF' }}></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Message 2 */}
+          {showMessage2 && (
+            <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
+              <div className="flex gap-2.5 items-start">
+                <img 
+                  src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" 
+                  alt="Lee" 
+                  className="w-8 h-8 rounded-full flex-shrink-0"
+                />
+                <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}>
+                  <p className="text-sm leading-relaxed" style={{ color: '#000F4D', fontWeight: 300 }}>
+                    Want to brief creators? Go to Campaigns. Want to check content quickly yourself? Go to Reviews. Simple.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Typing indicator 5 */}
+          {showTyping5 && (
+            <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-300">
+              <div className="flex gap-2.5 items-start">
+                <img 
+                  src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" 
+                  alt="Lee" 
+                  className="w-8 h-8 rounded-full flex-shrink-0"
+                />
+                <div className="bg-white rounded-2xl rounded-tl-sm p-3 px-5 shadow-sm" style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}>
+                  <div className="flex gap-1.5">
+                    <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#7A93FF' }}></div>
+                    <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#7A93FF' }}></div>
+                    <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#7A93FF' }}></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Message 3 - Got it? */}
+          {showMessage3 && (
+            <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
+              <div className="flex gap-2.5 items-start">
+                <img 
+                  src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" 
+                  alt="Lee" 
+                  className="w-8 h-8 rounded-full flex-shrink-0"
+                />
+                <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}>
+                  <p className="text-sm leading-relaxed" style={{ color: '#000F4D', fontWeight: 300 }}>
+                    Got it?
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Emoji reaction buttons */}
+          {showReactions && (
+            <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
+              <div className="flex gap-2">
+                {['👍', '🙌', '👊'].map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={() => {
+                      window.location.href = '/first-review';
+                    }}
+                    className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-lg hover:scale-110 transition-transform duration-200"
+                    style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

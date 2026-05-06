@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Brieflee — Review</title>
+  <link rel="icon" href="../../assets/logos/app-icon.png">
+  <link rel="stylesheet" href="../../colors_and_type.css">
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <style>body{margin:0;background:var(--bl-page)}</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" src="Sidebar.jsx"></script>
+  <script type="text/babel" src="TopBar.jsx"></script>
+  <script type="text/babel" src="ScoreCell.jsx"></script>
+  <script type="text/babel" src="ReviewTable.jsx"></script>
+  <script type="text/babel" src="BriefCard.jsx"></script>
+  <script type="text/babel" src="Dropzone.jsx"></script>
+  <script type="text/babel">
+    const { useState } = React;
+    const SAMPLE_ROWS = [
+      { creator: "Cassie Avery", title: "Matcha morning routine", brief: "Spring matcha launch", score: 92, status: "approved", hook: "0:00–0:03 ✓", audio: "Clean", length: "0:46", up: "2h ago", thumbA: "#ecf0ff", thumbB: "#879cf7" },
+      { creator: "Theo Nakamura", title: "Why I switched to ceremonial", brief: "Spring matcha launch", score: 88, status: "approved", hook: "0:00–0:04 ✓", audio: "Clean", length: "0:38", up: "3h ago", thumbA: "#d9e0ff", thumbB: "#7a93ff" },
+      { creator: "Margot Liu", title: "Matcha latte tutorial", brief: "Spring matcha launch", score: 74, status: "review", hook: "0:00–0:06 ⚠", audio: "Wind noise", length: "0:52", up: "5h ago", thumbA: "#eef4fd", thumbB: "#5e7bf6" },
+      { creator: "Indra Patel", title: "Trying matcha for a week", brief: "Creator series · April", score: 81, status: "pending", hook: "0:00–0:05 ✓", audio: "Clean", length: "1:08", up: "yesterday", thumbA: "#ccedff", thumbB: "#4466f8" },
+      { creator: "Owen Brigham", title: "Iced matcha at home", brief: "Creator series · April", score: 58, status: "rejected", hook: "0:00–0:11 ✗", audio: "Quiet", length: "0:29", up: "yesterday", thumbA: "#d8d8ff", thumbB: "#294ff6" },
+      { creator: "Sora Hayashi", title: "Cafe-quality at $2", brief: "Creator series · April", score: 90, status: "approved", hook: "0:00–0:03 ✓", audio: "Clean", length: "0:44", up: "2 days ago", thumbA: "#d9e0ff", thumbB: "#879cf7" },
+    ];
+    function App() {
+      const [active, setActive] = useState("videos");
+      const [uploaded, setUploaded] = useState(false);
+      const [showDz, setShowDz] = useState(false);
+      const briefs = [
+        { name: "Spring matcha launch", count: uploaded ? 18 : 0, status: "live" },
+        { name: "Creator series · April", count: uploaded ? 24 : 0, status: "live" },
+        { name: "Affiliate program Q2", count: 6, status: "live" },
+        { name: "Founder POV reels", count: 0, status: "draft" },
+      ];
+      return (
+        <div data-screen-label="Brieflee app · review dashboard" style={{ display: "flex", minHeight: "100vh" }}>
+          <Sidebar active={active} onChange={setActive} />
+          <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+            <TopBar workspace="Northshore Studios" onUpload={() => setShowDz(true)} />
+            <main style={{ padding: "28px 28px 64px", flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div>
+                  <span className="bl-eyebrow">Reviewed content</span>
+                  <h1 style={{ fontSize: 32, fontWeight: 800, color: "var(--bl-fg)", letterSpacing: "-0.02em", margin: "4px 0 4px" }}>
+                    Spring matcha launch
+                  </h1>
+                  <p style={{ margin: 0, color: "var(--bl-fg-muted)", fontSize: 14 }}>{uploaded ? "18 videos · 12 approved · 4 needs review · 2 rejected" : "Drop your CSV to start the review queue"}</p>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button style={{ background: "#fff", border: "1.5px solid var(--bl-border)", padding: "8px 14px", borderRadius: 10, fontSize: 13, fontWeight: 600, color: "var(--bl-fg)", cursor: "pointer" }}>Filters</button>
+                  <button style={{ background: "#fff", border: "1.5px solid var(--bl-border)", padding: "8px 14px", borderRadius: 10, fontSize: 13, fontWeight: 600, color: "var(--bl-fg)", cursor: "pointer" }}>Export</button>
+                </div>
+              </div>
+
+              <section style={{ margin: "24px 0 28px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "var(--bl-fg)", textTransform: "uppercase", letterSpacing: ".06em" }}>Active briefs</h3>
+                  <a href="#" style={{ fontSize: 13, color: "#294ff6", fontWeight: 600 }}>All briefs →</a>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+                  {briefs.map(b => <BriefCard key={b.name} {...b} />)}
+                </div>
+              </section>
+
+              <ReviewTable rows={uploaded ? SAMPLE_ROWS : []} empty={!uploaded} />
+            </main>
+          </div>
+          <Dropzone active={showDz} onDone={() => { setShowDz(false); setUploaded(true); }} />
+        </div>
+      );
+    }
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

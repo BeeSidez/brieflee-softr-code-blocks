@@ -138,7 +138,7 @@ Owns the "we have an email, no workspace yet" stage. Drip enrolment, affiliate s
 | 3 | **Softr DB: add notification record** (notifications table) | `notification_type = Welcome`, link to user. Visible in app's notification badge. |
 | 4 | **Slack: Post channel message** to `#new-user` | Internal alert: name, email |
 | 5 | **Google Sheets: Add row** to Subscribers/New Users | Backup record (deletion safety net — if a user is deleted we still have audit trail) |
-| 6 | **Call API — Referly: create affiliate** | POST `https://www.referly.so/api/v1/affiliates`, body `{ email, firstName, lastName, affiliateLink, commissionRate: 40 }`. Auth credential: new `Brieflee Referly` connection. |
+| 6 | **Call API — Referly: create affiliate** | POST `https://www.referly.so/api/v1/affiliates`, body `{ email, firstName, lastName, affiliateLink, commissionRate: 20 }`. Auth credential: new `Brieflee Referly` connection. |
 | 7 | **Softr DB: update user** | Save `affiliate_link` field returned by Referly (need to add this field to users table — TBD whether response contains the link or it's constructible from input) |
 | 8 | **EmailIt API: add subscriber to `Onboarding` audience** (`aud_4D1p0CkELqJe0jjrJ4aOuVywgP6`) | POST `https://api.emailit.com/v2/audiences/{aud_xxx}/subscribers` body `{ "email", "first_name", "last_name", "custom_fields": { "softr_user_id" } }`. **Returns 409 if email exists — accept that as success.** Audience-membership kicks off the 14-day drip automation in EmailIt UI. |
 | 9 | **EmailIt API: send `bl-features-day-01-welcome`** (template alias) | First drip email, sent inline so welcome arrives instantly. EmailIt automation handles days 02–14. |

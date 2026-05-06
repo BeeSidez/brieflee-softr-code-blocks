@@ -1,0 +1,516 @@
+// Plan page - UPGRADE / DOWNGRADE block.
+// Visible only to users with an active Stripe subscription (set the gate in
+// the Vibe block's Visibility tab: condition like "Stripe Customer ID is not
+// empty" or "subscription_status is one of trialing/active").
+//
+// Reads the 6 non-trial Payment Link formula URLs + the user's current Plan
+// (Ux1pf, LINKED_RECORD -> pricing). Renders 3 plan cards. The user's current
+// plan is greyed out + labelled "Current plan". All other cards are clickable.
+// Clicking a tier BELOW the current shows a confirm dialog with what the user
+// will lose; clicking a tier AT or ABOVE goes straight to checkout.
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { useCurrentUser } from "@/lib/user";
+import { useRecords, q } from "@/lib/datasource";
+import { Check, Clock, X, AlertTriangle } from "lucide-react";
+
+const select = q.select({
+  creatorMonthly: "Dm9jQ",
+  creatorYearly:  "CzRio",
+  crewMonthly:    "L9h2t",
+  crewYearly:     "bYDDj",
+  studioMonthly:  "YXlM3",
+  studioYearly:   "r7OxD",
+  plan:           "Ux1pf",  // LINKED_RECORD -> pricing (the user's current plan)
+});
+
+// 6 canonical pricing rows. Ordered by tier rank so we can detect downgrade
+// via index comparison (lower rank = lower tier).
+const PRICING_ROWS = [
+  { id: "MOFJ50J3sX5cQ4", tier: "Creator", interval: "Monthly", rank: 0 },
+  { id: "efLCArKogDzBco", tier: "Creator", interval: "Yearly",  rank: 0 },
+  { id: "3DudH4fLuqChIr", tier: "Crew",    interval: "Monthly", rank: 1 },
+  { id: "QHonFLGNkspIop", tier: "Crew",    interval: "Yearly",  rank: 1 },
+  { id: "AQI1eTOfZOYM5h", tier: "Studio",  interval: "Monthly", rank: 2 },
+  { id: "KHrjkggVIoUOze", tier: "Studio",  interval: "Yearly",  rank: 2 },
+];
+
+const PLANS = [
+  {
+    tier: "Creator", rank: 0,
+    desc: "For solos and freelancers reviewing their own UGC.",
+    monthly: 59,  yearly: 588,
+    maxVideos: 30,  maxWorkspaces: 1,  maxUsers: 1,
+    hoursSaved: "10 hours / month",
+  },
+  {
+    tier: "Crew", rank: 1,
+    desc: "The winning ad workflow for growing brands and small teams.",
+    monthly: 99,  yearly: 1068,
+    maxVideos: 100, maxWorkspaces: 5,  maxUsers: 5,
+    hoursSaved: "33 hours / month",
+    popular: true,
+  },
+  {
+    tier: "Studio", rank: 2,
+    desc: "Scaled review for agencies running multiple brand accounts.",
+    monthly: 249, yearly: 2388,
+    maxVideos: 500, maxWorkspaces: 10, maxUsers: 10,
+    hoursSaved: "167 hours / month",
+  },
+];
+
+const FEATURES = (p) => [
+  `${p.maxVideos} videos / month`,
+  `${p.maxWorkspaces} ${p.maxWorkspaces === 1 ? "workspace" : "workspaces"}`,
+  `${p.maxUsers} ${p.maxUsers === 1 ? "seat" : "seats"}`,
+  "AI video review",
+  "Briefs & checklists",
+  "AI QA Checklist",
+  "Storyboard view",
+  "Remix & revisions",
+];
+
+export default function Block() {
+  const [isYearly, setIsYearly] = useState(true);
+  const [downgradeTarget, setDowngradeTarget] = useState(null); // a PLAN object or null
+  const user = useCurrentUser();
+  const { data, status } = useRecords({ select, count: 1 });
+
+  const userRecord = data?.pages?.[0]?.items?.[0];
+
+  // urls[Tier][Interval] -> Stripe Payment Link (non-trial)
+  const urls = userRecord
+    ? {
+        Creator: { Monthly: userRecord.fields.creatorMonthly, Yearly: userRecord.fields.creatorYearly },
+        Crew:    { Monthly: userRecord.fields.crewMonthly,    Yearly: userRecord.fields.crewYearly },
+        Studio:  { Monthly: userRecord.fields.studioMonthly,  Yearly: userRecord.fields.studioYearly },
+      }
+    : {};
+
+  // Current plan: linked record array on users.plan -> first item's id
+  const planLinks = userRecord?.fields?.plan;
+  const currentPlanId = Array.isArray(planLinks) ? planLinks[0]?.id : null;
+  const currentPricing = PRICING_ROWS.find((r) => r.id === currentPlanId);
+  const currentTier = currentPricing?.tier || null;
+  const currentRank = currentPricing?.rank ?? null;
+
+  const goTo = (tier) => {
+    const interval = isYearly ? "Yearly" : "Monthly";
+    const url = urls[tier]?.[interval];
+    if (url) window.location.href = url;
+  };
+
+  const handleSelect = (plan) => {
+    if (currentTier === plan.tier) return; // no-op on current
+    if (currentRank !== null && plan.rank < currentRank) {
+      // Downgrade -> confirmation modal
+      setDowngradeTarget(plan);
+      return;
+    }
+    goTo(plan.tier);
+  };
+
+  const confirmDowngrade = () => {
+    if (downgradeTarget) {
+      const tier = downgradeTarget.tier;
+      setDowngradeTarget(null);
+      goTo(tier);
+    }
+  };
+
+  if (status === "pending") {
+    return (
+      <div className="container py-12 text-center text-sm" style={{ color: "#6b7280" }}>
+        Loading plans...
+      </div>
+    );
+  }
+
+  return (
+    <div className="pu-root">
+      <Style />
+      <div className="container py-12">
+        <div className="content text-center">
+          <div className="pu-eyebrow">Manage your plan</div>
+          <h1 className="pu-title">Switch plan any time</h1>
+          <p className="pu-sub">
+            {currentTier
+              ? <>You're currently on <strong>{currentTier}</strong>. Upgrade for more capacity, or change interval to save.</>
+              : "Pick the plan that fits how you're working today."}
+          </p>
+
+          <IntervalToggle isYearly={isYearly} onChange={setIsYearly} />
+
+          <div className="pu-grid">
+            {PLANS.map((p) => {
+              const isCurrent = currentTier === p.tier;
+              const monthlyEquivalent = isYearly ? Math.round(p.yearly / 12) : p.monthly;
+
+              return (
+                <div
+                  key={p.tier}
+                  className={
+                    "pu-card" +
+                    (p.popular && !isCurrent ? " pu-card-popular" : "") +
+                    (isCurrent ? " pu-card-current" : "")
+                  }
+                >
+                  {p.popular && !isCurrent && <div className="pu-banner pu-banner-popular">Most popular</div>}
+                  {isCurrent && <div className="pu-banner pu-banner-current">Your current plan</div>}
+
+                  <div className="pu-card-body">
+                    <div className="pu-tier">{p.tier}</div>
+                    <p className="pu-desc">{p.desc}</p>
+
+                    <div className="pu-price-row">
+                      <span className="pu-price">${monthlyEquivalent}</span>
+                      <span className="pu-per">/mo</span>
+                    </div>
+                    <div className="pu-billed">
+                      {isYearly ? `Billed $${p.yearly.toLocaleString()} annually` : "Billed monthly"}
+                    </div>
+
+                    <div className="pu-saves">
+                      <div className="pu-save">
+                        <Clock className="w-3.5 h-3.5" />
+                        Save {p.hoursSaved}
+                      </div>
+                    </div>
+
+                    <ul className="pu-features">
+                      {FEATURES(p).map((f) => (
+                        <li key={f}>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <Button
+                      onClick={() => handleSelect(p)}
+                      disabled={isCurrent || !urls[p.tier]?.[isYearly ? "Yearly" : "Monthly"]}
+                      className={"pu-cta" + (isCurrent ? " pu-cta-current" : "")}
+                    >
+                      {isCurrent
+                        ? "Current plan"
+                        : (currentRank !== null && p.rank < currentRank)
+                          ? `Downgrade to ${p.tier}`
+                          : (currentRank !== null && p.rank > currentRank)
+                            ? `Upgrade to ${p.tier}`
+                            : `Switch to ${p.tier}`}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="pu-trust">
+            <span>Prorated automatically</span>
+            <span className="pu-dot">·</span>
+            <span>Change anytime</span>
+            <span className="pu-dot">·</span>
+            <span>Powered by Stripe</span>
+          </div>
+        </div>
+      </div>
+
+      {downgradeTarget && (
+        <DowngradeModal
+          current={PLANS.find((x) => x.tier === currentTier)}
+          target={downgradeTarget}
+          onClose={() => setDowngradeTarget(null)}
+          onConfirm={confirmDowngrade}
+        />
+      )}
+    </div>
+  );
+}
+
+function IntervalToggle({ isYearly, onChange }) {
+  return (
+    <div className="pu-toggle-wrap">
+      <div className="pu-toggle">
+        <button onClick={() => onChange(false)} className={"pu-toggle-btn" + (!isYearly ? " on" : "")}>Monthly</button>
+        <button onClick={() => onChange(true)}  className={"pu-toggle-btn" + ( isYearly ? " on" : "")}>
+          Yearly
+          <span className="pu-toggle-badge">Save ~17%</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DowngradeModal({ current, target, onClose, onConfirm }) {
+  if (!current || !target) return null;
+
+  const lostHoursPerMonth = parseFloat(current.hoursSaved) - parseFloat(target.hoursSaved);
+  const lostVideos = current.maxVideos - target.maxVideos;
+  const lostWorkspaces = current.maxWorkspaces - target.maxWorkspaces;
+  const lostSeats = current.maxUsers - target.maxUsers;
+
+  return (
+    <div className="pu-modal-bg" onClick={onClose}>
+      <div className="pu-modal" onClick={(e) => e.stopPropagation()}>
+        <button className="pu-modal-close" onClick={onClose} aria-label="Close">
+          <X className="w-4 h-4" />
+        </button>
+
+        <div className="pu-modal-icon">
+          <AlertTriangle className="w-6 h-6" />
+        </div>
+        <h2 className="pu-modal-title">Are you sure you want to downgrade?</h2>
+        <p className="pu-modal-sub">
+          You'll move from <strong>{current.tier}</strong> to <strong>{target.tier}</strong>.
+          Here's what changes:
+        </p>
+
+        <ul className="pu-modal-list">
+          {lostHoursPerMonth > 0 && (
+            <li>
+              <span className="pu-modal-bad">−{Math.round(lostHoursPerMonth)} hours / month back doing reviews manually</span>
+            </li>
+          )}
+          {lostVideos > 0 && (
+            <li>
+              <span className="pu-modal-bad">−{lostVideos} videos / month</span>
+              <span className="pu-modal-from">({current.maxVideos} → {target.maxVideos})</span>
+            </li>
+          )}
+          {lostWorkspaces > 0 && (
+            <li>
+              <span className="pu-modal-bad">−{lostWorkspaces} {lostWorkspaces === 1 ? "workspace" : "workspaces"}</span>
+              <span className="pu-modal-from">({current.maxWorkspaces} → {target.maxWorkspaces})</span>
+            </li>
+          )}
+          {lostSeats > 0 && (
+            <li>
+              <span className="pu-modal-bad">−{lostSeats} {lostSeats === 1 ? "seat" : "seats"}</span>
+              <span className="pu-modal-from">({current.maxUsers} → {target.maxUsers})</span>
+            </li>
+          )}
+        </ul>
+
+        <p className="pu-modal-note">
+          Your changes take effect at your next billing date. Stripe handles the proration.
+        </p>
+
+        <div className="pu-modal-actions">
+          <Button onClick={onClose} className="pu-modal-stay">Stay on {current.tier}</Button>
+          <Button onClick={onConfirm} className="pu-modal-confirm">Continue downgrade</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Style() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+      .pu-root, .pu-root * { font-family: 'Plus Jakarta Sans', sans-serif; }
+
+      .pu-eyebrow {
+        font-size: 12px; letter-spacing: 0.08em; font-weight: 700;
+        text-transform: uppercase; color: #879cf7;
+        margin-bottom: 12px;
+      }
+      .pu-title {
+        font-size: 44px; line-height: 1.1; letter-spacing: -0.02em;
+        font-weight: 800; color: #001364;
+        margin: 0 0 12px;
+      }
+      .pu-sub {
+        font-size: 16px; line-height: 1.55; color: #555;
+        max-width: 560px; margin: 0 auto 32px;
+      }
+      .pu-sub strong { color: #001364; }
+
+      .pu-toggle-wrap { display: flex; justify-content: center; margin-bottom: 36px; }
+      .pu-toggle {
+        display: inline-flex; padding: 4px; border-radius: 999px;
+        background: #eef4fd; border: 1px solid #d6defc;
+      }
+      .pu-toggle-btn {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 8px 18px; border-radius: 999px;
+        background: transparent; color: #001364;
+        font-size: 14px; font-weight: 500; cursor: pointer;
+        border: none; transition: all 200ms cubic-bezier(0.32,0.72,0,1);
+      }
+      .pu-toggle-btn.on { background: #fff; font-weight: 700; box-shadow: 0 1px 2px rgba(0,15,77,0.08); }
+      .pu-toggle-badge { font-size: 11px; font-weight: 700; background: #294ff6; color: #fff; padding: 2px 8px; border-radius: 999px; }
+
+      .pu-grid {
+        display: grid; gap: 20px;
+        grid-template-columns: 1fr;
+        margin: 0 auto; max-width: 1100px;
+      }
+      @media (min-width: 880px) { .pu-grid { grid-template-columns: repeat(3, 1fr); } }
+
+      .pu-card {
+        background: #fff; border: 1px solid #d6defc;
+        border-radius: 20px; overflow: hidden; text-align: left;
+        box-shadow: 0 2px 8px rgba(0,15,77,0.04);
+        transition: all 200ms cubic-bezier(0.32,0.72,0,1);
+      }
+      .pu-card:hover:not(.pu-card-current) {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 32px rgba(41,79,246,0.10);
+      }
+      .pu-card-popular { border: 2px solid #294ff6; box-shadow: 0 12px 32px rgba(41,79,246,0.14); }
+
+      /* Current-plan disabled state */
+      .pu-card-current {
+        background: #f8fbff;
+        border: 1.5px solid #d6defc;
+        opacity: 0.85;
+      }
+      .pu-card-current .pu-tier,
+      .pu-card-current .pu-price,
+      .pu-card-current .pu-features li {
+        color: #6b7280 !important;
+      }
+
+      .pu-banner {
+        text-align: center; padding: 8px 12px;
+        font-size: 11px; font-weight: 700;
+        letter-spacing: 0.08em; text-transform: uppercase;
+      }
+      .pu-banner-popular { background: #294ff6; color: #fff; }
+      .pu-banner-current { background: #001364; color: #fff; }
+
+      .pu-card-body { padding: 28px 26px; }
+
+      .pu-tier {
+        display: inline-block;
+        font-size: 12px; font-weight: 700;
+        letter-spacing: 0.08em; text-transform: uppercase;
+        background: #d9e0ff; color: #294ff6;
+        padding: 4px 10px; border-radius: 999px;
+        margin-bottom: 12px;
+      }
+      .pu-desc { font-size: 13px; line-height: 1.5; color: #555; margin: 0 0 18px; min-height: 38px; }
+
+      .pu-price-row { display: flex; align-items: baseline; gap: 4px; }
+      .pu-price { font-size: 44px; line-height: 1; font-weight: 800; color: #001364; letter-spacing: -0.02em; }
+      .pu-per { font-size: 14px; color: #555; font-weight: 500; }
+      .pu-billed { font-size: 12px; color: #555; margin: 6px 0 18px; }
+
+      .pu-saves { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+      .pu-save {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 12px; border-radius: 999px;
+        font-size: 12px; font-weight: 600;
+        background: #ECF0FF; color: #294ff6;
+      }
+
+      .pu-features { list-style: none; padding: 0; margin: 0 0 24px; display: flex; flex-direction: column; gap: 8px; }
+      .pu-features li { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #001364; }
+      .pu-features li svg { color: #294ff6; flex-shrink: 0; }
+
+      .pu-cta {
+        width: 100%; padding: 14px 18px; font-size: 14px; font-weight: 700;
+        background: #294ff6; color: #fff; border-radius: 12px;
+        border: none; cursor: pointer;
+        transition: all 200ms cubic-bezier(0.32,0.72,0,1);
+      }
+      .pu-cta:hover:not([disabled]) { background: #001364; transform: translateY(-1px); box-shadow: 0 8px 18px rgba(41,79,246,0.25); }
+      .pu-cta-current { background: #d6defc !important; color: #6b7280 !important; cursor: default !important; }
+      .pu-cta-current:hover { background: #d6defc !important; transform: none !important; box-shadow: none !important; }
+
+      .pu-trust {
+        margin-top: 32px; display: flex; gap: 8px;
+        align-items: center; justify-content: center;
+        font-size: 13px; color: #555;
+      }
+      .pu-dot { color: #d6defc; }
+
+      /* Downgrade modal */
+      .pu-modal-bg {
+        position: fixed; inset: 0;
+        background: rgba(0, 19, 100, 0.45);
+        display: flex; align-items: center; justify-content: center;
+        padding: 20px; z-index: 100;
+        animation: pu-fade 180ms cubic-bezier(0.32,0.72,0,1);
+      }
+      @keyframes pu-fade { from { opacity: 0; } to { opacity: 1; } }
+
+      .pu-modal {
+        position: relative;
+        background: #fff; border-radius: 20px;
+        padding: 32px 28px; max-width: 460px; width: 100%;
+        text-align: center;
+        box-shadow: 0 24px 64px -12px rgba(0,15,77,0.30);
+        animation: pu-pop 220ms cubic-bezier(0.32,0.72,0,1);
+      }
+      @keyframes pu-pop { from { transform: translateY(8px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
+
+      .pu-modal-close {
+        position: absolute; top: 16px; right: 16px;
+        width: 32px; height: 32px; border-radius: 999px;
+        background: #f8fbff; color: #6b7280;
+        border: none; cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+      }
+      .pu-modal-icon {
+        width: 56px; height: 56px; border-radius: 999px;
+        background: #fff7ed; color: #f97316;
+        display: inline-flex; align-items: center; justify-content: center;
+        margin-bottom: 16px;
+      }
+
+      .pu-modal-title {
+        font-size: 22px; font-weight: 800; color: #001364;
+        margin: 0 0 8px; letter-spacing: -0.01em;
+      }
+      .pu-modal-sub {
+        font-size: 14px; color: #555; line-height: 1.55;
+        margin: 0 0 20px;
+      }
+      .pu-modal-sub strong { color: #001364; }
+
+      .pu-modal-list {
+        list-style: none; padding: 0; margin: 0 0 18px;
+        text-align: left;
+        background: #fef2f2; border: 1px solid #fecaca;
+        border-radius: 12px; padding: 14px 16px;
+      }
+      .pu-modal-list li {
+        display: flex; flex-wrap: wrap; gap: 6px;
+        font-size: 13px; line-height: 1.5;
+        padding: 4px 0;
+      }
+      .pu-modal-bad { color: #b91c1c; font-weight: 600; }
+      .pu-modal-from { color: #6b7280; font-size: 12px; }
+
+      .pu-modal-note {
+        font-size: 12px; color: #6b7280; line-height: 1.5;
+        margin: 0 0 20px;
+      }
+
+      .pu-modal-actions {
+        display: flex; flex-direction: column; gap: 8px;
+      }
+      @media (min-width: 480px) { .pu-modal-actions { flex-direction: row; } }
+
+      .pu-modal-stay {
+        flex: 1; padding: 12px 18px;
+        background: #294ff6 !important; color: #fff !important;
+        font-weight: 700; font-size: 14px;
+        border-radius: 12px; border: none; cursor: pointer;
+      }
+      .pu-modal-stay:hover { background: #001364 !important; }
+
+      .pu-modal-confirm {
+        flex: 1; padding: 12px 18px;
+        background: transparent !important; color: #6b7280 !important;
+        font-weight: 500; font-size: 13px;
+        border-radius: 12px; border: 1px solid #e5e7eb; cursor: pointer;
+      }
+      .pu-modal-confirm:hover { color: #001364 !important; border-color: #d6defc; }
+    `}</style>
+  );
+}

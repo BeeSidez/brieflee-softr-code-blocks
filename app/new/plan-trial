@@ -1,0 +1,307 @@
+// Plan page - TRIAL block.
+// Visible only to users without an active Stripe subscription (set the gate in
+// the Vibe block's Visibility tab: condition like "Stripe Customer ID is empty"
+// or "subscription_status is empty").
+//
+// Reads the 6 trial Payment Link formula URLs from the users table and renders
+// 3 plan cards with a Monthly / Yearly toggle. Click a card -> Stripe Payment
+// Link with the 7-day trial baked in. Same tab navigation; Stripe redirects
+// back to /set-up after card collection.
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { useCurrentUser } from "@/lib/user";
+import { useRecords, q } from "@/lib/datasource";
+import { Check, Clock } from "lucide-react";
+
+const select = q.select({
+  creatorMonthlyTrial: "677EA",
+  creatorYearlyTrial:  "mK0hY",
+  crewMonthlyTrial:    "SFCVz",
+  crewYearlyTrial:     "pdBWv",
+  studioMonthlyTrial:  "mKn7h",
+  studioYearlyTrial:   "Dl2tb",
+});
+
+const PLANS = [
+  {
+    tier: "Creator",
+    desc: "For solos and freelancers reviewing their own UGC.",
+    monthly: 59,  yearly: 588,
+    maxVideos: 30,  maxWorkspaces: 1,  maxUsers: 1,
+    hoursSaved: "10 hours / month",
+    moneySaved: "$200 / month",
+  },
+  {
+    tier: "Crew",
+    desc: "The winning ad workflow for growing brands and small teams.",
+    monthly: 99,  yearly: 1068,
+    maxVideos: 100, maxWorkspaces: 5,  maxUsers: 5,
+    hoursSaved: "33 hours / month",
+    moneySaved: "$740 / month",
+    popular: true,
+  },
+  {
+    tier: "Studio",
+    desc: "Scaled review for agencies running multiple brand accounts.",
+    monthly: 249, yearly: 2388,
+    maxVideos: 500, maxWorkspaces: 10, maxUsers: 10,
+    hoursSaved: "167 hours / month",
+    moneySaved: "$3,900 / month",
+  },
+];
+
+const FEATURES = (p) => [
+  `${p.maxVideos} videos / month`,
+  `${p.maxWorkspaces} ${p.maxWorkspaces === 1 ? "workspace" : "workspaces"}`,
+  `${p.maxUsers} ${p.maxUsers === 1 ? "seat" : "seats"}`,
+  "AI video review",
+  "Briefs & checklists",
+  "AI QA Checklist",
+  "Storyboard view",
+  "Remix & revisions",
+];
+
+const TRIAL_DAYS = 7;
+
+export default function Block() {
+  const [isYearly, setIsYearly] = useState(true);
+  const user = useCurrentUser();
+  const { data, status } = useRecords({ select, count: 1 });
+
+  const userRecord = data?.pages?.[0]?.items?.[0];
+  const urls = userRecord
+    ? {
+        Creator: { Monthly: userRecord.fields.creatorMonthlyTrial, Yearly: userRecord.fields.creatorYearlyTrial },
+        Crew:    { Monthly: userRecord.fields.crewMonthlyTrial,    Yearly: userRecord.fields.crewYearlyTrial },
+        Studio:  { Monthly: userRecord.fields.studioMonthlyTrial,  Yearly: userRecord.fields.studioYearlyTrial },
+      }
+    : {};
+
+  const handleStart = (tier) => {
+    const interval = isYearly ? "Yearly" : "Monthly";
+    const url = urls[tier]?.[interval];
+    if (url) window.location.href = url;
+  };
+
+  if (status === "pending") {
+    return (
+      <div className="container py-12 text-center text-sm" style={{ color: "#6b7280" }}>
+        Loading plans...
+      </div>
+    );
+  }
+
+  return (
+    <div className="pt-root">
+      <Style />
+      <div className="container py-12">
+        <div className="content text-center">
+          <div className="pt-eyebrow">Pick your plan</div>
+          <h1 className="pt-title">Try Brieflee free for {TRIAL_DAYS} days</h1>
+          <p className="pt-sub">
+            No charge until your trial ends. Cancel any time.
+          </p>
+
+          <IntervalToggle isYearly={isYearly} onChange={setIsYearly} />
+
+          <div className="pt-grid">
+            {PLANS.map((p) => {
+              const monthlyEquivalent = isYearly ? Math.round(p.yearly / 12) : p.monthly;
+              return (
+                <div
+                  key={p.tier}
+                  className={"pt-card" + (p.popular ? " pt-card-popular" : "")}
+                >
+                  {p.popular && <div className="pt-popular">Most popular</div>}
+                  <div className="pt-card-body">
+                    <div className="pt-tier">{p.tier}</div>
+                    <p className="pt-desc">{p.desc}</p>
+
+                    <div className="pt-price-row">
+                      <span className="pt-price">${monthlyEquivalent}</span>
+                      <span className="pt-per">/mo</span>
+                    </div>
+                    <div className="pt-billed">
+                      {isYearly ? `Billed $${p.yearly.toLocaleString()} annually` : "Billed monthly"}
+                    </div>
+
+                    <div className="pt-saves">
+                      <div className="pt-save pt-save-time">
+                        <Clock className="w-3.5 h-3.5" />
+                        Save {p.hoursSaved}
+                      </div>
+                    </div>
+
+                    <ul className="pt-features">
+                      {FEATURES(p).map((f) => (
+                        <li key={f}>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <Button
+                      onClick={() => handleStart(p.tier)}
+                      disabled={!urls[p.tier]?.[isYearly ? "Yearly" : "Monthly"]}
+                      className="pt-cta"
+                    >
+                      Start {TRIAL_DAYS}-day free trial
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="pt-trust">
+            <span>$0 today</span>
+            <span className="pt-dot">·</span>
+            <span>Cancel anytime</span>
+            <span className="pt-dot">·</span>
+            <span>Powered by Stripe</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IntervalToggle({ isYearly, onChange }) {
+  return (
+    <div className="pt-toggle-wrap">
+      <div className="pt-toggle">
+        <button
+          onClick={() => onChange(false)}
+          className={"pt-toggle-btn" + (!isYearly ? " on" : "")}
+        >
+          Monthly
+        </button>
+        <button
+          onClick={() => onChange(true)}
+          className={"pt-toggle-btn" + (isYearly ? " on" : "")}
+        >
+          Yearly
+          <span className="pt-toggle-badge">Save ~17%</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Style() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+      .pt-root, .pt-root * { font-family: 'Plus Jakarta Sans', sans-serif; }
+
+      .pt-eyebrow {
+        font-size: 12px; letter-spacing: 0.08em; font-weight: 700;
+        text-transform: uppercase; color: #879cf7;
+        margin-bottom: 12px;
+      }
+      .pt-title {
+        font-size: 44px; line-height: 1.1; letter-spacing: -0.02em;
+        font-weight: 800; color: #001364;
+        margin: 0 0 12px;
+      }
+      .pt-sub {
+        font-size: 16px; line-height: 1.55; color: #555;
+        max-width: 520px; margin: 0 auto 32px;
+      }
+
+      .pt-toggle-wrap { display: flex; justify-content: center; margin-bottom: 36px; }
+      .pt-toggle {
+        display: inline-flex; padding: 4px; border-radius: 999px;
+        background: #eef4fd; border: 1px solid #d6defc;
+      }
+      .pt-toggle-btn {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 8px 18px; border-radius: 999px;
+        background: transparent; color: #001364;
+        font-size: 14px; font-weight: 500; cursor: pointer;
+        border: none; transition: all 200ms cubic-bezier(0.32,0.72,0,1);
+      }
+      .pt-toggle-btn.on {
+        background: #fff; font-weight: 700;
+        box-shadow: 0 1px 2px rgba(0,15,77,0.08);
+      }
+      .pt-toggle-badge {
+        font-size: 11px; font-weight: 700;
+        background: #294ff6; color: #fff;
+        padding: 2px 8px; border-radius: 999px;
+      }
+
+      .pt-grid {
+        display: grid; gap: 20px;
+        grid-template-columns: 1fr;
+        margin: 0 auto; max-width: 1100px;
+      }
+      @media (min-width: 880px) { .pt-grid { grid-template-columns: repeat(3, 1fr); } }
+
+      .pt-card {
+        background: #fff; border: 1px solid #d6defc;
+        border-radius: 20px; overflow: hidden; text-align: left;
+        box-shadow: 0 2px 8px rgba(0,15,77,0.04);
+        transition: transform 200ms cubic-bezier(0.32,0.72,0,1), box-shadow 200ms;
+      }
+      .pt-card:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(41,79,246,0.10); }
+      .pt-card-popular { border: 2px solid #294ff6; box-shadow: 0 12px 32px rgba(41,79,246,0.14); }
+
+      .pt-popular {
+        background: #294ff6; color: #fff;
+        text-align: center; padding: 8px 12px;
+        font-size: 11px; font-weight: 700;
+        letter-spacing: 0.08em; text-transform: uppercase;
+      }
+      .pt-card-body { padding: 28px 26px; }
+
+      .pt-tier {
+        display: inline-block;
+        font-size: 12px; font-weight: 700;
+        letter-spacing: 0.08em; text-transform: uppercase;
+        background: #d9e0ff; color: #294ff6;
+        padding: 4px 10px; border-radius: 999px;
+        margin-bottom: 12px;
+      }
+      .pt-desc { font-size: 13px; line-height: 1.5; color: #555; margin: 0 0 18px; min-height: 38px; }
+
+      .pt-price-row { display: flex; align-items: baseline; gap: 4px; }
+      .pt-price { font-size: 44px; line-height: 1; font-weight: 800; color: #001364; letter-spacing: -0.02em; }
+      .pt-per { font-size: 14px; color: #555; font-weight: 500; }
+      .pt-billed { font-size: 12px; color: #555; margin: 6px 0 18px; }
+
+      .pt-saves { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+      .pt-save {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 12px; border-radius: 999px;
+        font-size: 12px; font-weight: 600;
+        background: #ECF0FF; color: #294ff6;
+      }
+
+      .pt-features { list-style: none; padding: 0; margin: 0 0 24px; display: flex; flex-direction: column; gap: 8px; }
+      .pt-features li {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 13px; color: #001364;
+      }
+      .pt-features li svg { color: #294ff6; flex-shrink: 0; }
+
+      .pt-cta {
+        width: 100%; padding: 14px 18px; font-size: 14px; font-weight: 700;
+        background: #294ff6; color: #fff; border-radius: 12px;
+        border: none; cursor: pointer;
+        transition: all 200ms cubic-bezier(0.32,0.72,0,1);
+      }
+      .pt-cta:hover:not([disabled]) { background: #001364; transform: translateY(-1px); box-shadow: 0 8px 18px rgba(41,79,246,0.25); }
+      .pt-cta[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+      .pt-trust {
+        margin-top: 32px; display: flex; gap: 8px;
+        align-items: center; justify-content: center;
+        font-size: 13px; color: #555;
+      }
+      .pt-dot { color: #d6defc; }
+    `}</style>
+  );
+}

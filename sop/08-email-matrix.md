@@ -26,7 +26,7 @@ Triggered when user is added to the audience (on signup). Stops if user is remov
 | 11 | `bl-features-day-11-invite-creators` | +1 day | Connect with creators making your content. |
 | 12 | `bl-features-day-12-bulk-upload-briefs` | +1 day | Upload many briefs at once via CSV. |
 | 13 | `bl-features-day-13-bulk-upload-videos` | +1 day | Upload many videos at once for batch review. |
-| 14 | `bl-features-day-14-affiliate` | +1 day | Earn 40% by referring others to Brieflee. |
+| 14 | `bl-features-day-14-affiliate` | +1 day | Earn 20% for 3 months by referring others to Brieflee. |
 
 **Membership rules:**
 - Added: on user signup (`BL | New Signup` workflow, owner role only)

@@ -1,0 +1,263 @@
+// Verify email — "Check Your Inbox" page after Softr signup.
+// Single Vibe Code block. Loaded on /verify-email.
+//
+// Hero is the Brieflee compact logo (smiley with the "lee"), not a Mail icon.
+// Resend handler stubbed pending Softr workflow + EmailIt template bl-tx-email-activation.
+
+import { useState, useEffect } from "react";
+import { useCurrentUser } from "@/lib/user";
+import { Button } from "@/components/ui/button";
+
+const RESEND_COOLDOWN_SECONDS = 120;
+
+// Cloudinary cloud `dchroynzv`. URLs from docs/assets-images-gifs-videos.csv.
+const CLD = "https://res.cloudinary.com/dchroynzv/image/upload";
+const LOGO_COMPACT = `${CLD}/brieflee_app-icon_app-icon-blue-gradient-smiley-mark-v5_2025-04.png`;
+const LOGO_WORDMARK = `${CLD}/brieflee_logo_brieflee-wordmark-deep-blue-with-periwinkle-lee-and-smile_2025-03.png`;
+
+const PROVIDERS = [
+  { name: "Gmail",   urlFor: (e) => `https://mail.google.com/mail/u/?authuser=${encodeURIComponent(e)}`, icon: "https://www.google.com/s2/favicons?domain=gmail.com&sz=32" },
+  { name: "Outlook", urlFor: ()  => "https://outlook.live.com/mail/0/inbox", icon: "https://www.google.com/s2/favicons?domain=outlook.com&sz=32" },
+  { name: "Yahoo",   urlFor: ()  => "https://mail.yahoo.com/d/folders/1",    icon: "https://www.google.com/s2/favicons?domain=yahoo.com&sz=32" },
+  { name: "Proton",  urlFor: ()  => "https://mail.proton.me/u/0/inbox",      icon: "https://www.google.com/s2/favicons?domain=proton.me&sz=32" },
+  { name: "iCloud",  urlFor: ()  => "https://www.icloud.com/mail",           icon: "https://www.google.com/s2/favicons?domain=icloud.com&sz=32" },
+];
+
+const TEAM_RESEND_WORKFLOW_URL = ""; // TODO: paste Softr workflow URL that POSTs to EmailIt for bl-tx-email-activation
+
+export default function Block() {
+  const user = useCurrentUser();
+  const email = user?.email || "";
+  const [countdown, setCountdown] = useState(RESEND_COOLDOWN_SECONDS);
+  const [sending, setSending] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const t = setInterval(() => setCountdown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [countdown]);
+
+  const formatTime = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+
+  const handleResend = async () => {
+    if (countdown > 0 || sending) return;
+    setSending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      if (TEAM_RESEND_WORKFLOW_URL) {
+        const res = await fetch(TEAM_RESEND_WORKFLOW_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        if (!res.ok) throw new Error(`resend ${res.status}`);
+      }
+      setCountdown(RESEND_COOLDOWN_SECONDS);
+      setNotice("Activation email sent again. Check your inbox.");
+    } catch (e) {
+      setError("Couldn't resend right now — try again in a moment.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="ve-root">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        .ve-root, .ve-root * { font-family: 'Plus Jakarta Sans', sans-serif; }
+
+        .ve-shell {
+          min-height: 100vh;
+          background: #fafbff;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .ve-topbar {
+          padding: 20px 24px;
+          border-bottom: 1px solid #d6defc;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .ve-topbar img { height: 26px; }
+
+        .ve-page {
+          flex: 1;
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+          padding: 64px 24px;
+        }
+
+        .ve-card {
+          width: 100%;
+          max-width: 480px;
+          text-align: center;
+        }
+
+        .ve-hero {
+          width: 96px;
+          height: 96px;
+          margin: 0 auto 28px;
+          border-radius: 24px;
+          background: linear-gradient(180deg, #ecf0ff 0%, rgba(135,156,247,0.45) 100%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 12px 32px -10px rgba(135,156,247,0.45);
+        }
+        .ve-hero img { width: 64px; height: 64px; object-fit: contain; }
+
+        .ve-eyebrow {
+          font-size: 12px;
+          letter-spacing: 0.08em;
+          font-weight: 700;
+          text-transform: uppercase;
+          color: #879cf7;
+          margin-bottom: 12px;
+        }
+
+        .ve-title {
+          font-size: 36px;
+          line-height: 1.08;
+          letter-spacing: -0.02em;
+          font-weight: 800;
+          color: #001364;
+          margin: 0 0 12px;
+        }
+
+        .ve-sub {
+          font-size: 15px;
+          line-height: 1.55;
+          color: #555;
+          margin: 0 0 28px;
+        }
+        .ve-sub strong { color: #001364; }
+
+        .ve-resend {
+          background: transparent;
+          border: none;
+          color: #294ff6;
+          font-size: 14px;
+          font-weight: 600;
+          padding: 8px 12px;
+          cursor: pointer;
+          transition: opacity 200ms cubic-bezier(0.32, 0.72, 0, 1);
+        }
+        .ve-resend[disabled] { color: #555; opacity: 0.55; cursor: default; }
+
+        .ve-status { font-size: 12px; margin-top: 6px; min-height: 18px; }
+        .ve-status.ok { color: #166534; }
+        .ve-status.err { color: #b91c1c; }
+
+        .ve-divider {
+          margin: 32px 0 20px;
+          font-size: 11px;
+          letter-spacing: 0.08em;
+          font-weight: 700;
+          text-transform: uppercase;
+          color: #555;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .ve-divider:before, .ve-divider:after {
+          content: ""; flex: 1; height: 1px; background: #d6defc;
+        }
+
+        .ve-providers { display: flex; flex-direction: column; gap: 10px; }
+        .ve-providers .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+        .ve-provider {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          padding: 14px 16px;
+          border-radius: 12px;
+          background: #fff;
+          border: 1.5px solid #d6defc;
+          color: #001364;
+          font-weight: 600;
+          font-size: 14px;
+          text-decoration: none;
+          transition: all 200ms cubic-bezier(0.32, 0.72, 0, 1);
+        }
+        .ve-provider:hover {
+          border-color: #879cf7;
+          background: #f8fbff;
+          transform: translateY(-1px);
+        }
+        .ve-provider img { width: 18px; height: 18px; }
+
+        .ve-back {
+          display: inline-block;
+          margin-top: 32px;
+          color: #555;
+          font-size: 13px;
+          text-decoration: none;
+          font-weight: 500;
+        }
+        .ve-back:hover { color: #294ff6; text-decoration: underline; }
+      `}</style>
+
+      <div className="ve-shell">
+        <header className="ve-topbar">
+          <img src={LOGO_WORDMARK} alt="Brieflee" />
+        </header>
+
+        <div className="ve-page">
+          <div className="ve-card">
+            <div className="ve-hero">
+              <img src={LOGO_COMPACT} alt="" />
+            </div>
+
+            <div className="ve-eyebrow">Almost there</div>
+            <h1 className="ve-title">Check your inbox</h1>
+            <p className="ve-sub">
+              We sent an activation link {email && <>to <strong>{email}</strong></>}. Click it to verify your account, then come back to start your trial.
+            </p>
+
+            <button
+              className="ve-resend"
+              onClick={handleResend}
+              disabled={countdown > 0 || sending}
+            >
+              {sending
+                ? "Resending…"
+                : countdown > 0
+                  ? `Resend in ${formatTime(countdown)}`
+                  : "Resend activation email"}
+            </button>
+            {notice && <div className="ve-status ok">{notice}</div>}
+            {error && <div className="ve-status err">{error}</div>}
+
+            <div className="ve-divider">Or open your inbox</div>
+
+            <div className="ve-providers">
+              <a className="ve-provider" href={PROVIDERS[0].urlFor(email)} target="_blank" rel="noopener noreferrer">
+                <img src={PROVIDERS[0].icon} alt="" />
+                Open {PROVIDERS[0].name}
+              </a>
+              <div className="grid">
+                {PROVIDERS.slice(1).map((p) => (
+                  <a key={p.name} className="ve-provider" href={p.urlFor(email)} target="_blank" rel="noopener noreferrer">
+                    <img src={p.icon} alt="" />
+                    {p.name}
+                  </a>
+                ))}
+              </div>
+            </div>
+
+            <a className="ve-back" href="/sign-in">← Back to sign in</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

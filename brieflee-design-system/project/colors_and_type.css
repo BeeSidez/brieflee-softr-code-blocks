@@ -1,0 +1,182 @@
+/* ============================================================
+   Brieflee — Colors & Type tokens
+   Source of truth: docs/brand-guidelines.md + sop/10-brand-colours.md
+   ============================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+:root {
+  /* ── Core Brand · Periwinkle ladder ─────────────────────────
+     The "Brieflee" canonical periwinkle is #879CF7. Used for
+     buttons, eyebrow accents, and primary pills. */
+  --bl-blue:        #294ff6;  /* Primary blue · CTAs, accents */
+  --bl-blue-2:      #4466f8;  /* Secondary, hover states */
+  --bl-blue-3:      #5e7bf6;  /* Tertiary accents */
+  --bl-blue-4:      #7a93ff;  /* Lighter accent, secondary links */
+  --bl-blue-5:      #879cf7;  /* Canonical periwinkle (CTAs, eyebrows, pills) */
+
+  /* ── Navy · Gravity / headings ─────────────────────────────── */
+  --bl-navy:        #000f4d;  /* Primary navy · headings, dark CTAs */
+  --bl-navy-2:      #001364;  /* Heading text, secondary dark bg */
+  --bl-navy-3:      #152237;  /* Darkest background, footer */
+
+  /* ── Light surfaces ────────────────────────────────────────── */
+  --bl-page:        #fafbff;  /* Page background — pale lavender */
+  --bl-card:        #ffffff;  /* Card / surface */
+  --bl-container:   #ecf0ff;  /* Section blocks, hero, sig strips */
+  --bl-light-1:     #f8fbff;  /* Subtle card fill */
+  --bl-light-2:     #eef4fd;  /* Chart tracks, input bg, empty states */
+  --bl-ice:         #ccedff;  /* Lightest tint, notification badges */
+  --bl-lavender:    #d8d8ff;  /* Tag fills, accent backgrounds */
+  --bl-periwinkle:  #d9e0ff;  /* Pill badges, soft accents */
+  --bl-border:      #d6defc;  /* Subtle periwinkle dividers */
+
+  /* ── Body & text ─────────────────────────────────────────── */
+  --bl-fg:          #001364;  /* Default heading / strong text */
+  --bl-fg-body:     #333333;  /* Body paragraph */
+  --bl-fg-muted:    #555555;  /* Captions, less-important info */
+  --bl-fg-quiet:    #bbbbbb;  /* Footer / unsubscribe-row */
+
+  /* ── Semantic state ──────────────────────────────────────── */
+  --bl-success:     #38a169;  /* Trial banner, approved */
+  --bl-success-bg:  #f0fff4;  /* Trial banner light tint */
+  --bl-success-fg:  #166534;
+  --bl-danger:      #e63946;  /* Reject / fail */
+  --bl-danger-bg:   #fff1f2;
+  --bl-warn:        #f59e0b;
+  --bl-warn-bg:     #fffbeb;
+
+  /* ── Hero gradient (the signature surface) ───────────────── */
+  --bl-gradient-hero:    linear-gradient(180deg, #ecf0ff 0%, #879cf7 100%);
+  --bl-gradient-hero-h:  linear-gradient(90deg,  #ecf0ff 0%, #879cf7 100%);
+  --bl-gradient-button:  linear-gradient(180deg, #7a93ff 0%, #294ff6 100%);
+
+  /* ── Typography stack ────────────────────────────────────── */
+  --bl-font-sans:    "Plus Jakarta Sans", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bl-font-display: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bl-font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* ── Type scale (semantic) ───────────────────────────────── */
+  --bl-h1-size:    56px; --bl-h1-line: 1.05; --bl-h1-weight: 800; --bl-h1-track: -0.02em;
+  --bl-h2-size:    40px; --bl-h2-line: 1.10; --bl-h2-weight: 700; --bl-h2-track: -0.015em;
+  --bl-h3-size:    28px; --bl-h3-line: 1.20; --bl-h3-weight: 700; --bl-h3-track: -0.01em;
+  --bl-h4-size:    20px; --bl-h4-line: 1.30; --bl-h4-weight: 600; --bl-h4-track: -0.005em;
+  --bl-body-size:  16px; --bl-body-line: 1.55; --bl-body-weight: 400;
+  --bl-small-size: 14px; --bl-small-line: 1.45;
+  --bl-eyebrow-size: 12px; --bl-eyebrow-track: 0.08em; --bl-eyebrow-weight: 600;
+
+  /* ── Radii ─────────────────────────────────────────────────
+     Cards round at 12-16px; buttons at 8-10px; pills are full. */
+  --bl-radius-sm: 6px;
+  --bl-radius:    10px;
+  --bl-radius-md: 12px;
+  --bl-radius-lg: 16px;
+  --bl-radius-xl: 20px;
+  --bl-radius-2xl: 24px;
+  --bl-radius-pill: 999px;
+
+  /* ── Spacing (4-pt scale) ─────────────────────────────────── */
+  --bl-space-1:  4px;
+  --bl-space-2:  8px;
+  --bl-space-3:  12px;
+  --bl-space-4:  16px;
+  --bl-space-5:  20px;
+  --bl-space-6:  24px;
+  --bl-space-8:  32px;
+  --bl-space-10: 40px;
+  --bl-space-12: 48px;
+  --bl-space-16: 64px;
+  --bl-space-24: 96px;
+
+  /* ── Shadows · soft, periwinkle-tinted ──────────────────── */
+  --bl-shadow-xs:  0 1px 2px 0 rgba(0, 19, 100, 0.04);
+  --bl-shadow-sm:  0 1px 3px 0 rgba(0, 19, 100, 0.06), 0 1px 2px 0 rgba(0, 19, 100, 0.04);
+  --bl-shadow:     0 4px 14px -2px rgba(41, 79, 246, 0.10), 0 2px 6px -2px rgba(0, 19, 100, 0.06);
+  --bl-shadow-lg:  0 24px 48px -12px rgba(41, 79, 246, 0.18), 0 8px 16px -4px rgba(0, 19, 100, 0.08);
+  --bl-shadow-glow: 0 0 0 4px rgba(135, 156, 247, 0.20);
+  --bl-shadow-inset: inset 0 1px 0 0 rgba(255, 255, 255, 0.5);
+
+  /* ── Motion ──────────────────────────────────────────────── */
+  --bl-ease:        cubic-bezier(0.32, 0.72, 0, 1);
+  --bl-ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --bl-dur-fast:    120ms;
+  --bl-dur:         200ms;
+  --bl-dur-slow:    320ms;
+}
+
+/* ============================================================
+   Semantic typography classes
+   ============================================================ */
+
+html, body {
+  font-family: var(--bl-font-sans);
+  color: var(--bl-fg-body);
+  background: var(--bl-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.bl-h1 {
+  font-family: var(--bl-font-display);
+  font-size: var(--bl-h1-size);
+  line-height: var(--bl-h1-line);
+  font-weight: var(--bl-h1-weight);
+  letter-spacing: var(--bl-h1-track);
+  color: var(--bl-fg);
+  text-wrap: pretty;
+}
+.bl-h2 {
+  font-family: var(--bl-font-display);
+  font-size: var(--bl-h2-size);
+  line-height: var(--bl-h2-line);
+  font-weight: var(--bl-h2-weight);
+  letter-spacing: var(--bl-h2-track);
+  color: var(--bl-fg);
+  text-wrap: pretty;
+}
+.bl-h3 {
+  font-size: var(--bl-h3-size);
+  line-height: var(--bl-h3-line);
+  font-weight: var(--bl-h3-weight);
+  letter-spacing: var(--bl-h3-track);
+  color: var(--bl-fg);
+}
+.bl-h4 {
+  font-size: var(--bl-h4-size);
+  line-height: var(--bl-h4-line);
+  font-weight: var(--bl-h4-weight);
+  color: var(--bl-fg);
+}
+.bl-body {
+  font-size: var(--bl-body-size);
+  line-height: var(--bl-body-line);
+  font-weight: var(--bl-body-weight);
+  color: var(--bl-fg-body);
+}
+.bl-small {
+  font-size: var(--bl-small-size);
+  line-height: var(--bl-small-line);
+  color: var(--bl-fg-muted);
+}
+.bl-eyebrow {
+  font-size: var(--bl-eyebrow-size);
+  letter-spacing: var(--bl-eyebrow-track);
+  font-weight: var(--bl-eyebrow-weight);
+  text-transform: uppercase;
+  color: var(--bl-blue-5);
+}
+.bl-mono {
+  font-family: var(--bl-font-mono);
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+/* Helpful element resets that match Brieflee defaults */
+h1 { font-family: var(--bl-font-display); color: var(--bl-fg); font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-family: var(--bl-font-display); color: var(--bl-fg); font-weight: 700; letter-spacing: -0.015em; }
+h3 { color: var(--bl-fg); font-weight: 700; letter-spacing: -0.01em; }
+h4 { color: var(--bl-fg); font-weight: 600; }
+p  { color: var(--bl-fg-body); }
+a  { color: var(--bl-blue); text-decoration: none; }
+a:hover { color: var(--bl-blue-2); text-decoration: underline; }
+code, pre { font-family: var(--bl-font-mono); }

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Brieflee · Welcome email options</title>
+  <link rel="stylesheet" href="colors_and_type.css" />
+  <style>
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: #FAFBFF;
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      color: #001364;
+    }
+    .notes {
+      max-width: 1100px;
+      margin: 32px auto 0;
+      padding: 24px 28px;
+      background: #fff;
+      border: 1px solid #D6DEFC;
+      border-radius: 16px;
+      box-shadow: 0 1px 3px 0 rgba(0,19,100,0.06);
+    }
+    .notes h1 { margin: 0 0 6px; font-size: 22px; font-weight: 800; letter-spacing: -0.01em; }
+    .notes p  { margin: 6px 0; font-size: 14px; line-height: 1.55; color: #333; }
+    .notes ul { margin: 8px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.6; color: #333; }
+    .notes code { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12.5px; background: #ECF0FF; padding: 2px 6px; border-radius: 4px; color: #001364; }
+    .canvas-wrap { margin-top: 24px; }
+  </style>
+</head>
+<body>
+
+  <div class="notes">
+    <h1>Welcome email · 4 options for new signups</h1>
+    <p>Each option is rendered inside a faux desktop-mail-client frame so you can read it like a real inbox message — same subject line, sender, preheader, and 600&nbsp;px body column the actual email would use. Click any artboard to open it full-bleed.</p>
+    <ul>
+      <li><b>E1 · Editorial Engraving</b> — premium, magazine feel. Engraving illustration hero, signed personal note from a co-founder, single CTA. Good for "first impression matters."</li>
+      <li><b>E2 · Friendly Sticker</b> — warmer, brighter. Rocket sticker hero, three numbered "get started" steps, primary + secondary CTA. Good for self-serve audiences.</li>
+      <li><b>E3 · Score Card Demo</b> — leads with a fully-rendered sample score card so the user sees the product output the moment they open the mail. Reads as utility, not marketing.</li>
+      <li><b>E4 · Minimal Type-First</b> — no imagery in the body. All-type hero, single CTA, three quick "while you're here" links. Linear / Stripe energy.</li>
+    </ul>
+    <p>All four use the same brand foundation: Plus Jakarta Sans, navy headings, periwinkle accents, no em dashes, sentence case, no emoji in body copy (E2's subject uses one — easy to drop). Personalization tokens (<code>Sarah</code>) are placeholders.</p>
+  </div>
+
+  <div class="canvas-wrap" id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="emails.jsx"></script>
+
+  <script type="text/babel">
+    const { DesignCanvas, DCSection, DCArtboard } = window;
+    const W = 480;
+    const H = 695;
+
+    function App() {
+      return (
+        <DesignCanvas>
+          <DCSection
+            id="emails"
+            title="Welcome email · transactional, sent on signup"
+            subtitle="Subject lines, preheader text, and sender identity are part of the design — open each artboard fullscreen to read."
+          >
+            <DCArtboard id="e1" label="E1 · Editorial Engraving"  width={W} height={H}><E1 /></DCArtboard>
+            <DCArtboard id="e2" label="E2 · Friendly Sticker"     width={W} height={H}><E2 /></DCArtboard>
+            <DCArtboard id="e3" label="E3 · Score Card Demo"      width={W} height={H}><E3 /></DCArtboard>
+            <DCArtboard id="e4" label="E4 · Minimal Type-First"   width={W} height={H}><E4 /></DCArtboard>
+          </DCSection>
+        </DesignCanvas>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

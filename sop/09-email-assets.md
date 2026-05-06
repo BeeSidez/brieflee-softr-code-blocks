@@ -1,6 +1,43 @@
-# Email assets — URLs & images
+# Email assets — URLs, images, UTM tracking
 
-Fill-in tables for every CTA URL and image asset referenced across Brieflee email templates. Edit the **URL/Cloudinary URL** column with real values, then reference these as Mustache variables in EmailIt templates (e.g. `{{cta_dashboard}}`, `{{img_day01_welcome}}`).
+How to source visuals for Brieflee email templates, what URLs/CTAs the templates expect, and how to tag every link for tracking. Replaces the old per-day icon table that pointed at the legacy "Help Icons" Cloudinary set — those were stickers being misused as heroes. See **Asset rules** below.
+
+---
+
+## Asset rules — how to pick visuals for an email
+
+**Single source of truth:** `docs/assets-images-gifs-videos.csv` (in this repo). Every row maps an asset filename → Cloudinary URL → tags. Filter by `type` and `slug` to find candidates. Companion skill: `brieflee-assets`.
+
+**Hero-eligible asset categories** (use ONE of these for the big visual at the top of an email or the lead image of a feature section):
+
+| `type` in CSV | What it is | When to use |
+|---|---|---|
+| `feature-card` | UI mockup screenshots showing the actual product | DEFAULT for product/feature emails. Match by slug — e.g. `three-review-modes-feature-graphic-blue`, `customizable-quality-thresholds-feature-graphic`, `swipe-tablet-swiped-videos-search-list-blue-bg`. |
+| `hero` | Purpose-built hero banners | Cross-product / brand-led emails. Includes the animated blue gradient and the three-vertical-videos-overlapping mp4. |
+| `demo` | Screen recordings, walkthroughs (mp4) | Founder emails, "watch how it works" sections. |
+| `illustration` | Large flat illustrations (rocket, fire, magnifying glass) | When the message is metaphorical, not product-specific. |
+| `ad` | Full-bleed ad creative (photo / character) | Re-engagement, story-led emails. |
+
+**Inline-accent categories — NEVER use as hero**:
+
+| `type` in CSV | What it is | When to use |
+|---|---|---|
+| `engraving` | 3D emoji-equivalents on grey/white (champagne, brain, lightbulb) | Inline next to a list item or feature bullet. |
+| `icon` | Sticker-style line icons in pink/blue circles, all `sticker-*` slugs | Inline accents, list bullets, secondary punctuation. |
+| `app-icon` | Square / rounded-square app launcher | Favicon contexts only. |
+
+> Stickers and engravings are Brieflee's branded equivalent of emojis. Putting one as a 200×200 hero is the same visual mistake as a 📧 emoji at the top of an email. Hero slot = `feature-card` / `hero` / `demo` / `illustration` / `ad`. Inline accent = `engraving` / `icon` / `app-icon`.
+
+**Type-first emails (no hero image at all)** are correct when the message is utility — activation, payment-success, password-reset, etc. The big "Spell check / for video" type lockup IS the hero. See `bl-7day-d0-activate.html` for the canonical pattern.
+
+**Logo (header):**
+- Light backgrounds → `brieflee_logo_brieflee-wordmark-deep-blue-with-periwinkle-lee-and-smile_2025-03.png`
+- Dark/colour backgrounds → `brieflee_logo_brieflee-wordmark-white-on-transparent-horizontal_2025-06.png`
+
+**URL pattern:** versionless Cloudinary URLs with auto-format/quality:
+```
+https://res.cloudinary.com/dchroynzv/image/upload/f_auto,q_auto/<public_id>.<ext>
+```
 
 ---
 
@@ -8,91 +45,72 @@ Fill-in tables for every CTA URL and image asset referenced across Brieflee emai
 
 | Placeholder | What it does | Suggested URL | Used in templates |
 |---|---|---|---|
-| `cta_dashboard` | Sends user to their dashboard home | `https://www.brieflee.co/new` | bl-features-day-01-welcome, bl-tx-payment-success |
-| `cta_brand_bio` | Edit brand bio / blueprint settings | `https://www.brieflee.co/settings#tab1` | bl-features-day-02-account, bl-trial-create-account, bl-trial-create-account-day6 |
-| `cta_thresholds` | Quality thresholds settings page | `https://www.brieflee.co/settings#tab4` | bl-features-day-04-quality-settings, bl-trial-set-quality-settings |
-| `cta_review_mode` | AI review mode picker (Auto/Hybrid/Manual) | `https://www.brieflee.co/settings#tab1` | bl-features-day-05-review-content, bl-trial-pick-review-mode |
-| `cta_swipe_files` | Swipe files library | `https://www.brieflee.co/videos` | bl-features-day-03-swipe-videos |
-| `cta_quick_review` | Start a quick review / submission | `https://www.brieflee.co/videos?modal=%2Freview` | bl-trial-first-review |
-| `cta_briefs` | Briefs list | `https://www.brieflee.co/project` | bl-features-day-08-create-brief, bl-features-day-06-remix-content |
-| `cta_campaigns` | Campaigns list | `https://www.brieflee.co/project` | bl-features-day-07-create-campaign |
-| `cta_team_invite` | Team invite page | `https://www.brieflee.co/settings#tab3` | bl-features-day-09-invite-team |
-| `cta_members` | Members management | `https://www.brieflee.co/settings/projects` | bl-features-day-10-invite-members |
-| `cta_invite_creators` | Creator invite flow | `https://www.brieflee.co/projects` | bl-features-day-11-invite-creators |
-| `cta_bulk_briefs` | Bulk import briefs | `https://www.brieflee.co/briefs` | bl-features-day-12-bulk-upload-briefs |
-| `cta_bulk_videos` | Bulk import videos | `https://www.brieflee.co/bulk` | bl-features-day-13-bulk-upload-videos |
-| `cta_affiliate` | Affiliate dashboard | `https://www.brieflee.co/settings#tab5` | bl-features-day-14-affiliate |
-| `cta_upgrade` | Upgrade plan page (with promo code in query if applicable) | `https://www.brieflee.co/upgrade?promo={{promo_code}}` | bl-trial-reminder-1, bl-trial-reminder-2-48h, bl-trial-reminder-3-24h, bl-trial-ends-today |
-| `cta_manage_subscription` | Subscription / billing management | `https://www.brieflee.co/settings/billing` | bl-tx-payment-success |
-| `cta_update_payment` | Update payment method (Stripe Customer Portal session URL) | Generated per-user via Stripe API; otherwise `https://www.brieflee.co/settings/billing` | bl-tx-payment-failed |
-| `cta_accept_invite` | Accept team invite / first login | `https://www.brieflee.co/login` | bl-tx-team-invite |
-| `unsubscribe` | One-click unsubscribe | Auto-handled by EmailIt — don't set manually; EmailIt injects via List-Unsubscribe header | All marketing emails |
+| `cta_dashboard` | App home | `https://www.brieflee.co/new` | bl-7day-d1-welcome, bl-tx-payment-success |
+| `cta_brand_bio` | Brand bio settings | `https://www.brieflee.co/settings#tab1` | bl-7day-d1-welcome, bl-7day-d2-getting-started, bl-trial-create-account |
+| `cta_thresholds` | Quality thresholds | `https://www.brieflee.co/settings#tab4` | bl-7day-d1-welcome, bl-7day-d4-quality-thresholds |
+| `cta_review_mode` | AI review mode picker | `https://www.brieflee.co/settings#tab1` | bl-trial-pick-review-mode |
+| `cta_swipe_files` | Swipe files library | `https://www.brieflee.co/videos` | bl-7day-d1-welcome, bl-7day-d5e1-remix |
+| `cta_quick_review` | Start a quick review | `https://www.brieflee.co/videos?modal=%2Freview` | bl-trial-first-review |
+| `cta_briefs` | Briefs list | `https://www.brieflee.co/project` | bl-7day-d3-mastering-brief |
+| `cta_campaigns` | Campaigns list | `https://www.brieflee.co/project` | bl-7day-d3-mastering-brief |
+| `cta_team_invite` | Team invite page | `https://www.brieflee.co/settings#tab3` | bl-7day-d6e1-team-collab |
+| `cta_bulk_briefs` | Bulk import briefs | `https://www.brieflee.co/briefs` | bl-7day-d7e1-bulk-upload |
+| `cta_bulk_videos` | Bulk import videos | `https://www.brieflee.co/bulk` | bl-7day-d7e1-bulk-upload |
+| `cta_affiliate` | Affiliate dashboard | `https://www.brieflee.co/settings#tab5` | drip closing emails |
+| `cta_upgrade` | Upgrade plan page | `https://www.brieflee.co/upgrade?promo={{promo_code}}` | bl-7day-d5e2-48h, bl-7day-d6e2-24h, bl-7day-d7e2-trial-ends |
+| `cta_book_demo` | Sales rep calendar | `https://cal.com/brieflee/demo` | bl-7day-d1-welcome, bl-7day-d4-quality-thresholds |
+| `cta_book_bev` | Bev's personal calendar (founder variant only) | `https://cal.com/bev` | bl-7day-d1-founder |
+| `cta_bev_swipe` | Bev's personal swipe board (founder P.S.) | `https://www.brieflee.co/u/bev/swipe` | bl-7day-d1-founder |
+| `cta_manage_subscription` | Subscription / billing | `https://www.brieflee.co/settings/billing` | bl-tx-payment-success |
+| `cta_update_payment` | Stripe Customer Portal session URL | Generated per-user via Stripe API; fallback `https://www.brieflee.co/settings/billing` | bl-tx-payment-failed |
+| `cta_accept_invite` | Accept team invite | `https://www.brieflee.co/login` | bl-tx-team-invite |
+| `activation_url` | One-time activation link (per-user) | Generated per-user by `BL \| New Signup` workflow | bl-7day-d0-activate |
+| `cta_terms` | Terms & conditions | `https://www.brieflee.co/terms` | bl-7day-d0-activate footer + others |
+| `cta_privacy` | Privacy policy | `https://www.brieflee.co/privacy` | bl-7day-d0-activate footer + others |
+| `unsubscribe` | One-click unsubscribe | Auto-handled by EmailIt — don't set manually | All marketing emails (NOT transactional) |
 
 **Notes:**
-- For `cta_update_payment`, ideally generate a per-user Stripe Customer Portal session URL via the Stripe API in the workflow, then pass as a variable. Static link `/settings/billing` is the fallback.
-- For `cta_upgrade`, you can append `?promo={{promo_code}}` so the upgrade page pre-fills the discount code (TRIALUPGRADE / LASTCHANCE / FINALDAY).
-- Track click-through with UTM params if you want analytics: `?utm_source=emailit&utm_medium=email&utm_campaign={{template_alias}}`.
+- Transactional emails (`bl-7day-d0-activate`, `bl-tx-payment-failed`) MUST NOT include an `unsubscribe` link — required for inbox placement.
+- For `cta_update_payment`, generate a per-user Stripe Customer Portal session in the workflow and pass as a variable. The static `/settings/billing` link is a fallback.
+- For `cta_upgrade`, append `?promo={{promo_code}}` so the upgrade page pre-fills `TRIALUPGRADE` / `LASTCHANCE` / `FINALDAY` per the trial countdown spec.
 
 ---
 
-## Image assets — feature icons (14 hero icons, one per drip day)
+## UTM tracking — every CTA, every email
 
-Bev's existing Cloudinary "Help Icons" set already covers most days. Mapping below uses what exists; only Day 3 (swipe files) and Day 6 (remix) need new icons sourced.
+Every clickable link in every email gets UTM params so analytics attribute clicks back to the source email. Pattern hardcoded in the HTML template:
 
-| Day | Variable | Used in template | Cloudinary URL | What the image is (visual) | Why it works for this day |
-|---|---|---|---|---|---|
-| 01 | `img_day01_welcome` | bl-features-day-01-welcome | `https://res.cloudinary.com/dchroynzv/image/upload/v1765389797/Get_started_tm14vh.png` | Purple rocket launching | Welcome / getting started — rocket = liftoff vibe |
-| 02 | `img_day02_account` | bl-features-day-02-account | `https://res.cloudinary.com/dchroynzv/image/upload/v1765389801/Workspace_bkh8wa.png` | Purple checkmark badge / verified seal | Workspace / brand setup completion |
-| 03 | `img_day03_swipe_files` | bl-features-day-03-swipe-videos | **NEED NEW ICON** | _(to source — folder with star/heart, or pinboard with cards)_ | Inspo collection — saved-content vibe. Search Iconify for "inspo", "collection", "pinboard". |
-| 04 | `img_day04_thresholds` | bl-features-day-04-quality-settings | `https://res.cloudinary.com/dchroynzv/image/upload/v1765389799/Settings_kbq9qn.png` | Purple settings gear / cog | Settings — quality thresholds tuning |
-| 05 | `img_day05_ai_review` | bl-features-day-05-review-content | `https://res.cloudinary.com/dchroynzv/image/upload/v1765389801/Videos_x0dynd.png` | Purple video camera / camcorder | Reviewing video content |
-| 06 | `img_day06_remix` | bl-features-day-06-remix-content | **NEED NEW ICON** | _(to source — shuffle / two-cards-merging / remix arrows)_ | Remix transformation. Search Iconify for "remix", "shuffle", "transform". |
-| 07 | `img_day07_campaigns` | bl-features-day-07-create-campaign | `https://res.cloudinary.com/dchroynzv/image/upload/v1765389798/Notifications_erne2u.png` | Purple megaphone / bullhorn | Campaign launch / announcing |
-| 08 | `img_day08_briefs` | bl-features-day-08-create-brief | `https://res.cloudinary.com/dchroynzv/image/upload/v1765389797/Brief_Projects_cwpmda.png` | Purple folder with document | Briefs as documents in a folder |
-| 09 | `img_day09_team` | bl-features-day-09-invite-team | `https://res.cloudinary.com/dchroynzv/image/upload/v1765389800/Team_csjyjb.png` | Purple ID card / badge with person silhouette | Team members / collaborators |
-| 10 | `img_day10_members` | bl-features-day-10-invite-members | `https://res.cloudinary.com/dchroynzv/image/upload/v1765389798/Members_nqt3dq.png` | Purple person silhouette with notification badge "1" | Single member added — person + indicator |
-| 11 | `img_day11_creators` | bl-features-day-11-invite-creators | `https://res.cloudinary.com/dchroynzv/image/upload/v1765389801/Videos_x0dynd.png` (reuse) | Purple video camera (same as day 5) | Creators make videos. Reuse OK or source a film-slate icon for distinction. |
-| 12 | `img_day12_bulk_briefs` | bl-features-day-12-bulk-upload-briefs | `https://res.cloudinary.com/dchroynzv/image/upload/v1765389797/Brief_Projects_cwpmda.png` (reuse) | Purple folder with document (same as day 8) | Briefs in bulk — same folder. Stack-of-documents icon would be better if you find one. |
-| 13 | `img_day13_bulk_videos` | bl-features-day-13-bulk-upload-videos | `https://res.cloudinary.com/dchroynzv/image/upload/v1765389801/Videos_x0dynd.png` (reuse) | Purple video camera (same as day 5) | Videos in bulk — reuse camera or source a film-reel icon. |
-| 14 | `img_day14_affiliate` | bl-features-day-14-affiliate | `https://res.cloudinary.com/dchroynzv/image/upload/v1765389797/Affilate_nzaac2.png` | Purple trophy on a base | Affiliate / referral rewards / earning |
+```
+?utm_source=emailit&utm_medium=email&utm_campaign=<template-alias>&utm_content=<slot-name>
+```
 
-**Status:** 12 of 14 covered by existing assets. Only Days 3 and 6 need new icons sourced.
-
-**Source ideas for the missing two:**
-- [Iconify](https://icon-sets.iconify.design) (free SVG icon library — search by concept)
-- [Streamline](https://www.streamlinehq.com) (paid, branded icon sets — match the style of your existing icons)
-- [Heroicons](https://heroicons.com) (free, simple line icons)
-- AI-generated via Midjourney / DALL-E if you want unique branded style
-
-**Other existing Cloudinary assets** (not yet mapped to drip days but available — described by what the image shows):
-
-| Filename | What the image is (visual) | Could be used for |
+| Param | Value | Notes |
 |---|---|---|
-| `Help_Icons_yds9ui.png` | Purple electric plug | Integrations, connections, "plug into your workflow" |
-| `Publish_aj28xb.png` | Purple cursor / arrow pointer | Publishing, "go live", click-to-act emails |
-| `Projects_lkzbt2.png` | Purple grid of cards / dashboard | Projects, dashboard overview, "your overview" emails |
-| `Core_concepts_s8qktl.png` | Purple target / bullseye with arrow | Goals, focus, "hit your targets", "core principles" |
-| `FAQ_qhbyga.png` | Purple eyes peeking | "Take a look", FAQs, "see how this works", curiosity hooks |
-| `Billing_vvwno1.png` | Purple wallet with money / cash | `bl-tx-payment-success`, `bl-tx-payment-failed`, upgrade emails, billing-related |
-| `Troubleshoot_fenkib.png` | Purple lightning bolt | "We noticed an issue", debug, urgent attention, fast action |
-| `Brief_nloqsq.png` | Purple document with a plus icon | "Create your first brief", new doc, get-started CTAs |
-| `Add_users_rdm4vy.png` | Purple person silhouette interacting with a screen / monitor | Invite flow, onboarding, "log in" CTAs |
-| `Workspaces_irusls.png` | Purple light bulb | Ideas, inspo, "here's a tip", insight emails |
+| `utm_source` | `emailit` | Always — identifies the channel |
+| `utm_medium` | `email` | Always |
+| `utm_campaign` | template alias (e.g. `bl-7day-d1-welcome`) | Hardcoded into the template's HTML — same for every CTA in the email |
+| `utm_content` | slot name (e.g. `hero_book_demo`, `section1_open`, `section3_swipe`) | Different per CTA inside the same email — lets you see WHICH button was clicked |
 
-The "What the image is" column lets you scan visually and reuse icons across many emails — the rocket isn't only for getting started; it could anchor any "launch" or "go live" email later.
+**Worked example** — welcome email's hero "Book a demo" button:
+```html
+<a href="{{cta_book_demo}}?utm_source=emailit&utm_medium=email&utm_campaign=bl-7day-d1-welcome&utm_content=hero_book_demo">
+  Book a demo
+</a>
+```
 
----
+**If the CTA URL already has query params** (e.g. `cta_upgrade` resolves to `https://www.brieflee.co/upgrade?promo=TRIALUPGRADE`), append UTMs with `&` instead of `?`:
+```html
+<a href="{{cta_upgrade}}&utm_source=emailit&utm_medium=email&utm_campaign=bl-7day-d5e2-48h&utm_content=hero_upgrade">
+```
 
-## Other Cloudinary assets
+Or — cleaner — have the workflow build the final URL with UTMs already attached and pass it in as `{{cta_upgrade_tracked}}`. Pick one pattern per template and stick to it.
 
-| Asset | Filename suggestion | Variable | Used in |
-|---|---|---|---|
-| Brieflee logo (header) | `bl/email/logo.png` | `img_logo` | All templates (header) |
-| Bev headshot (signature) | `bl/email/bev-headshot.png` | `img_bev` | bl-features-day-01-welcome, bl-tx-payment-success, bl-trial-ends-today, win-back emails — anywhere you want a personal touch |
-| AI review feedback panel screenshot | `bl/email/screenshot-ai-review.png` | `img_screenshot_ai_review` | bl-features-day-05-review-content (hero) |
-| Threshold settings screenshot (optional) | `bl/email/screenshot-thresholds.png` | `img_screenshot_thresholds` | bl-features-day-04-quality-settings (optional hero) |
-| Swipe board screenshot (optional) | `bl/email/screenshot-swipe-board.png` | `img_screenshot_swipe_board` | bl-features-day-03-swipe-videos (optional hero) |
-| Footer/social icons | `bl/email/footer-social-icons.png` | `img_footer_social` | All templates (footer) — TikTok, IG, LinkedIn etc. |
+**Suggested `utm_content` slot names** (for consistency across templates):
+- `hero_<action>` — primary CTA in the hero
+- `section<N>_<action>` — CTA in a feature section (e.g. `section3_swipe`)
+- `section<N>_image` — when the image itself is wrapped in a link
+- `secondary_<action>` — text-link CTAs ("Book a 10-min call")
+- `footer_<action>` — footer links if tracked
 
 ---
 
@@ -100,36 +118,27 @@ The "What the image is" column lets you scan visually and reuse icons across man
 
 ```html
 <!-- Header with logo -->
-<img src="{{img_logo}}" alt="Brieflee" width="120">
+<img src="https://res.cloudinary.com/dchroynzv/image/upload/f_auto,q_auto/brieflee_logo_brieflee-wordmark-deep-blue-with-periwinkle-lee-and-smile_2025-03.png" alt="Brieflee" height="28">
 
-<!-- Hero icon for the day -->
-<img src="{{img_day05_ai_review}}" alt="AI review" width="64">
+<!-- Type-first hero (no image needed for utility/transactional) -->
+<h1>Welcome to <span style="color:#879CF7;">Brieflee.</span></h1>
 
-<h1>Hi {{first_name}},</h1>
+<!-- Feature section with REAL UI mockup as hero -->
+<img src="https://res.cloudinary.com/dchroynzv/image/upload/f_auto,q_auto/brieflee_feature-card_three-review-modes-feature-graphic-blue_2025-12.png" alt="Brieflee three review modes — autonomous, hybrid, manual" width="504">
 
-<p>Today's feature: AI review.</p>
+<!-- Primary CTA with UTMs -->
+<a href="{{cta_dashboard}}?utm_source=emailit&utm_medium=email&utm_campaign=bl-7day-d1-welcome&utm_content=section1_open">Open Brieflee →</a>
 
-<!-- Optional product screenshot -->
-<img src="{{img_screenshot_ai_review}}" alt="AI review feedback panel" width="500">
-
-<!-- Primary CTA -->
-<a href="{{cta_review_mode}}" class="btn">Pick your review mode</a>
-
-<!-- Signature -->
-<img src="{{img_bev}}" alt="Bev" width="80">
-<p>— Bev<br><em>Founder, Brieflee</em></p>
-
-<!-- Footer -->
-<img src="{{img_footer_social}}" alt="Follow us">
-<a href="{{unsubscribe}}">Unsubscribe</a>
+<!-- Inline accent — engraving / sticker IS the right call here -->
+<img src="https://res.cloudinary.com/dchroynzv/image/upload/f_auto,q_auto/brieflee_engraving_thumbs-up-line-icon_2025-07.png" alt="" width="24"> Approved
 ```
 
 ---
 
-## When you're ready to fill in URLs
+## Reference
 
-1. Replace the **Suggested URL** column above with your actual production URLs
-2. In EmailIt's template editor, every `<a href="{{cta_*}}">` becomes a real link via the Mustache substitution
-3. When the workflow's Call API step sends the email, include all the variables this template needs in the `variables` object
-
-**All 19 CTAs and 14+5 images can be passed in one `variables` object per send** — that's the simplest pattern. Pre-build a "common variables" payload as a custom code step output and reuse it across template sends.
+- `docs/assets-images-gifs-videos.csv` — every Brieflee asset, tagged
+- `brieflee-assets` skill — interactive helper for asset selection
+- `sop/10-brand-colours.md` — palette
+- `sop/08-email-matrix.md` — every template, when it sends
+- `sop/07-emailit-curl-reference.md` — how the workflow Call API steps fire each template

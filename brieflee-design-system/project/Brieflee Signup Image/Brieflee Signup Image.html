@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Brieflee · Softr signup image</title>
+  <link rel="stylesheet" href="colors_and_type.css" />
+  <style>
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: #FAFBFF;
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      color: #001364;
+    }
+    /* Note panel at top */
+    .notes {
+      max-width: 1100px;
+      margin: 32px auto 0;
+      padding: 24px 28px;
+      background: #fff;
+      border: 1px solid #D6DEFC;
+      border-radius: 16px;
+      box-shadow: 0 1px 3px 0 rgba(0,19,100,0.06);
+    }
+    .notes h1 { margin: 0 0 6px; font-size: 22px; font-weight: 800; letter-spacing: -0.01em; }
+    .notes p  { margin: 6px 0; font-size: 14px; line-height: 1.55; color: #333; }
+    .notes ul { margin: 8px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.6; color: #333; }
+    .notes code { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12.5px; background: #ECF0FF; padding: 2px 6px; border-radius: 4px; color: #001364; }
+    .canvas-wrap { margin-top: 24px; }
+    /* Reveal the per-artboard download button on hover */
+    .bl-artboard:hover .bl-download-btn { opacity: 1 !important; }
+  </style>
+</head>
+<body>
+
+  <div class="notes">
+    <h1>Softr signup · left-side image variants</h1>
+    <p>Twelve options for the image you upload into the Softr signup's left side. Every artboard is <code>1080 × 1080</code> — a safe square that crops cleanly under Softr's "Cover" fit, and works whether you keep the image full-bleed or pair it with the heading + body text.</p>
+    <ul>
+      <li><b>Text&nbsp;OFF</b> (image carries everything): V1 product, V2 testimonial, V5 bold type, V6 score card, V7 social proof, V10 stat, V12 checklist</li>
+      <li><b>Text&nbsp;ON</b> (works alongside Softr's heading + body): V3 clapboard, V4 stickers, V8 brain, V11 tripod &mdash; just imagery, no copy</li>
+      <li><b>In between</b>: V9 pass/fail uses light copy that complements but doesn't fight Softr text</li>
+    </ul>
+    <p><b>To download:</b> hover any artboard and click <b>Download PNG</b> in its top-right corner. The file saves at full 1080×1080 resolution at 2× pixel density (so it stays crisp on retina displays).</p>
+    <p>Background gradient on every variant matches the Softr side-section bg, so the image dissolves into it edge-to-edge with no visible seam. Drag artboards to reorder, click to focus.</p>
+  </div>
+
+  <div class="canvas-wrap" id="root"></div>
+
+  <!-- React + Babel -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <!-- html-to-image: used to capture each artboard as a PNG download -->
+  <script src="https://unpkg.com/html-to-image@1.11.13/dist/html-to-image.js"></script>
+
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="variants.jsx"></script>
+
+  <script type="text/babel">
+    const { DesignCanvas, DCSection, DCArtboard } = window;
+
+    // Display dimension for each card on the canvas. Artboards render at
+    // 1080×1080 internally; the canvas scales them down automatically.
+    const W = 540;
+    const H = 540;
+
+    function App() {
+      return (
+        <DesignCanvas>
+          <DCSection
+            id="textoff"
+            title="Text OFF · image carries the whole message"
+            subtitle="Use these when you turn off Softr's heading + body. Designed to read self-contained against the periwinkle background."
+          >
+            <DCArtboard id="v6"  label="V6 · Score card"      width={W} height={H}><V6ScoreCard /></DCArtboard>
+            <DCArtboard id="v2"  label="V2 · Testimonial"     width={W} height={H}><V2Testimonial /></DCArtboard>
+            <DCArtboard id="v5"  label="V5 · Bold type"       width={W} height={H}><V5BoldType /></DCArtboard>
+            <DCArtboard id="v1"  label="V1 · Product peek"    width={W} height={H}><V1ProductGrid /></DCArtboard>
+            <DCArtboard id="v10" label="V10 · 96% stat"       width={W} height={H}><V10Stat /></DCArtboard>
+            <DCArtboard id="v7"  label="V7 · Social proof"    width={W} height={H}><V7SocialProof /></DCArtboard>
+            <DCArtboard id="v12" label="V12 · QA checklist"   width={W} height={H}><V12Checklist /></DCArtboard>
+          </DCSection>
+
+          <DCSection
+            id="texton"
+            title="Text ON · pairs with Softr's heading + body"
+            subtitle="Pure imagery. Pair with 'Create your free trial today!' + the subline you already have. Engravings feel editorial / premium; stickers feel friendly."
+          >
+            <DCArtboard id="v3"  label="V3 · Clapboard (engraving)" width={W} height={H}><V3Engraving /></DCArtboard>
+            <DCArtboard id="v8"  label="V8 · Brain (engraving)"     width={W} height={H}><V8BrainEngraving /></DCArtboard>
+            <DCArtboard id="v11" label="V11 · Tripod (engraving)"   width={W} height={H}><V11Tripod /></DCArtboard>
+            <DCArtboard id="v4"  label="V4 · Stickers"              width={W} height={H}><V4Stickers /></DCArtboard>
+          </DCSection>
+
+          <DCSection
+            id="middle"
+            title="In between · light copy + product visualization"
+            subtitle="A middle ground if you want the image to do some of the talking but still leave Softr's heading visible."
+          >
+            <DCArtboard id="v9"  label="V9 · Pass / fail funnel"  width={W} height={H}><V9PassFail /></DCArtboard>
+          </DCSection>
+        </DesignCanvas>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
