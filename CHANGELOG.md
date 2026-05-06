@@ -6,6 +6,52 @@ Latest at top. Each entry: date · area · summary · link to commit/artifact wh
 
 ---
 
+## 2026-05-06
+
+- **Schema · two SELECT fields created on `users` via API** (2026-05-05). The two onboarding marketing fields locked the day before:
+  - `users.work_type` (id `Xqhif`) — Agency / Brand / App or Game / Software / Freelancer / Solo creator / Other.
+  - `users.heard_about_us` (id `B8uMy`) — X / Twitter, LinkedIn, Instagram, TikTok, Google Search, YouTube, Newsletter, Podcast, Word of mouth, From a friend / colleague, From a client, Ad I saw, Other.
+  - Option UUIDs for both captured at field creation time (every option has a UUID returned by the create-field API call). All UUIDs are hardcoded in `onboarding/get-started` and `onboarding/set-up` so SELECT writes use the `{ id, label }` shape the vibe-code-block skill requires.
+
+- **Schema · team data lives on `users` not `accounts`.** Field aliases on users:
+  - `users.team_name` (id `ZOm63`, SINGLE_LINE_TEXT) — workspace name from the Team step in `/get-started`.
+  - `users.team_emails` (id `EuCXi`, LONG_TEXT) — comma-joined invite emails. The `BL | Onboarding` workflow will split these downstream into per-invite EmailIt sends. The `BL | New Workspace + Team` workflow drops its team-creation half.
+  - Replaces the earlier "team step writes to accounts" plan — `users.team_name` and `users.team_emails` are simpler since the `/get-started` block is bound to `users` already, no cross-table workflow needed.
+
+- **Schema · `users.plan` is the picker field.** LINKED_RECORD → `pricing` (id `Ux1pf`). Set during the Plan step in `/get-started`. The `pricing` table primary field is `stripe_price_id`, so the linked value stamped on the user is exactly the Stripe price ID — no translation hop when calling Stripe.
+
+- **Reference docs lifted into the repo.** `docs/softr-vibe-code-block.md` and `docs/softr-events-and-selectors.md` copied from the Creator Scans skill set. Source of truth for Vibe Code conventions (default-export named `Block`, alias keys not field IDs in writes, `{ id, label }` for SELECT, array of UUIDs for multi-select, etc.). Code blocks in this repo follow these rules.
+
+- **Code · `onboarding/verify-email`.** "Check Your Inbox" page after Softr signup. Brieflee compact-logo hero, `useCurrentUser` for email, 2-minute resend countdown, provider deep-links (Gmail with `authuser=<email>`, Outlook / Yahoo / Proton / iCloud). Resend handler stubbed pending a Softr workflow that calls EmailIt with `bl-tx-email-activation` (template not yet built; placeholder alias only).
+
+- **Code · `onboarding/get-started`.** Single multi-step Vibe Code block on `/get-started`, bound to `users`. Stage 2 of the 3-stage onboarding. Sub-steps: Team → Personalize → Plan → Confirm (rendered as a 5-dot stepper that includes Setup as the unreached final dot). Team step writes `users.team_name` + `users.team_emails`. Personalize writes `users.work_type` + `users.heard_about_us`. Plan step writes `users.plan` (linked record to pricing). Confirm step embeds a Softr native checkout iframe via `iframe-resizer`; placeholder slug `creator-monthly-59` for the other 5 plans until Bev creates them. After Stripe payment, Stripe redirects to `/set-up`.
+
+- **Code · `onboarding/set-up`.** Single Vibe Code block bound to `accounts`. Welcome chat (lifted from `screen-1`) plus six sub-steps in one continuous chat with Lee:
+  1. Set up your brand (lifted from `screen-2`) — website + "Don't have a website?" toggle + use_case multi-select cards.
+  2. Choose your review mode (lifted from `screen-4`) — `accounts.ai_mode` single-select.
+  3. How Brieflee works (rebuilt with interactivity) — Softr-hosted MP4 explainer (no YouTube UI), watch-toggle button, sequential cards (Campaigns + Quick reviews) with Got-it acknowledgement after each. Skippable.
+  4. QA Checklist — `accounts.qa_checklist` multi-select with all 26 option chips. Skippable.
+  5. Thresholds — 9 single-select threshold fields, each row gated by a `<Switch>` (off = chip grid hidden + threshold not saved). Skippable.
+  6. Review your content blueprint (lifted from `screen-3` blueprint half) — pencil-edit pattern, `formatTextWithBullets` markdown rendering for AI-generated blueprint values, brand_name heading at top.
+  - Each step's `done` branch returns `null`, so the chat advances forward like the original screen-by-screen pattern (no "saved" pill clutter).
+  - Each typing/message pair uses the `screen-3` cadence: timer that turns the typing dots OFF when the message turns ON. Avatar-on-first-bubble-only convention is preserved via `BubbleWithAvatar` / `BubbleNoAvatar`.
+  - **CSS confetti celebration** on completion (60 falling pieces + "You're all set! 🎉" card), then redirect to `/new`.
+
+- **Code · `onboarding/set-up-test`.** Preview-mode clone of `/set-up`. The only diff is `save()` is a no-op (`console.log` + `setTimeout` instead of `updateRecord.mutate`). Same Source binding (accounts). Lets Bev walk through every page visually without the AI website scanner firing or any account record getting polluted. Should be gated to `is_internal=true` users in Softr's Visibility tab.
+
+- **Stripe checkout pattern · Softr native iframe** (decided 2026-05-05). The Embedded Stripe Checkout backend-Session approach was abandoned; instead the Confirm step in `/get-started` embeds a Softr native checkout block via iframe per plan. Bev created the Creator Monthly $59 block; the other 5 will be cloned from it. The 12 personalised Payment Link formula fields on `users` are now obsolete (still in the schema but no longer used).
+
+- **Onboarding screens — existing files kept as reference.** `onboarding/screen-1` through `onboarding/screen-6` (and `screen-2-a`, `screen-6-a`) stay in the repo as the source material `set-up` lifts from. They can be archived once `/set-up` is verified live.
+
+- **Email · `bl-tx-email-activation` template — not yet built.** Bev to add it to EmailIt outside the 30-template drip. Placeholder alias used in `verify-email`'s resend handler.
+
+- **Workflow updates needed** (not yet executed):
+  - `BL | New Workspace + Team` — drop the team-creation half. `users.team_name` / `users.team_emails` are written by the `/get-started` Team step directly.
+  - `BL | Onboarding` — add an email-split step that fans `users.team_emails` (comma-joined) out into per-invite EmailIt sends.
+  - Trial reminder cron — re-anchor on `created_at + 7d` (was 14).
+  - EmailIt drip — recompress 30 templates from 14-day to 7-day cadence.
+  - Long-term: `is_internal` bypass on whichever workflow currently watches `accounts.website` and triggers the AI scan, so internal/test users don't trigger scraping in the live flow.
+
 ## 2026-05-04
 
 - **Onboarding · trial length cut from 14 days → 7 days.** Supersedes the 14-day decision locked 2026-05-01. Workflow (`BL | New Workspace + Team`) and trial reminder cron need updating to anchor on `created_at + 7d`. EmailIt drip needs to be re-cadenced from 14 days → 7 days (30 templates currently spaced over 14 days; recompress or trim).
