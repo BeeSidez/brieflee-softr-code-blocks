@@ -876,10 +876,12 @@ export default function Block() {
           }
 
           /* ── Contained chat bubble ── */
+          /* Background MUST be fully opaque — any transparency lets the
+             shimmer halo (chat-shell::before) bleed into the interior. */
           .chat-bubble {
             position: relative;
             z-index: 1;
-            background: linear-gradient(to bottom, rgba(217, 224, 255, 0.15), #FFFFFF);
+            background: linear-gradient(to bottom, #F4F7FF 0%, #FFFFFF 60%);
             border-radius: 20px;
             overflow-y: auto;
             overscroll-behavior: contain;
