@@ -37,12 +37,12 @@ export default function Block() {
             0%, 100% {
               box-shadow:
                 0 10px 32px rgba(0, 15, 77, 0.06),
-                0 0 22px rgba(122, 147, 255, 0.20);
+                0 0 22px rgba(135, 156, 247, 0.20);
             }
             50% {
               box-shadow:
                 0 12px 38px rgba(0, 15, 77, 0.08),
-                0 0 38px rgba(122, 147, 255, 0.42);
+                0 0 38px rgba(135, 156, 247, 0.42);
             }
           }
           .empty-shell {
@@ -61,11 +61,11 @@ export default function Block() {
             background: conic-gradient(
               from 0deg,
               #D9E0FF 0%,
-              #7A93FF 18%,
+              #879CF7 18%,
               #294FF6 35%,
               #000F4D 48%,
               #294FF6 60%,
-              #7A93FF 78%,
+              #879CF7 78%,
               #D9E0FF 100%
             );
             animation: emptyShellSpin 7s linear infinite;
@@ -104,8 +104,8 @@ export default function Block() {
             inset: -18%;
             background: radial-gradient(
               circle at center,
-              rgba(122, 147, 255, 0.32) 0%,
-              rgba(122, 147, 255, 0.10) 45%,
+              rgba(135, 156, 247, 0.32) 0%,
+              rgba(135, 156, 247, 0.10) 45%,
               transparent 70%
             );
             filter: blur(22px);
@@ -154,7 +154,7 @@ export default function Block() {
             align-items: center;
             gap: 10px;
             padding: 14px 28px;
-            background: #7A93FF;
+            background: #879CF7;
             color: #FFFFFF;
             font-family: 'League Spartan', sans-serif;
             font-size: 15px;
@@ -164,7 +164,7 @@ export default function Block() {
             text-decoration: none;
             border: none;
             cursor: pointer;
-            box-shadow: 0 4px 14px rgba(122, 147, 255, 0.35);
+            box-shadow: 0 4px 14px rgba(135, 156, 247, 0.35);
             transition:
               transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
               background 0.28s ease,
