@@ -346,9 +346,9 @@ export default function Block() {
         {/* Topbar */}
         <header className="gs-topbar">
           <div className="gs-topbar-inner">
-            <a href="/" aria-label="Brieflee">
-              <img src={LOGO_WORDMARK} alt="Brieflee" className="gs-logo" />
-            </a>
+            {/* Logo is intentionally not a link — keeping users in the
+                signup flow. Contact us is the only escape hatch. */}
+            <img src={LOGO_WORDMARK} alt="Brieflee" className="gs-logo" />
             <div className="gs-stepper-wrap"><Stepper currentId={step} /></div>
             <div className="gs-help">Need help? <a href="/book-a-demo">Contact us</a></div>
           </div>
