@@ -7,9 +7,14 @@
 // friction.
 //
 // SOFTR CONFIG REQUIRED:
-//   No data binding. Drop on /book-a-demo and replace the existing
-//   name + email form block. The standalone /calendar page can be
-//   archived in Softr Studio — it's no longer part of the flow.
+//   1. No data binding (Source/Actions tabs not used).
+//   2. Page Settings → Custom Code → Body → paste:
+//        <script src="https://asset-tidycal.b-cdn.net/js/embed.js" async></script>
+//      The block falls back to dynamic script injection if you skip
+//      this, but Page Settings is more reliable in Softr's SPA.
+//   3. Drop the block on /book-a-demo, replacing the existing
+//      name + email form. The standalone /calendar page can be
+//      archived in Softr Studio — it's no longer part of the flow.
 
 import { useEffect } from "react";
 
@@ -23,23 +28,24 @@ const BL_BG         = "#FAFBFF";
 
 export default function Block() {
   useEffect(() => {
-    // TidyCal's embed.js auto-scans the page for .tidycal-embed divs
-    // on load and inserts the iframe. In Softr's SPA, navigating away
-    // and back re-mounts this component but the script tag already
-    // exists in the DOM and won't re-run — so we remove + re-add it
-    // each mount to guarantee the calendar renders.
-    const id = "bl-tidycal-embed-script";
-    document.getElementById(id)?.remove();
-
+    // PRIMARY load path: the TidyCal embed.js script should be added
+    // in Softr Studio → Page Settings → Custom Code → Body. That's
+    // the canonical Softr pattern for third-party embeds and works
+    // reliably in both preview and production.
+    //
+    // FALLBACK below: if no tidycal script is present on the page
+    // (e.g. Page Settings hasn't been configured yet), inject it
+    // dynamically. May be blocked by Studio's preview sandbox but
+    // works on the live URL.
+    if (
+      document.querySelector('script[src*="asset-tidycal.b-cdn.net"]')
+    ) {
+      return;
+    }
     const s = document.createElement("script");
-    s.id = id;
     s.src = "https://asset-tidycal.b-cdn.net/js/embed.js";
     s.async = true;
     document.body.appendChild(s);
-
-    return () => {
-      s.remove();
-    };
   }, []);
 
   return (
