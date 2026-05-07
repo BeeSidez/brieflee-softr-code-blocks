@@ -1,77 +1,39 @@
-// Marketing site — BOOK A DEMO page (anonymous).
+// Marketing site — BOOK A DEMO hero (top of /book-a-demo).
 //
-// Hero header + inline TidyCal calendar embed. Replaces the previous
-// two-page flow (name/email form on /book-a-demo → redirect to a
-// separate /calendar page) since TidyCal already collects name +
-// email in its own form, so the intermediate form was duplicated
-// friction.
+// Just the hero header. The TidyCal calendar embed sits BELOW this
+// block as a separate Custom Code block (so the script can load
+// reliably as raw HTML rather than via React injection). The
+// customer-logo social-proof strip sits below that as
+// website/new/book-a-demo-social-proof.
 //
 // SOFTR CONFIG REQUIRED:
-//   1. No data binding (Source/Actions tabs not used).
-//   2. Page Settings → Custom Code → Footer → paste:
-//        <script src="https://asset-tidycal.b-cdn.net/js/embed.js" async></script>
-//      Use Footer (not Header) — the script scans the page for
-//      .tidycal-embed divs and needs the body content to exist
-//      before it runs. The block falls back to dynamic script
-//      injection if Page Settings is skipped, but the Footer load
-//      is more reliable in Softr's SPA + preview environment.
-//   3. Drop the block on /book-a-demo, replacing the existing
-//      name + email form. The standalone /calendar page can be
-//      archived in Softr Studio — it's no longer part of the flow.
+//   No data binding. Drop on /book-a-demo, then add a Custom Code
+//   block beneath it containing:
+//     <div class="tidycal-embed" data-path="bevbanahene/brieflee-demo"></div>
+//     <script src="https://asset-tidycal.b-cdn.net/js/embed.js" async></script>
+//   Then add the book-a-demo-social-proof block at the bottom.
 
-import { useEffect } from "react";
-
-const TIDYCAL_PATH = "bevbanahene/brieflee-demo";
-
-const BL_NAVY       = "#000F4D";
 const BL_DEEP       = "#001364";
 const BL_PERIWINKLE = "#879CF7";
 const BL_MUTED      = "#6B7A99";
 const BL_BG         = "#FAFBFF";
 
 export default function Block() {
-  useEffect(() => {
-    // PRIMARY load path: the TidyCal embed.js script should be added
-    // in Softr Studio → Page Settings → Custom Code → Body. That's
-    // the canonical Softr pattern for third-party embeds and works
-    // reliably in both preview and production.
-    //
-    // FALLBACK below: if no tidycal script is present on the page
-    // (e.g. Page Settings hasn't been configured yet), inject it
-    // dynamically. May be blocked by Studio's preview sandbox but
-    // works on the live URL.
-    if (
-      document.querySelector('script[src*="asset-tidycal.b-cdn.net"]')
-    ) {
-      return;
-    }
-    const s = document.createElement("script");
-    s.src = "https://asset-tidycal.b-cdn.net/js/embed.js";
-    s.async = true;
-    document.body.appendChild(s);
-  }, []);
-
   return (
     <>
       <Style />
-      <div className="bl-demo">
-        <div className="bl-demo-inner">
-          <div className="bl-demo-hero">
-            <div className="bl-demo-pill">
-              <span className="bl-demo-pill-dot" />
-              Book a Demo
-            </div>
-            <h1 className="bl-demo-title">See Brieflee in action</h1>
-            <p className="bl-demo-sub">
-              30 minutes with the Brieflee team. We'll walk through your
-              content workflow, answer your questions, and help you pick
-              the right plan.
-            </p>
+      <div className="bl-demo-hero-wrap">
+        <div className="bl-demo-hero">
+          <div className="bl-demo-pill">
+            <span className="bl-demo-pill-dot" />
+            Book a Demo
           </div>
-
-          <div className="bl-demo-embed">
-            <div className="tidycal-embed" data-path={TIDYCAL_PATH} />
-          </div>
+          <h1 className="bl-demo-title">See Brieflee in action</h1>
+          <p className="bl-demo-sub">
+            30 minutes with the Brieflee team. We'll walk through your
+            content workflow, answer your questions, and help you pick
+            the right plan.
+          </p>
         </div>
       </div>
     </>
@@ -83,23 +45,15 @@ function Style() {
     <style>
       {`
         @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
-        .bl-demo, .bl-demo * { font-family: 'League Spartan', sans-serif; }
+        .bl-demo-hero-wrap, .bl-demo-hero-wrap * { font-family: 'League Spartan', sans-serif; }
 
-        .bl-demo {
+        .bl-demo-hero-wrap {
           background: ${BL_BG};
-          padding: 72px 20px 96px;
-          min-height: 100vh;
-          box-sizing: border-box;
+          padding: 72px 20px 32px;
         }
-        .bl-demo-inner {
-          max-width: 1140px;
-          margin: 0 auto;
-        }
-
-        /* Hero */
         .bl-demo-hero {
           max-width: 680px;
-          margin: 0 auto 48px;
+          margin: 0 auto;
           text-align: center;
         }
         .bl-demo-pill {
@@ -132,11 +86,8 @@ function Style() {
           margin: 0 0 18px;
         }
         @media (max-width: 720px) {
-          .bl-demo {
-            padding: 48px 16px 64px;
-          }
+          .bl-demo-hero-wrap { padding: 48px 16px 24px; }
           .bl-demo-title { font-size: 32px; }
-          .bl-demo-hero  { margin-bottom: 32px; }
         }
         .bl-demo-sub {
           font-size: 16px;
@@ -144,25 +95,6 @@ function Style() {
           line-height: 1.6;
           margin: 0 auto;
           max-width: 540px;
-        }
-
-        /* TidyCal embed wrapper */
-        .bl-demo-embed {
-          max-width: 1080px;
-          margin: 0 auto;
-          background: #FFFFFF;
-          border: 1px solid rgba(217, 224, 255, 0.6);
-          border-radius: 18px;
-          overflow: hidden;
-          box-shadow: 0 8px 32px rgba(0, 15, 77, 0.06);
-        }
-        /* TidyCal renders an iframe inside .tidycal-embed; let it
-           fill its container without forcing extra padding around it. */
-        .bl-demo-embed .tidycal-embed,
-        .bl-demo-embed .tidycal-embed iframe {
-          width: 100% !important;
-          display: block;
-          border: 0;
         }
       `}
     </style>
