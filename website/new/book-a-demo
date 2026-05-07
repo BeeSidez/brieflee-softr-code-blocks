@@ -1,0 +1,161 @@
+// Marketing site — BOOK A DEMO page (anonymous).
+//
+// Hero header + inline TidyCal calendar embed. Replaces the previous
+// two-page flow (name/email form on /book-a-demo → redirect to a
+// separate /calendar page) since TidyCal already collects name +
+// email in its own form, so the intermediate form was duplicated
+// friction.
+//
+// SOFTR CONFIG REQUIRED:
+//   No data binding. Drop on /book-a-demo and replace the existing
+//   name + email form block. The standalone /calendar page can be
+//   archived in Softr Studio — it's no longer part of the flow.
+
+import { useEffect } from "react";
+
+const TIDYCAL_PATH = "bevbanahene/brieflee-demo";
+
+const BL_NAVY       = "#000F4D";
+const BL_DEEP       = "#001364";
+const BL_PERIWINKLE = "#879CF7";
+const BL_MUTED      = "#6B7A99";
+const BL_BG         = "#FAFBFF";
+
+export default function Block() {
+  useEffect(() => {
+    // TidyCal's embed.js auto-scans the page for .tidycal-embed divs
+    // on load and inserts the iframe. In Softr's SPA, navigating away
+    // and back re-mounts this component but the script tag already
+    // exists in the DOM and won't re-run — so we remove + re-add it
+    // each mount to guarantee the calendar renders.
+    const id = "bl-tidycal-embed-script";
+    document.getElementById(id)?.remove();
+
+    const s = document.createElement("script");
+    s.id = id;
+    s.src = "https://asset-tidycal.b-cdn.net/js/embed.js";
+    s.async = true;
+    document.body.appendChild(s);
+
+    return () => {
+      s.remove();
+    };
+  }, []);
+
+  return (
+    <>
+      <Style />
+      <div className="bl-demo">
+        <div className="bl-demo-inner">
+          <div className="bl-demo-hero">
+            <div className="bl-demo-pill">
+              <span className="bl-demo-pill-dot" />
+              Book a Demo
+            </div>
+            <h1 className="bl-demo-title">See Brieflee in action</h1>
+            <p className="bl-demo-sub">
+              30 minutes with the Brieflee team. We'll walk through your
+              content workflow, answer your questions, and help you pick
+              the right plan.
+            </p>
+          </div>
+
+          <div className="bl-demo-embed">
+            <div className="tidycal-embed" data-path={TIDYCAL_PATH} />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function Style() {
+  return (
+    <style>
+      {`
+        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+        .bl-demo, .bl-demo * { font-family: 'League Spartan', sans-serif; }
+
+        .bl-demo {
+          background: ${BL_BG};
+          padding: 72px 20px 96px;
+          min-height: 100vh;
+          box-sizing: border-box;
+        }
+        .bl-demo-inner {
+          max-width: 1140px;
+          margin: 0 auto;
+        }
+
+        /* Hero */
+        .bl-demo-hero {
+          max-width: 680px;
+          margin: 0 auto 48px;
+          text-align: center;
+        }
+        .bl-demo-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 14px;
+          background: rgba(135, 156, 247, 0.10);
+          border: 1px solid rgba(135, 156, 247, 0.25);
+          border-radius: 999px;
+          color: ${BL_PERIWINKLE};
+          font-size: 12px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          margin-bottom: 20px;
+        }
+        .bl-demo-pill-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: ${BL_PERIWINKLE};
+        }
+        .bl-demo-title {
+          font-size: 48px;
+          font-weight: 700;
+          color: ${BL_DEEP};
+          letter-spacing: -0.02em;
+          line-height: 1.1;
+          margin: 0 0 18px;
+        }
+        @media (max-width: 720px) {
+          .bl-demo {
+            padding: 48px 16px 64px;
+          }
+          .bl-demo-title { font-size: 32px; }
+          .bl-demo-hero  { margin-bottom: 32px; }
+        }
+        .bl-demo-sub {
+          font-size: 16px;
+          color: ${BL_MUTED};
+          line-height: 1.6;
+          margin: 0 auto;
+          max-width: 540px;
+        }
+
+        /* TidyCal embed wrapper */
+        .bl-demo-embed {
+          max-width: 1080px;
+          margin: 0 auto;
+          background: #FFFFFF;
+          border: 1px solid rgba(217, 224, 255, 0.6);
+          border-radius: 18px;
+          overflow: hidden;
+          box-shadow: 0 8px 32px rgba(0, 15, 77, 0.06);
+        }
+        /* TidyCal renders an iframe inside .tidycal-embed; let it
+           fill its container without forcing extra padding around it. */
+        .bl-demo-embed .tidycal-embed,
+        .bl-demo-embed .tidycal-embed iframe {
+          width: 100% !important;
+          display: block;
+          border: 0;
+        }
+      `}
+    </style>
+  );
+}
