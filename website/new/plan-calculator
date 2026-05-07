@@ -59,13 +59,16 @@ const SIGNUP_URL = "/sign-up";
 // Maps row names (from the `name` field) to slider config. Anything not
 // in this map but with allowance values still becomes a slider with
 // auto-derived bounds; this just gives the well-known dimensions a nice
-// label, unit, and step.
+// label, unit, step, AND an enterpriseMax so the slider extends past
+// Studio's limit into Enterprise territory. When the user picks past
+// the largest non-Enterprise allowance, the recommendation logic falls
+// through to Enterprise automatically.
 const SLIDER_CONFIG = {
-  "Seats":            { label: "Team members",       summary: "Team",        unit: "users",   step: 1 },
-  "Workspace":        { label: "Brand workspaces",   summary: "Workspaces",  unit: "spaces",  step: 1 },
-  "Video Reviews":    { label: "Video reviews / mo", summary: "Reviews/mo",  unit: "videos",  step: 10 },
-  "Storage":          { label: "Storage",            summary: "Storage",     unit: "GB",      step: 10 },
-  "Max Video Length": { label: "Max video length",   summary: "Max length",  unit: "min",     step: 1 },
+  "Seats":            { label: "Team members",       summary: "Team",        unit: "users",   step: 1,  enterpriseMax: 50 },
+  "Workspace":        { label: "Brand workspaces",   summary: "Workspaces",  unit: "spaces",  step: 1,  enterpriseMax: 30 },
+  "Video Reviews":    { label: "Video reviews / mo", summary: "Reviews/mo",  unit: "videos",  step: 50, enterpriseMax: 2000 },
+  "Storage":          { label: "Storage",            summary: "Storage",     unit: "GB",      step: 10, enterpriseMax: 500 },
+  "Max Video Length": { label: "Max video length",   summary: "Max length",  unit: "min",     step: 1,  enterpriseMax: 30 },
 };
 
 const TIER_ORDER = ["Creator", "Crew", "Studio", "Enterprise"];
@@ -151,7 +154,8 @@ function parseTable(records) {
         step: 1,
       };
       const min = Math.min(...numericAllowances);
-      const max = Math.max(...numericAllowances);
+      const studioMax = Math.max(...numericAllowances);
+      const max = cfg.enterpriseMax || studioMax;
       sliderRows.push({
         key: name,
         label: cfg.label,
@@ -252,7 +256,7 @@ export default function Block() {
 
   const handleContinue = () => {
     if (recommended.isCustom) {
-      window.location.href = "/contact";
+      window.location.href = "/book-a-call";
       return;
     }
     const tier = recommendedTier.toLowerCase();
@@ -421,7 +425,7 @@ export default function Block() {
                   className="bl-calc-cta font-semibold gap-2 w-full"
                   size="lg"
                 >
-                  {recommended.isCustom ? "Talk to sales" : "Start free trial"}
+                  {recommended.isCustom ? "Talk to Sales" : "Start free trial"}
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </div>
