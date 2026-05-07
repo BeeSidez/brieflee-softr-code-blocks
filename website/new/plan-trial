@@ -1,0 +1,761 @@
+// Marketing site — TRIAL block (anonymous variant of app/plans/trial).
+// Identical 3-card grid + trust strip + customer logos + sticky CTA as
+// app/plans/trial; the only differences are no Softr data binding and
+// the sticky CTA routes to /sign-up?plan=<tier>&interval=<interval>
+// instead of a per-user Stripe Payment Link. Post-signup flow can read
+// the query params and resume on the picked plan.
+
+import { useState } from "react";
+
+const SIGNUP_URL = "/sign-up";
+
+const CLD = "https://res.cloudinary.com/dchroynzv/image/upload";
+
+// Feature row icons (transparent PNGs from Bev's manifest, lifted from /get-started)
+const FEAT_ICONS = {
+  aiReview:    `${CLD}/v1777998690/brieflee_help-icon_faq-big-cartoon-eyes-curious-looking-transparent_2026-05.png`,
+  briefs:      `${CLD}/v1777998696/brieflee_icon_docs-file-icon-transparent_2026-05.png`,
+  qa:          `${CLD}/v1777998697/brieflee_icon_document-approval-illustration-transparent_2026-05.png`,
+  revisions:   `${CLD}/v1777998714/brieflee_icon_wax-seal-of-approval-stamp-transparent_2026-05.png`,
+  storyboard:  `${CLD}/v1777998703/brieflee_icon_movie-clapper-illustration-transparent_2026-05.png`,
+  remix:       `${CLD}/v1777998705/brieflee_icon_retro-cassette-tape-transparent_2026-05.png`,
+  seats:       `${CLD}/v1777998707/brieflee_icon_simple-bold-lined-id-badge-transparent_2026-05.png`,
+  workspaces:  `${CLD}/v1777998707/brieflee_icon_simple-bold-lined-computer-transparent_2026-05.png`,
+};
+
+// Trust strip - grey 3D engravings (lifted from /get-started)
+const TRUST_ICONS = {
+  daysFree:     `${CLD}/v1777622911/brieflee_engraving_party-popper-confetti-streamers-celebration-grey_2026-03.png`,
+  moneyBack:    `${CLD}/v1777622976/brieflee_engraving_wallet-overflowing-cash-bills-coins-money-grey_2026-03.png`,
+  stripeSecure: `${CLD}/v1777622954/brieflee_engraving_shop-now-cta-button-3d-engraved-grey_2026-03.png`,
+  instantSetup: `${CLD}/v1777622954/brieflee_engraving_hand-pressing-light-switch-button-grey-3d_2026-03.png`,
+};
+
+// Customer logo strip (lifted from /get-started)
+const CUSTOMER_LOGOS = [
+  { name: "Shopify",  url: `${CLD}/brieflee_customer-logo_shopify-wordmark-with-bag-icon-grey_2026-05.png` },
+  { name: "Shark",    url: `${CLD}/brieflee_customer-logo_shark-wordmark-black_2026-05.png` },
+  { name: "Halara",   url: `${CLD}/brieflee_customer-logo_halara-wordmark-black_2026-05.png` },
+  { name: "Cosrx",    url: `${CLD}/brieflee_customer-logo_cosrx-wordmark-black_2026-05.png` },
+  { name: "Indeed",   url: `${CLD}/brieflee_customer-logo_indeed-wordmark-grey_2026-05.png` },
+  { name: "Grubhub",  url: `${CLD}/brieflee_customer-logo_grubhub-wordmark-with-house-fork-grey_2026-05.png` },
+];
+
+const PLANS = [
+  { id: "MOFJ50J3sX5cQ4", tier: "Creator", interval: "Monthly", price: 59,
+    desc: "For solos and freelancers reviewing their own UGC.",
+    maxVideos: 30, maxWorkspaces: 1, maxUsers: 1, rank: 0 },
+  { id: "efLCArKogDzBco", tier: "Creator", interval: "Yearly", price: 588,
+    desc: "For solos and freelancers reviewing their own UGC.",
+    maxVideos: 30, maxWorkspaces: 1, maxUsers: 1, rank: 0 },
+  { id: "3DudH4fLuqChIr", tier: "Crew", interval: "Monthly", price: 99,
+    desc: "The winning ad workflow for growing brands and small teams.",
+    maxVideos: 100, maxWorkspaces: 5, maxUsers: 5, popular: true, rank: 1 },
+  { id: "QHonFLGNkspIop", tier: "Crew", interval: "Yearly", price: 1068,
+    desc: "The winning ad workflow for growing brands and small teams.",
+    maxVideos: 100, maxWorkspaces: 5, maxUsers: 5, popular: true, rank: 1 },
+  { id: "AQI1eTOfZOYM5h", tier: "Studio", interval: "Monthly", price: 249,
+    desc: "Scaled review for agencies running multiple brand accounts.",
+    maxVideos: 500, maxWorkspaces: 10, maxUsers: 10, rank: 2 },
+  { id: "KHrjkggVIoUOze", tier: "Studio", interval: "Yearly", price: 2388,
+    desc: "Scaled review for agencies running multiple brand accounts.",
+    maxVideos: 500, maxWorkspaces: 10, maxUsers: 10, rank: 2 },
+];
+
+const TRIAL_DAYS = 7;
+
+const yearlySavingsPct = (tier) => {
+  const m = PLANS.find((p) => p.tier === tier && p.interval === "Monthly");
+  const y = PLANS.find((p) => p.tier === tier && p.interval === "Yearly");
+  if (!m || !y) return 0;
+  return Math.round(((m.price * 12 - y.price) / (m.price * 12)) * 100);
+};
+const MAX_YEARLY_SAVINGS = Math.max(...["Creator", "Crew", "Studio"].map(yearlySavingsPct));
+
+const FEATURE_ROWS = (plan) => [
+  { iconUrl: FEAT_ICONS.aiReview,   label: "AI video review",    amount: `${plan.maxVideos}/mo` },
+  { iconUrl: FEAT_ICONS.briefs,     label: "Briefs & checklists",amount: "Unlimited" },
+  { iconUrl: FEAT_ICONS.qa,         label: "AI QA Checklist",    amount: "Yes" },
+  { iconUrl: FEAT_ICONS.revisions,  label: "Revisions",          amount: "Unlimited" },
+  { iconUrl: FEAT_ICONS.storyboard, label: "Storyboard view",    amount: "Yes" },
+  { iconUrl: FEAT_ICONS.remix,      label: "Remix",              amount: "Yes" },
+  { iconUrl: FEAT_ICONS.seats,      label: "Seats",              amount: `${plan.maxUsers}` },
+  { iconUrl: FEAT_ICONS.workspaces, label: "Workspaces",         amount: `${plan.maxWorkspaces}` },
+];
+
+const TRUST_ITEMS = [
+  { iconUrl: TRUST_ICONS.daysFree,     title: `${TRIAL_DAYS} days free`, body: "Full access. Cancel anytime." },
+  { iconUrl: TRUST_ICONS.moneyBack,    title: "Money back",              body: "15-day refund guarantee." },
+  { iconUrl: TRUST_ICONS.stripeSecure, title: "Stripe-secure",           body: "We never store card details." },
+  { iconUrl: TRUST_ICONS.instantSetup, title: "Instant setup",           body: "Reviewing in under 5 minutes." },
+];
+
+const Svg = ({ size = 16, children, ...rest }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...rest}>{children}</svg>
+);
+const I = {
+  Check:      (p) => <Svg {...p}><polyline points="20 6 9 17 4 12" /></Svg>,
+  ArrowRight: (p) => <Svg {...p}><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></Svg>,
+  ArrowLeft:  (p) => <Svg {...p}><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></Svg>,
+  X:          (p) => <Svg {...p}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></Svg>,
+  Zap:        (p) => <Svg {...p}><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" /></Svg>,
+  AlertTri:   (p) => <Svg {...p}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></Svg>,
+};
+
+
+export default function Block() {
+  const [billingInterval, setBillingInterval] = useState("Yearly");
+  const [selectedPlanId, setSelectedPlanId] = useState(null);
+
+  const visiblePlans = PLANS.filter((p) => p.interval === billingInterval);
+  const selectedPlan = PLANS.find((p) => p.id === selectedPlanId);
+  const canContinue = Boolean(selectedPlan);
+
+  const handleContinue = () => {
+    if (!selectedPlan) return;
+    const tier = selectedPlan.tier.toLowerCase();
+    const interval = selectedPlan.interval.toLowerCase();
+    window.location.href = `${SIGNUP_URL}?plan=${tier}&interval=${interval}`;
+  };
+
+  return (
+    <div className="gs-root">
+      <Style />
+      <div className="gs-page">
+        <div className="text-center mb-6">
+          <div className="trial-banner">
+            <span className="trial-dot"></span>
+            {TRIAL_DAYS} days free · No charge until your trial ends
+          </div>
+          <h1 className="gs-headline">Pick the plan that fits your team</h1>
+          <p className="gs-sub">All plans include the full Brieflee toolkit. Cancel any time during your trial with one click.</p>
+          <div className="mt-6">
+            <IntervalToggle value={billingInterval} onChange={setBillingInterval} maxSavings={MAX_YEARLY_SAVINGS} />
+          </div>
+        </div>
+
+        <div className="plan-grid mt-8">
+          {visiblePlans.map((p) => {
+            const selected = selectedPlanId === p.id;
+            const isYearly = p.interval === "Yearly";
+            const monthlyEquivalent = isYearly ? Math.round(p.price / 12) : p.price;
+            const billNote = isYearly ? `Billed $${p.price.toLocaleString()} per year` : "Billed monthly";
+            const savings = isYearly ? yearlySavingsPct(p.tier) : 0;
+            const cls = "plan-card" + (p.popular ? " popular" : "") + (selected ? " selected" : "");
+
+            return (
+              <div key={p.id} className={cls} onClick={() => setSelectedPlanId(p.id)}>
+                {p.popular && <div className="plan-popular-tag">Most popular</div>}
+                <div className="plan-tier">{p.tier}</div>
+                <div className="plan-name">For {p.tier === "Creator" ? "solos" : p.tier === "Crew" ? "growing teams" : "agencies"}</div>
+                <div className="plan-desc">{p.desc}</div>
+                <div className="plan-price-row">
+                  <span className="plan-price">${monthlyEquivalent}</span>
+                  <span className="plan-price-suffix">/mo</span>
+                </div>
+                <div className="plan-bill-note">{billNote}</div>
+                {savings > 0
+                  ? <span className="plan-savings"><I.Zap size={11} /> Save {savings}% vs monthly</span>
+                  : <span style={{ display: "inline-block", height: 22 }} />}
+                <div className="plan-divider"></div>
+                <ul className="plan-feature-list">
+                  {FEATURE_ROWS(p).map((row) => (
+                    <li key={row.label}>
+                      <img src={row.iconUrl} alt="" className="plan-feat-icon-img" />
+                      <span className="plan-feat-label">{row.label}</span>
+                      <span className="plan-feat-amount">{row.amount}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="plan-cta">
+                  {selected
+                    ? <><I.Check size={14} strokeWidth={3} /> &nbsp;Selected</>
+                    : `Start ${TRIAL_DAYS}-day free trial`}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="trust-strip">
+          {TRUST_ITEMS.map((t) => (
+            <div className="trust-item" key={t.title}>
+              <img src={t.iconUrl} alt="" className="trust-icon-img" />
+              <div className="trust-text">
+                <strong>{t.title}</strong>
+                {t.body}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="text-center mt-10">
+          <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: "#555", fontWeight: 700 }}>
+            Trusted by top D2C growth teams and agencies
+          </div>
+          <div className="logo-strip">
+            {CUSTOMER_LOGOS.map((l) => (
+              <img key={l.name} src={l.url} alt={l.name} className="customer-logo" />
+            ))}
+          </div>
+        </div>
+
+        <div className="sticky-cta">
+          <div className="row gap-3">
+            {selectedPlan ? (
+              <div className="plan-summary-flash">
+                <strong>{selectedPlan.tier}</strong> · ${selectedPlan.interval === "Yearly" ? Math.round(selectedPlan.price / 12) : selectedPlan.price}/mo · {TRIAL_DAYS} days free
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: "#555" }}>Pick a plan to continue · You won't be charged today</div>
+            )}
+          </div>
+          <button className={"bl-btn bl-btn-primary" + (canContinue ? " pulse" : "")}
+            onClick={handleContinue} disabled={!canContinue}>
+            Start your {TRIAL_DAYS}-day trial <I.ArrowRight size={14} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function IntervalToggle({ value, onChange, maxSavings }) {
+  const opts = ["Monthly", "Yearly"];
+  return (
+    <div className="interval-toggle">
+      {opts.map((o) => {
+        const active = value === o;
+        return (
+          <button key={o} className={active ? "active" : ""} onClick={() => onChange(o)}>
+            {o}
+            {o === "Yearly" && maxSavings > 0 && <span className="save-pill">Save {maxSavings}%</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Style() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+      .gs-root {
+        --bl-blue:        #294ff6;
+        --bl-blue-2:      #4466f8;
+        --bl-blue-4:      #7a93ff;
+        --bl-blue-5:      #879cf7;
+        --bl-navy:        #000f4d;
+        --bl-fg:          #001364;
+        --bl-fg-body:     #333;
+        --bl-fg-muted:    #555;
+        --bl-fg-quiet:    #bbb;
+        --bl-page:        #fafbff;
+        --bl-card:        #fff;
+        --bl-container:   #ecf0ff;
+        --bl-light-1:     #f8fbff;
+        --bl-light-2:     #eef4fd;
+        --bl-periwinkle:  #d9e0ff;
+        --bl-border:      #d6defc;
+        --bl-success:     #38a169;
+        --bl-success-bg:  #f0fff4;
+        --bl-success-fg:  #166534;
+        --bl-radius:      10px;
+        --bl-radius-md:   12px;
+        --bl-radius-lg:   16px;
+        --bl-radius-pill: 999px;
+        --bl-shadow:      0 4px 14px -2px rgba(41,79,246,0.10), 0 2px 6px -2px rgba(0,19,100,0.06);
+        --bl-shadow-glow: 0 0 0 4px rgba(135,156,247,0.20);
+        --bl-ease:        cubic-bezier(0.32, 0.72, 0, 1);
+        --bl-dur:         200ms;
+        --gs-font:        'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: var(--gs-font);
+        color: var(--bl-fg-body);
+        background: var(--bl-page);
+        min-height: 100vh;
+      }
+      .gs-root *, .gs-root *::before, .gs-root *::after { box-sizing: border-box; }
+      .gs-root, .gs-root * { font-family: var(--gs-font); }
+
+      .gs-shell { min-height: 100vh; }
+
+      .gs-topbar {
+        position: sticky; top: 0; z-index: 10;
+        background: rgba(250,251,255,0.86);
+        backdrop-filter: saturate(140%) blur(10px);
+        -webkit-backdrop-filter: saturate(140%) blur(10px);
+        border-bottom: 1px solid var(--bl-border);
+      }
+      .gs-topbar-inner {
+        max-width: 1200px; margin: 0 auto;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center; gap: 24px;
+        padding: 16px 24px;
+      }
+      .gs-logo { height: 26px; display: block; justify-self: start; }
+      .gs-stepper-wrap { display: flex; justify-content: center; }
+      .gs-help { color: var(--bl-fg-muted); font-size: 14px; justify-self: end; }
+      .gs-help a { font-weight: 600; color: var(--bl-blue); text-decoration: none; }
+      @media (max-width: 820px) {
+        .gs-topbar-inner { grid-template-columns: auto 1fr; gap: 12px; }
+        .gs-stepper-wrap { display: none; }
+        .gs-help { justify-self: end; }
+      }
+      @media (max-width: 520px) {
+        .gs-help { display: none; }
+        .gs-topbar-inner { grid-template-columns: 1fr; justify-items: center; }
+        .gs-logo { justify-self: center; }
+      }
+
+      .gs-page {
+        max-width: 1120px; margin: 0 auto;
+        padding: 28px 24px 96px;
+      }
+      .gs-page-narrow { max-width: 560px; }
+      .gs-page-medium { max-width: 760px; }
+
+      .gs-headline {
+        font-size: 32px; line-height: 1.1; letter-spacing: -0.02em;
+        font-weight: 800; color: var(--bl-fg);
+        margin: 0 0 10px;
+      }
+      .gs-sub {
+        color: var(--bl-fg-muted);
+        font-size: 16px; line-height: 1.55;
+        margin: 0 auto;
+        max-width: 560px;
+      }
+      .gs-eyebrow {
+        font-size: 12px; letter-spacing: 0.08em;
+        font-weight: 700; text-transform: uppercase;
+        color: var(--bl-blue-5);
+        margin-bottom: 14px;
+        display: block;
+      }
+
+      /* Stepper */
+      .step-row {
+        display: inline-flex; align-items: center; gap: 0;
+        padding: 6px 8px;
+        background: rgba(216,216,255,0.35);
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius-pill);
+      }
+      .step-pill {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 6px 12px;
+        border-radius: var(--bl-radius-pill);
+        font-size: 13px; font-weight: 600;
+        color: var(--bl-fg-muted);
+        transition: all var(--bl-dur) var(--bl-ease);
+      }
+      .step-pill .step-dot {
+        width: 18px; height: 18px;
+        border-radius: 999px;
+        background: transparent;
+        border: 1.5px solid var(--bl-border);
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 11px; font-weight: 700; color: var(--bl-fg-muted);
+      }
+      .step-pill.done { color: var(--bl-fg); }
+      .step-pill.done .step-dot { background: var(--bl-success); border-color: var(--bl-success); color: #fff; }
+      .step-pill.active { background: #fff; color: var(--bl-fg); box-shadow: 0 1px 3px rgba(0,19,100,0.08); }
+      .step-pill.active .step-dot { background: var(--bl-blue); border-color: var(--bl-blue); color: #fff; }
+      .step-sep { display: inline-block; width: 16px; height: 1px; background: var(--bl-border); margin: 0 4px; }
+
+      /* Inputs */
+      .bl-input {
+        width: 100%; font: inherit; font-size: 15px;
+        color: var(--bl-fg); background: var(--bl-card);
+        border: 1.5px solid var(--bl-border);
+        border-radius: var(--bl-radius);
+        padding: 12px 14px; outline: none;
+        transition: border-color var(--bl-dur) var(--bl-ease), box-shadow var(--bl-dur) var(--bl-ease);
+      }
+      .bl-input::placeholder { color: var(--bl-fg-quiet); }
+      .bl-input:focus { border-color: var(--bl-blue-5); box-shadow: var(--bl-shadow-glow); }
+
+      /* Buttons */
+      .bl-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        gap: 8px; font: inherit; font-weight: 600; font-size: 15px;
+        padding: 14px 24px; border-radius: var(--bl-radius);
+        border: none; cursor: pointer;
+        transition: transform var(--bl-dur) var(--bl-ease), box-shadow var(--bl-dur) var(--bl-ease), background var(--bl-dur) var(--bl-ease), opacity var(--bl-dur) var(--bl-ease);
+      }
+      .bl-btn[disabled] { cursor: not-allowed; opacity: 0.45; }
+      .bl-btn-primary {
+        background: var(--bl-blue-5); color: #fff;
+        box-shadow: 0 1px 0 0 rgba(255,255,255,0.4) inset, 0 4px 14px -2px rgba(135,156,247,0.45);
+      }
+      .bl-btn-primary:hover:not([disabled]) {
+        background: var(--bl-blue-4); transform: translateY(-1px);
+        box-shadow: 0 1px 0 0 rgba(255,255,255,0.4) inset, 0 8px 20px -2px rgba(135,156,247,0.55);
+      }
+      .bl-btn-ghost { background: transparent; color: var(--bl-fg-muted); font-weight: 500; }
+      .bl-btn-ghost:hover:not([disabled]) { color: var(--bl-fg); }
+      .bl-btn-secondary { background: var(--bl-card); color: var(--bl-fg); border: 1.5px solid var(--bl-border); }
+      .bl-btn-secondary:hover:not([disabled]) { border-color: var(--bl-blue-5); background: #fff; }
+
+      /* Card */
+      .bl-card {
+        background: var(--bl-card);
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius-lg);
+      }
+
+      /* Field labels */
+      .field-label {
+        display: block; font-size: 13px; font-weight: 600;
+        color: var(--bl-fg); margin-bottom: 8px;
+      }
+      .field-help { font-size: 12px; color: var(--bl-fg-muted); margin-top: 6px; }
+
+      /* Option chip */
+      .opt-chip {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 10px 16px; border-radius: var(--bl-radius-pill);
+        background: #fff; border: 1.5px solid var(--bl-border);
+        color: var(--bl-fg); font: inherit;
+        font-size: 14px; font-weight: 500; cursor: pointer;
+        transition: all var(--bl-dur) var(--bl-ease);
+      }
+      .opt-chip:hover { border-color: var(--bl-blue-5); background: var(--bl-light-1); }
+      .opt-chip.selected {
+        background: var(--bl-blue-5); border-color: var(--bl-blue-5); color: #fff;
+        box-shadow: 0 4px 14px -2px rgba(135,156,247,0.45);
+      }
+
+      /* Plan grid + cards */
+      .plan-grid {
+        display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px;
+      }
+      @media (max-width: 900px) { .plan-grid { grid-template-columns: 1fr; } }
+
+      .plan-card {
+        position: relative; background: var(--bl-card);
+        border: 1.5px solid var(--bl-border);
+        border-radius: var(--bl-radius-lg);
+        padding: 28px 24px 24px;
+        cursor: pointer;
+        transition: all var(--bl-dur) var(--bl-ease);
+        display: flex; flex-direction: column;
+      }
+      .plan-card:hover { transform: translateY(-2px); border-color: var(--bl-blue-4); box-shadow: var(--bl-shadow); }
+      .plan-card.popular {
+        border-color: var(--bl-blue-5);
+        box-shadow: 0 12px 32px -10px rgba(135,156,247,0.45);
+        transform: translateY(-4px);
+      }
+      .plan-card.selected { border-color: var(--bl-blue); box-shadow: 0 0 0 3px rgba(41,79,246,0.12), var(--bl-shadow); }
+      .plan-popular-tag {
+        position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+        background: var(--bl-blue); color: #fff;
+        font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+        padding: 5px 12px; border-radius: var(--bl-radius-pill); white-space: nowrap;
+      }
+      .plan-tier { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--bl-fg-muted); }
+      .plan-name { font-size: 22px; font-weight: 700; color: var(--bl-fg); letter-spacing: -0.01em; margin: 4px 0 6px; }
+      .plan-desc { font-size: 13px; color: var(--bl-fg-muted); line-height: 1.45; min-height: 38px; }
+      .plan-price-row { display: flex; align-items: baseline; gap: 6px; margin: 18px 0 4px; }
+      .plan-price { font-size: 44px; font-weight: 800; letter-spacing: -0.025em; color: var(--bl-fg); line-height: 1; }
+      .plan-price-suffix { font-size: 14px; color: var(--bl-fg-muted); font-weight: 500; }
+      .plan-bill-note { font-size: 12px; color: var(--bl-fg-muted); min-height: 18px; }
+      .plan-savings {
+        display: inline-flex; align-items: center; gap: 4px;
+        font-size: 11px; font-weight: 700;
+        background: var(--bl-success-bg); color: var(--bl-success-fg);
+        padding: 3px 8px; border-radius: var(--bl-radius-pill); margin-top: 4px;
+      }
+      .plan-divider { height: 1px; background: var(--bl-border); margin: 18px 0 16px; }
+
+      /* Feature row: icon + label + amount on right (Foreplay-style) */
+      .plan-feature-list { list-style: none; padding: 0; margin: 0 0 22px; display: flex; flex-direction: column; gap: 10px; }
+      .plan-feature-list li {
+        display: flex; align-items: center; gap: 10px;
+        font-size: 14px; line-height: 1.4; color: var(--bl-fg-body);
+      }
+      .plan-feat-icon-img {
+        width: 28px; height: 28px;
+        flex-shrink: 0;
+        object-fit: contain;
+      }
+      .plan-feat-label { flex: 1; min-width: 0; }
+      .plan-feat-amount { color: var(--bl-fg); font-weight: 700; font-size: 13px; }
+
+      .plan-cta {
+        margin-top: auto; text-align: center;
+        padding: 12px 16px; border-radius: var(--bl-radius);
+        font-size: 14px; font-weight: 600;
+        background: var(--bl-light-2); color: var(--bl-fg);
+        border: 1.5px solid transparent;
+        display: flex; align-items: center; justify-content: center; gap: 6px;
+      }
+      .plan-card.popular .plan-cta { background: var(--bl-blue-5); color: #fff; }
+      .plan-card.selected .plan-cta { background: var(--bl-blue); color: #fff; }
+
+      /* Interval toggle */
+      .interval-toggle {
+        display: inline-flex; padding: 4px;
+        background: rgba(216,216,255,0.4);
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius-pill);
+        position: relative;
+      }
+      .interval-toggle button {
+        position: relative; z-index: 1;
+        font: inherit; font-size: 14px; font-weight: 600;
+        color: var(--bl-fg-muted);
+        background: transparent; border: none;
+        padding: 8px 18px; border-radius: var(--bl-radius-pill);
+        cursor: pointer;
+        display: inline-flex; align-items: center; gap: 8px;
+        transition: color var(--bl-dur) var(--bl-ease);
+        white-space: nowrap;
+      }
+      .interval-toggle button.active { color: var(--bl-fg); background: #fff; box-shadow: 0 1px 3px rgba(0,19,100,0.08); }
+      .save-pill {
+        font-size: 10px; font-weight: 700;
+        background: var(--bl-success-bg); color: var(--bl-success-fg);
+        padding: 2px 6px; border-radius: var(--bl-radius-pill); white-space: nowrap;
+      }
+
+      /* Trust strip */
+      .trust-strip {
+        display: grid; grid-template-columns: repeat(4, 1fr);
+        gap: 16px; margin-top: 32px;
+      }
+      @media (max-width: 800px) { .trust-strip { grid-template-columns: repeat(2,1fr); } }
+      .trust-item {
+        display: flex; gap: 12px; align-items: flex-start;
+        padding: 14px 16px; background: rgba(255,255,255,0.6);
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius);
+      }
+      .trust-icon-img {
+        width: 44px; height: 44px;
+        flex-shrink: 0;
+        object-fit: contain;
+      }
+      .trust-text { font-size: 13px; line-height: 1.4; color: var(--bl-fg-body); }
+      .trust-text strong { color: var(--bl-fg); display: block; font-weight: 700; margin-bottom: 2px; }
+
+      /* Reasons-to-believe icon (checkout left column) */
+      .rtb-icon {
+        width: 32px; height: 32px; border-radius: 10px;
+        background: var(--bl-light-2); color: var(--bl-blue);
+        display: inline-flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+      }
+
+      /* Logo strip */
+      .logo-strip {
+        display: flex; flex-wrap: wrap;
+        align-items: center; justify-content: center;
+        gap: 36px; margin-top: 22px;
+      }
+      .customer-logo {
+        height: 22px;
+        width: auto;
+        opacity: 0.7;
+        filter: grayscale(1);
+        transition: opacity var(--bl-dur) var(--bl-ease);
+      }
+      .customer-logo:hover { opacity: 1; }
+
+      /* Personalize layout — single column, content centered in each card */
+      .personalize-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        margin-top: 24px;
+        max-width: 640px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .personalize-card {
+        background: var(--bl-card);
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius-lg);
+        padding: 28px 24px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+      .personalize-card-icon {
+        width: 56px; height: 56px;
+        object-fit: contain;
+        margin-bottom: 12px;
+      }
+      .personalize-card-title {
+        font-size: 18px; font-weight: 700; color: #001364;
+        margin-bottom: 4px;
+      }
+      .personalize-card-sub {
+        font-size: 13px; color: #555;
+        margin-bottom: 18px;
+      }
+      .personalize-card-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+      }
+
+      /* Team hero — was eyes, now Brieflee logo */
+      .team-hero {
+        display: flex; align-items: center; justify-content: center;
+        margin-bottom: 28px;
+      }
+      .team-hero img {
+        width: 72px; height: 72px;
+        border-radius: 20px;
+        background: linear-gradient(180deg, #ecf0ff 0%, rgba(135,156,247,0.45) 100%);
+        padding: 12px;
+        box-shadow: 0 12px 32px -10px rgba(135,156,247,0.45);
+      }
+
+      /* Trial banner */
+      .trial-banner {
+        display: inline-flex; align-items: center; gap: 10px;
+        padding: 8px 14px;
+        background: var(--bl-success-bg); color: var(--bl-success-fg);
+        border: 1px solid #c6f0d6;
+        border-radius: var(--bl-radius-pill);
+        font-size: 13px; font-weight: 600;
+        margin-bottom: 18px; white-space: nowrap;
+        max-width: 100%;
+      }
+      .trial-dot {
+        width: 8px; height: 8px; border-radius: 999px;
+        background: var(--bl-success);
+        box-shadow: 0 0 0 4px rgba(56,161,105,0.18);
+      }
+
+      /* Sticky CTA */
+      .sticky-cta {
+        position: sticky; bottom: 16px; margin-top: 28px;
+        background: rgba(255,255,255,0.92);
+        backdrop-filter: saturate(140%) blur(10px);
+        -webkit-backdrop-filter: saturate(140%) blur(10px);
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius-lg);
+        padding: 14px 18px;
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 14px; box-shadow: var(--bl-shadow);
+      }
+      @media (max-width: 700px) { .sticky-cta { flex-direction: column; align-items: stretch; } }
+
+      /* Checkout layout */
+      .checkout-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 24px; align-items: start;
+      }
+      @media (max-width: 900px) { .checkout-grid { grid-template-columns: 1fr; } }
+
+      .checkout-trust-icon {
+        width: 36px; height: 36px;
+        flex-shrink: 0;
+        object-fit: contain;
+      }
+
+      .summary-card { padding: 24px; }
+      .summary-divider { height: 1px; background: var(--bl-border); margin: 18px 0; }
+
+      .price-row {
+        display: flex; justify-content: space-between;
+        font-size: 14px; color: var(--bl-fg-body);
+        padding: 4px 0;
+      }
+      .price-row.total {
+        font-weight: 700; font-size: 18px; color: var(--bl-fg);
+        padding-top: 12px;
+        border-top: 1px dashed var(--bl-border);
+      }
+
+      .testimonial {
+        background: linear-gradient(180deg, var(--bl-container) 0%, #fff 100%);
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius-lg);
+        padding: 22px 24px; position: relative;
+      }
+
+      .pay-panel { padding: 28px; }
+      .pay-trust-grid {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+        margin-bottom: 24px;
+      }
+      .pay-trust {
+        display: inline-flex; align-items: center; justify-content: center;
+        gap: 6px; padding: 10px 12px;
+        background: var(--bl-light-2); color: var(--bl-fg);
+        border-radius: var(--bl-radius);
+        font-size: 12px; font-weight: 600;
+      }
+      .pay-cta { width: 100%; padding: 18px 24px; font-size: 16px; }
+
+      /* Helpers */
+      .text-center { text-align: center; }
+      .row { display: flex; align-items: center; gap: 12px; }
+      .row-between { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .stack { display: flex; flex-direction: column; }
+      .gap-2 { gap: 8px; } .gap-3 { gap: 12px; } .gap-4 { gap: 16px; }
+      .mt-2 { margin-top: 8px; } .mt-3 { margin-top: 12px; } .mt-4 { margin-top: 16px; }
+      .mt-6 { margin-top: 24px; } .mt-8 { margin-top: 32px; } .mt-10 { margin-top: 40px; }
+      .mb-3 { margin-bottom: 12px; } .mb-4 { margin-bottom: 16px; } .mb-6 { margin-bottom: 24px; }
+
+      .nav-row { display: flex; align-items: center; justify-content: space-between; margin-top: 28px; }
+
+      .ic-btn {
+        flex-shrink: 0; width: 40px; height: 40px;
+        border-radius: 10px;
+        background: transparent; border: 1.5px solid var(--bl-border);
+        color: var(--bl-fg-muted); cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+      }
+      .ic-btn:hover { color: var(--bl-fg); border-color: var(--bl-blue-5); }
+
+      .link-btn {
+        background: transparent; border: none; padding: 0; cursor: pointer;
+        color: var(--bl-blue); font-weight: 600; font-size: 13px;
+      }
+
+      @keyframes blPulse {
+        0%, 100% { box-shadow: 0 1px 0 0 rgba(255,255,255,0.4) inset, 0 4px 14px -2px rgba(135,156,247,0.45); }
+        50%      { box-shadow: 0 1px 0 0 rgba(255,255,255,0.4) inset, 0 8px 28px 0 rgba(135,156,247,0.7); }
+      }
+      .bl-btn-primary.pulse { animation: blPulse 2.4s var(--bl-ease) infinite; }
+
+      @keyframes blFlash {
+        0%, 100% {
+          background: rgba(217, 224, 255, 0.5);
+          box-shadow: 0 0 0 0 rgba(41,79,246,0.18);
+          transform: scale(1);
+        }
+        50% {
+          background: rgba(217, 224, 255, 0.9);
+          box-shadow: 0 0 0 6px rgba(41,79,246,0.10);
+          transform: scale(1.015);
+        }
+      }
+      .plan-summary-flash {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--bl-fg);
+        padding: 8px 14px;
+        border-radius: var(--bl-radius-pill);
+        border: 1.5px solid var(--bl-blue);
+        white-space: nowrap;
+        animation: blFlash 1.6s var(--bl-ease) infinite;
+      }
+      .plan-summary-flash strong { color: var(--bl-blue); font-weight: 800; }
+    `}</style>
+  );
+}
