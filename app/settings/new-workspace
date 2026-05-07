@@ -249,21 +249,18 @@ function Style() {
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          padding: 8px 18px;
+          padding: 8px 16px;
           background: #879CF7;
           color: #FFFFFF;
           border: none;
-          border-radius: 999px;
+          border-radius: 8px;
           font-size: 14px;
           font-weight: 600;
           cursor: pointer;
-          box-shadow: 0 2px 8px rgba(135, 156, 247, 0.30);
-          transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+          transition: background 0.2s ease;
         }
         .newws-trigger:hover {
           background: #294FF6;
-          transform: translateY(-1px);
-          box-shadow: 0 4px 14px rgba(41, 79, 246, 0.35);
         }
 
         @keyframes newwsBackdropFade {

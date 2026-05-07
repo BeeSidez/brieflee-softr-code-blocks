@@ -656,37 +656,30 @@ function Style() {
         .workspace-save-btn {
           background: #879CF7;
           color: #FFFFFF;
-          font-size: 13px;
+          font-size: 14px;
           font-weight: 600;
-          padding: 8px 18px;
-          border-radius: 999px;
+          padding: 8px 16px;
+          border-radius: 8px;
           border: none;
           cursor: pointer;
-          box-shadow: 0 2px 6px rgba(135, 156, 247, 0.3);
-          transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+          transition: background 0.2s ease;
         }
         .workspace-save-btn:hover:not(:disabled) {
           background: #294FF6;
-          transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(41, 79, 246, 0.35);
-        }
-        .workspace-save-btn:active:not(:disabled) {
-          transform: translateY(0);
         }
         .workspace-save-btn:disabled {
           background: #D9E0FF;
           color: #FFFFFF;
           cursor: not-allowed;
-          box-shadow: none;
         }
 
         .workspace-discard-btn {
           background: transparent;
           color: #879CF7;
-          font-size: 13px;
+          font-size: 14px;
           font-weight: 500;
           padding: 8px 14px;
-          border-radius: 999px;
+          border-radius: 8px;
           border: none;
           cursor: pointer;
           transition: color 0.2s ease;

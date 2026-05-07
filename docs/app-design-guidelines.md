@@ -76,34 +76,40 @@ Common overrides:
 
 Icon size inside a button: `h-4 w-4` (16px).
 
-### Pill trigger (Upgrade-style)
+### Custom HTML button (when shadcn `<Button>` won't work)
 
-Only use when you need a pill-shape that visually pairs with Softr's native Upgrade button — for example, a settings-page top-right action.
+Match the shadcn shape: flat, 14px text, ~36px height, 8px radius. **No glow shadows. No hover lift.** Just a background color change on hover.
 
 ```css
-.your-pill-trigger {
+.your-button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 9px 16px;       /* gives ~36px height with 14px text */
+  padding: 8px 16px;       /* 36px height with 14px text */
   background: <PERIWINKLE>;
   color: #FFFFFF;
   border: none;
-  border-radius: 999px;
+  border-radius: 8px;
   font-size: 14px;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(<PERIWINKLE_RGB>, 0.30);
   cursor: pointer;
-  transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  transition: background 0.2s ease;
 }
-.your-pill-trigger:hover {
+.your-button:hover {
   background: <PERIWINKLE_HOVER>;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(<PERIWINKLE_HOVER_RGB>, 0.35);
+}
+.your-button:disabled {
+  background: <DISABLED_BG>;
+  color: #FFFFFF;
+  cursor: not-allowed;
 }
 ```
 
-Reference: `app/settings/new-workspace`.
+Reference: `app/settings/new-workspace`, `app/settings/workspace`, `app/settings/quality`, `app/settings/plans-and-billing`.
+
+### Hero CTA (marketing/empty-state)
+
+Only for hero/empty-state contexts (e.g. "Get started" in `no-workspace-empty`). May be pill-shaped (`border-radius: 999px`) and use a soft glow + hover lift to feel inviting. **Do not use this style for in-product action buttons** like Save Changes — those should be flat.
 
 ## Cards
 
@@ -195,8 +201,11 @@ const CS_MUTED      = "#6b7a99";
 - ❌ Backdrop blur on modals — drop it.
 - ❌ Bouncy `cubic-bezier(0.34, 1.56, 0.64, 1)` modal entrance — use `ease-out`.
 - ❌ Periwinkle for subtitle / muted text — use MUTED gray.
-- ❌ Custom HTML `<button>` when shadcn `<Button>` would work — only use custom for pill triggers.
+- ❌ Custom HTML `<button>` when shadcn `<Button>` would work.
 - ❌ Trigger button at 13px text — match shadcn at **14px**.
+- ❌ Pill-shape (`border-radius: 999px`) on Save Changes / settings action buttons — use **8px**. Pill is for hero CTAs only.
+- ❌ Periwinkle glow shadow under buttons (`box-shadow: 0 2px ... rgba(135,156,247,...)`) — buttons should be flat.
+- ❌ Bouncy hover lift on settings buttons (`transform: translateY(-1px)`) — keep settings buttons stationary, just change bg on hover.
 - ❌ Wrong field IDs copy-pasted between Brieflee and Creator Scans (different databases).
 - ❌ Single shared `q.select` for both read and write. Softr's analyzer needs **separate** `select` and `updateFields` literals to populate the Actions tab. See `app/settings/quality` or `app/settings/workspace` for the working pattern.
 - ❌ `useRecords({ count: 1 })` + `[0]` for "the logged-in user's record" — that grabs row #1 of the table for everyone. Use `useCurrentUser()` + `useRecord({ recordId: user?.id })` instead.
