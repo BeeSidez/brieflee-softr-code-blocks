@@ -1,49 +1,161 @@
+// /payment-success — landing page after Stripe Checkout
+//
+// Stripe Checkout (embedded or redirect) sends the user here on
+// successful payment. We show a brief celebration + a single CTA into
+// the onboarding setup flow at /set-up.
+//
+// IMPORTANT — Google Ads conversion tag:
+//   The Google Tag for conversion tracking lives in Softr's Page
+//   Settings → Custom Code → Header for /payment-success. It is NOT
+//   in this block. Updating the block does not touch the tag; it
+//   will keep firing on page load as before.
+
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle2 } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+
+const SMILE_LOGO =
+  "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_brand_isometric-smiley-face-tilted-disc-blue-outline-cream-mark_2026-03.png";
+
+const NEXT_PATH = "/set-up";
+const TRIAL_DAYS = 7;
+
+const BL_NAVY       = "#001364";
+const BL_DEEP       = "#000F4D";
+const BL_PERIWINKLE = "#879CF7";
+const BL_MUTED      = "#6B7A99";
 
 export default function Block() {
-  const trialEndDate = new Date();
-  trialEndDate.setDate(trialEndDate.getDate() + 7);
-  const formattedDate = trialEndDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const trialEnd = new Date();
+  trialEnd.setDate(trialEnd.getDate() + TRIAL_DAYS);
+  const formattedDate = trialEnd.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 
   return (
-    <div className="container">
-      <div className="content flex items-center justify-center min-h-[600px] py-12">
-        <Card className="max-w-2xl w-full border-none shadow-lg">
-          <CardContent className="pt-12 pb-10 px-8 text-center">
-            <div className="flex justify-center mb-6">
-              <div className="rounded-full bg-primary/10 p-4">
-                <CheckCircle2 className="w-16 h-16 text-primary" />
-              </div>
-            </div>
-            
-            <h1 className="text-4xl font-bold text-foreground mb-4">
-              Welcome to Brieflee! 🎉
-            </h1>
-            
-            <p className="text-xl text-muted-foreground mb-8">
-              Your 7-day free trial is now active. You won't be charged until {formattedDate}.
-            </p>
-            
-            <p className="text-base text-foreground mb-10 leading-relaxed">
-              Your AI video quality checker is ready to use. Complete your quick setup checklist to start reviewing your first videos in minutes.
-            </p>
-            
-            <Button 
-              size="lg" 
-              className="bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-6 text-lg font-semibold mb-6"
-              onClick={() => window.location.href = '/checklist'}
-            >
-              Complete setup checklist →
-            </Button>
-            
-            <p className="text-sm text-muted-foreground">
-              You can cancel anytime before {formattedDate} and you won't be charged.
-            </p>
-          </CardContent>
-        </Card>
+    <>
+      <Style />
+      <div className="bl-paysuccess">
+        <div className="bl-paysuccess-inner">
+          <img
+            src={SMILE_LOGO}
+            alt="Brieflee"
+            className="bl-paysuccess-logo"
+          />
+
+          <h1 className="bl-paysuccess-title">Welcome to Brieflee!</h1>
+
+          <p className="bl-paysuccess-trial">
+            Your {TRIAL_DAYS}-day free trial is now active. You won't be
+            charged until {formattedDate}.
+          </p>
+
+          <p className="bl-paysuccess-body">
+            Your AI video quality checker is ready to use. Finish your quick
+            setup to start reviewing your first videos in minutes.
+          </p>
+
+          <Button
+            onClick={() => (window.location.href = NEXT_PATH)}
+            className="bl-paysuccess-cta font-semibold gap-2"
+            style={{ backgroundColor: BL_PERIWINKLE, color: "#fff" }}
+          >
+            Complete setup
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+
+          <p className="bl-paysuccess-fineprint">
+            You can cancel anytime before {formattedDate} and you won't be
+            charged.
+          </p>
+        </div>
       </div>
-    </div>
+    </>
+  );
+}
+
+function Style() {
+  return (
+    <style>
+      {`
+        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+
+        .bl-paysuccess,
+        .bl-paysuccess * {
+          font-family: 'League Spartan', sans-serif;
+        }
+
+        .bl-paysuccess {
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 32px 20px;
+          box-sizing: border-box;
+        }
+
+        .bl-paysuccess-inner {
+          width: 100%;
+          max-width: 520px;
+          text-align: center;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .bl-paysuccess-logo {
+          width: 96px;
+          height: 96px;
+          object-fit: contain;
+          margin-bottom: 24px;
+          display: block;
+        }
+
+        .bl-paysuccess-title {
+          font-size: 32px;
+          font-weight: 700;
+          color: ${BL_DEEP};
+          letter-spacing: -0.015em;
+          line-height: 1.15;
+          margin: 0 0 14px;
+        }
+
+        .bl-paysuccess-trial {
+          font-size: 16px;
+          color: ${BL_NAVY};
+          line-height: 1.55;
+          margin: 0 0 18px;
+          max-width: 440px;
+        }
+
+        .bl-paysuccess-body {
+          font-size: 14px;
+          color: ${BL_MUTED};
+          line-height: 1.6;
+          margin: 0 0 28px;
+          max-width: 440px;
+        }
+
+        .bl-paysuccess-cta {
+          font-size: 14px;
+          padding: 10px 20px;
+          height: 40px;
+          border-radius: 8px;
+          margin-bottom: 18px;
+        }
+        .bl-paysuccess-cta:hover:not(:disabled) {
+          background-color: #294FF6 !important;
+        }
+
+        .bl-paysuccess-fineprint {
+          font-size: 12px;
+          color: ${BL_MUTED};
+          line-height: 1.5;
+          margin: 0;
+          max-width: 360px;
+        }
+      `}
+    </style>
   );
 }
