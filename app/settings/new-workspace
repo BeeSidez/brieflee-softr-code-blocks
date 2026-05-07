@@ -23,6 +23,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Plus } from "lucide-react";
 import { useRecordCreate, q } from "@/lib/datasource";
 import { useCurrentUser } from "@/lib/user";
 import { toast } from "sonner";
@@ -119,7 +120,8 @@ export default function Block() {
         onClick={() => setOpen(true)}
         className="newws-trigger"
       >
-        <span aria-hidden="true">+</span> New workspace
+        <Plus className="h-4 w-4" strokeWidth={2.5} />
+        New workspace
       </button>
 
       {open && (
@@ -381,7 +383,7 @@ function Style() {
           background: transparent;
           color: #6b7a99;
           border: none;
-          font-size: 13px;
+          font-size: 14px;
           font-weight: 500;
           padding: 8px 14px;
           border-radius: 8px;

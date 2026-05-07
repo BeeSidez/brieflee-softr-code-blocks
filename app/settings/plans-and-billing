@@ -312,8 +312,8 @@ function Style() {
         .settings-pb * { font-family: 'League Spartan', sans-serif; }
 
         .pb-heading-title {
-          font-size: 22px;
-          font-weight: 600;
+          font-size: 24px;
+          font-weight: 700;
           color: ${BL_NAVY};
           letter-spacing: -0.012em;
           margin: 0 0 6px;
@@ -333,7 +333,7 @@ function Style() {
           font-size: 0.85em;
         }
         .pb-heading-sub {
-          font-size: 13px;
+          font-size: 14px;
           color: ${BL_MUTED};
           margin: 0;
           font-weight: 400;
@@ -343,7 +343,7 @@ function Style() {
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          font-size: 11px;
+          font-size: 12px;
           font-weight: 600;
           padding: 4px 10px;
           border-radius: 999px;
@@ -386,7 +386,7 @@ function Style() {
           flex-shrink: 0;
         }
         .pb-card-label {
-          font-size: 13px;
+          font-size: 14px;
           font-weight: 600;
           color: ${BL_DEEP};
         }
@@ -402,7 +402,7 @@ function Style() {
           transition: width 0.5s ease;
         }
         .pb-card-numbers {
-          font-size: 13px;
+          font-size: 14px;
           font-weight: 600;
           color: ${BL_DEEP};
           font-variant-numeric: tabular-nums;

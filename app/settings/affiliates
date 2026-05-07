@@ -57,7 +57,7 @@ export default function Block() {
   // block is visible/editable in Studio.
   if (user?.id && status === "pending") {
     return (
-      <div className="content mx-auto py-4" style={{ maxWidth: 1140 }}>
+      <div className="bl-affiliates content mx-auto py-4" style={{ maxWidth: 1140 }}>
         <div className="text-sm" style={{ color: BL_MUTED }}>
           Loading…
         </div>
@@ -67,7 +67,7 @@ export default function Block() {
 
   if (user?.id && !data) {
     return (
-      <div className="content mx-auto py-4" style={{ maxWidth: 1140 }}>
+      <div className="bl-affiliates content mx-auto py-4" style={{ maxWidth: 1140 }}>
         <div className="text-sm" style={{ color: BL_MUTED }}>
           Couldn't load your affiliate details.
         </div>
@@ -95,8 +95,14 @@ export default function Block() {
   return (
     <>
       <Toaster />
+      <style>
+        {`
+          @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+          .bl-affiliates * { font-family: 'League Spartan', sans-serif; }
+        `}
+      </style>
       <div
-        className="content mx-auto py-4 space-y-5"
+        className="bl-affiliates content mx-auto py-4 space-y-5"
         style={{ maxWidth: 1140 }}
       >
         {/* ── Header ── */}
