@@ -256,7 +256,7 @@ export default function Block() {
 
   const handleContinue = () => {
     if (recommended.isCustom) {
-      window.location.href = "/book-a-call";
+      window.location.href = "/book-a-demo";
       return;
     }
     const tier = recommendedTier.toLowerCase();
