@@ -8,10 +8,13 @@
 //
 // SOFTR CONFIG REQUIRED:
 //   1. No data binding (Source/Actions tabs not used).
-//   2. Page Settings → Custom Code → Body → paste:
+//   2. Page Settings → Custom Code → Footer → paste:
 //        <script src="https://asset-tidycal.b-cdn.net/js/embed.js" async></script>
-//      The block falls back to dynamic script injection if you skip
-//      this, but Page Settings is more reliable in Softr's SPA.
+//      Use Footer (not Header) — the script scans the page for
+//      .tidycal-embed divs and needs the body content to exist
+//      before it runs. The block falls back to dynamic script
+//      injection if Page Settings is skipped, but the Footer load
+//      is more reliable in Softr's SPA + preview environment.
 //   3. Drop the block on /book-a-demo, replacing the existing
 //      name + email form. The standalone /calendar page can be
 //      archived in Softr Studio — it's no longer part of the flow.
