@@ -102,6 +102,20 @@ export default function Block() {
     <Shell>
       {/* ── Heading row ── */}
       <header className="pb-heading">
+        <div
+          className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider mb-3"
+          style={{
+            backgroundColor: "rgba(135, 156, 247, 0.10)",
+            color: BL_PERIWINKLE,
+            border: `1px solid ${BL_PERIWINKLE}40`,
+          }}
+        >
+          <span
+            className="rounded-full"
+            style={{ width: 6, height: 6, backgroundColor: BL_PERIWINKLE }}
+          />
+          Plans and Billing
+        </div>
         <h2 className="pb-heading-title">
           {hasSubscription ? (
             <>
