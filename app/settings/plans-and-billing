@@ -29,10 +29,10 @@ const CHANGE_PLAN_MODAL_SIZE = "xl"; // 'sm' | 'md' | 'lg' | 'xl'
 // ─── Brand palette ────────────────────────────────────────────
 const BL_NAVY = "#000F4D";
 const BL_DEEP = "#001364";
-const BL_PERIWINKLE = "#7A93FF";
+const BL_PERIWINKLE = "#879CF7";
 const BL_BORDER = "rgba(217, 224, 255, 0.55)";
 const BL_TRACK = "rgba(217, 224, 255, 0.6)";
-const BL_MUTED = "#7A93FF";
+const BL_MUTED = "#6B7A99";
 
 const select = q.select({
   // Primary field of the accounts table — useRecord requires it.
@@ -176,7 +176,7 @@ function Shell({ children }) {
       }}
     >
       <Style />
-      <div className="settings-pb container mx-auto px-4 max-w-4xl w-full">
+      <div className="settings-pb container mx-auto px-4 w-full" style={{ maxWidth: 1140 }}>
         <div className="space-y-6">{children}</div>
       </div>
     </div>
@@ -202,7 +202,7 @@ function StatCard({ icon: Icon, label, used, max, hasPlan }) {
             width: `${hasPlan && safeMax ? pct : 0}%`,
             background: over
               ? "linear-gradient(90deg, #DC2626, #B91C1C)"
-              : "linear-gradient(90deg, #7A93FF, #294FF6)",
+              : "linear-gradient(90deg, #879CF7, #294FF6)",
           }}
         />
       </div>
@@ -242,8 +242,8 @@ function ActionsCard({ hasSubscription, onChangePlan, onManageBilling }) {
 function StatusBadge({ status }) {
   const map = {
     active:    { fg: "#22A06B", bg: "rgba(34, 160, 107, 0.12)", border: "rgba(34, 160, 107, 0.30)", label: "Active" },
-    trial:     { fg: "#7A93FF", bg: "rgba(122, 147, 255, 0.12)", border: "rgba(122, 147, 255, 0.30)", label: "Trial" },
-    trialing:  { fg: "#7A93FF", bg: "rgba(122, 147, 255, 0.12)", border: "rgba(122, 147, 255, 0.30)", label: "Trial" },
+    trial:     { fg: "#879CF7", bg: "rgba(135, 156, 247, 0.12)", border: "rgba(135, 156, 247, 0.30)", label: "Trial" },
+    trialing:  { fg: "#879CF7", bg: "rgba(135, 156, 247, 0.12)", border: "rgba(135, 156, 247, 0.30)", label: "Trial" },
     past_due:  { fg: "#C97D3F", bg: "rgba(232, 155, 92, 0.12)", border: "rgba(232, 155, 92, 0.40)", label: "Past due" },
     canceled:  { fg: "#DC2626", bg: "rgba(220, 38, 38, 0.10)",  border: "rgba(220, 38, 38, 0.35)", label: "Canceled" },
     cancelled: { fg: "#DC2626", bg: "rgba(220, 38, 38, 0.10)",  border: "rgba(220, 38, 38, 0.35)", label: "Canceled" },
@@ -427,7 +427,7 @@ function Style() {
           border-radius: 999px;
           border: none;
           cursor: pointer;
-          box-shadow: 0 2px 6px rgba(122, 147, 255, 0.30);
+          box-shadow: 0 2px 6px rgba(135, 156, 247, 0.30);
           transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
         }
         .pb-btn-primary:hover {
@@ -446,12 +446,12 @@ function Style() {
           font-size: 13px;
           font-weight: 600;
           border-radius: 999px;
-          border: 1px solid rgba(122, 147, 255, 0.40);
+          border: 1px solid rgba(135, 156, 247, 0.40);
           cursor: pointer;
           transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
         }
         .pb-btn-secondary:hover {
-          background: rgba(122, 147, 255, 0.10);
+          background: rgba(135, 156, 247, 0.10);
           color: #294FF6;
           border-color: rgba(41, 79, 246, 0.55);
         }

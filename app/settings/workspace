@@ -376,7 +376,7 @@ export default function Block() {
           </div>
           <p
             className="text-xs"
-            style={{ color: "#7A93FF", fontWeight: 400, marginTop: 6 }}
+            style={{ color: "#879CF7", fontWeight: 400, marginTop: 6 }}
           >
             Square image works best. Click Save changes to upload.
           </p>
@@ -479,7 +479,7 @@ function BlockShell({ children }) {
       }}
     >
       <Style />
-      <div className="settings-workspace container mx-auto px-4 max-w-4xl w-full">
+      <div className="settings-workspace container mx-auto px-4 w-full" style={{ maxWidth: 1140 }}>
         <div className="space-y-4">{children}</div>
       </div>
     </div>
@@ -515,7 +515,7 @@ function SectionCard({
           {subtitle && (
             <p
               className="text-xs mt-0.5"
-              style={{ color: "#7A93FF", fontWeight: 400, lineHeight: 1.5 }}
+              style={{ color: "#879CF7", fontWeight: 400, lineHeight: 1.5 }}
             >
               {subtitle}
             </p>
@@ -571,7 +571,7 @@ function StatusPill({ tone, label }) {
       ? { fg: "#22A06B", dot: "#22A06B", border: "rgba(34, 160, 107, 0.30)" }
       : tone === "warning"
       ? { fg: "#C97D3F", dot: "#E89B5C", border: "rgba(232, 155, 92, 0.45)" }
-      : { fg: "#7A93FF", dot: "#7A93FF", border: "rgba(122, 147, 255, 0.45)" };
+      : { fg: "#879CF7", dot: "#879CF7", border: "rgba(135, 156, 247, 0.45)" };
 
   return (
     <span
@@ -607,7 +607,7 @@ function Loading({ message, error }) {
   return (
     <div
       className="text-center"
-      style={{ padding: "60px 20px", color: error ? "#D14343" : "#7A93FF" }}
+      style={{ padding: "60px 20px", color: error ? "#D14343" : "#879CF7" }}
     >
       <p className="text-sm">{message || (error ? "Couldn't load workspace." : "Loading…")}</p>
     </div>
@@ -654,7 +654,7 @@ function Style() {
         }
 
         .workspace-save-btn {
-          background: #7A93FF;
+          background: #879CF7;
           color: #FFFFFF;
           font-size: 13px;
           font-weight: 600;
@@ -662,7 +662,7 @@ function Style() {
           border-radius: 999px;
           border: none;
           cursor: pointer;
-          box-shadow: 0 2px 6px rgba(122, 147, 255, 0.3);
+          box-shadow: 0 2px 6px rgba(135, 156, 247, 0.3);
           transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
         }
         .workspace-save-btn:hover:not(:disabled) {
@@ -682,7 +682,7 @@ function Style() {
 
         .workspace-discard-btn {
           background: transparent;
-          color: #7A93FF;
+          color: #879CF7;
           font-size: 13px;
           font-weight: 500;
           padding: 8px 14px;
@@ -721,7 +721,7 @@ function Style() {
         }
         .workspace-logo-placeholder {
           font-size: 11px;
-          color: #7A93FF;
+          color: #879CF7;
           font-weight: 500;
           padding: 0;
         }
@@ -734,8 +734,8 @@ function Style() {
         .workspace-logo-btn {
           padding: 8px 14px;
           background: #FFFFFF;
-          color: #7A93FF;
-          border: 1px solid rgba(122, 147, 255, 0.45);
+          color: #879CF7;
+          border: 1px solid rgba(135, 156, 247, 0.45);
           border-radius: 999px;
           font-size: 13px;
           font-weight: 600;
@@ -743,7 +743,7 @@ function Style() {
           transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
         }
         .workspace-logo-btn:hover {
-          background: rgba(122, 147, 255, 0.10);
+          background: rgba(135, 156, 247, 0.10);
           color: #294FF6;
           border-color: rgba(41, 79, 246, 0.55);
         }

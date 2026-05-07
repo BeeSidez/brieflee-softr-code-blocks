@@ -447,10 +447,10 @@ export default function Block() {
                 onClick={() => setReviewMode(m.id)}
                 className="w-full text-left px-4 py-3 rounded-xl transition-all duration-200 bg-white"
                 style={{
-                  border: sel ? "2px solid #7A93FF" : "1px solid rgba(217, 224, 255, 0.55)",
-                  backgroundColor: sel ? "rgba(122, 147, 255, 0.06)" : "#fff",
+                  border: sel ? "2px solid #879CF7" : "1px solid rgba(217, 224, 255, 0.55)",
+                  backgroundColor: sel ? "rgba(135, 156, 247, 0.06)" : "#fff",
                   boxShadow: sel
-                    ? "0 4px 14px rgba(122, 147, 255, 0.18)"
+                    ? "0 4px 14px rgba(135, 156, 247, 0.18)"
                     : "0 1px 3px rgba(0, 15, 77, 0.04)",
                 }}
               >
@@ -495,9 +495,9 @@ export default function Block() {
                 onClick={() => toggleQA(opt.id)}
                 className="text-xs rounded-full px-3 py-1.5 transition-all duration-150"
                 style={{
-                  background: on ? "#7A93FF" : "#fff",
+                  background: on ? "#879CF7" : "#fff",
                   color: on ? "#fff" : "#001364",
-                  border: on ? "1px solid #7A93FF" : "1px solid rgba(217, 224, 255, 0.7)",
+                  border: on ? "1px solid #879CF7" : "1px solid rgba(217, 224, 255, 0.7)",
                   fontWeight: on ? 600 : 400,
                 }}
               >
@@ -506,7 +506,7 @@ export default function Block() {
             );
           })}
         </div>
-        <div className="text-xs mt-3" style={{ color: "#7A93FF" }}>
+        <div className="text-xs mt-3" style={{ color: "#879CF7" }}>
           {qaIds.length === 0
             ? "None selected — you'll pick checks each time."
             : `${qaIds.length} check${qaIds.length === 1 ? "" : "s"} will run on every quick review.`}
@@ -558,10 +558,10 @@ export default function Block() {
                             onClick={() => setThresholdValue(row.key, opt.id)}
                             className="text-xs rounded-full px-3 py-1 transition-all duration-150"
                             style={{
-                              background: on ? "#7A93FF" : "#fff",
+                              background: on ? "#879CF7" : "#fff",
                               color: on ? "#fff" : "#001364",
                               border: on
-                                ? "1px solid #7A93FF"
+                                ? "1px solid #879CF7"
                                 : "1px solid rgba(217, 224, 255, 0.7)",
                               fontWeight: on ? 600 : 400,
                             }}
@@ -576,7 +576,7 @@ export default function Block() {
             );
           })}
         </div>
-        <div className="text-xs mt-3" style={{ color: "#7A93FF" }}>
+        <div className="text-xs mt-3" style={{ color: "#879CF7" }}>
           {thresholdsCount === 0
             ? "No thresholds set."
             : `${thresholdsCount} threshold${thresholdsCount === 1 ? "" : "s"} set.`}
@@ -601,7 +601,7 @@ function BlockShell({ children }) {
       }}
     >
       <Style />
-      <div className="settings-quality container mx-auto px-4 max-w-4xl w-full">
+      <div className="settings-quality container mx-auto px-4 w-full" style={{ maxWidth: 1140 }}>
         <div className="space-y-4">{children}</div>
       </div>
     </div>
@@ -638,7 +638,7 @@ function SectionCard({
           {subtitle && (
             <p
               className="text-xs mt-0.5"
-              style={{ color: "#7A93FF", fontWeight: 400, lineHeight: 1.5 }}
+              style={{ color: "#879CF7", fontWeight: 400, lineHeight: 1.5 }}
             >
               {subtitle}
             </p>
@@ -680,7 +680,7 @@ function StatusPill({ tone, label }) {
       ? { fg: "#22A06B", dot: "#22A06B", border: "rgba(34, 160, 107, 0.30)" }
       : tone === "warning"
       ? { fg: "#C97D3F", dot: "#E89B5C", border: "rgba(232, 155, 92, 0.45)" }
-      : { fg: "#7A93FF", dot: "#7A93FF", border: "rgba(122, 147, 255, 0.45)" };
+      : { fg: "#879CF7", dot: "#879CF7", border: "rgba(135, 156, 247, 0.45)" };
 
   return (
     <span
@@ -716,7 +716,7 @@ function Loading({ message, error }) {
   return (
     <div
       className="text-center"
-      style={{ padding: "60px 20px", color: error ? "#D14343" : "#7A93FF" }}
+      style={{ padding: "60px 20px", color: error ? "#D14343" : "#879CF7" }}
     >
       <p className="text-sm">{message || (error ? "Couldn't load settings." : "Loading…")}</p>
     </div>
@@ -736,7 +736,7 @@ function Style() {
         }
 
         .quality-save-btn {
-          background: #7A93FF;
+          background: #879CF7;
           color: #FFFFFF;
           font-size: 13px;
           font-weight: 600;
@@ -744,7 +744,7 @@ function Style() {
           border-radius: 999px;
           border: none;
           cursor: pointer;
-          box-shadow: 0 2px 6px rgba(122, 147, 255, 0.3);
+          box-shadow: 0 2px 6px rgba(135, 156, 247, 0.3);
           transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
         }
         .quality-save-btn:hover:not(:disabled) {
@@ -764,7 +764,7 @@ function Style() {
 
         .quality-discard-btn {
           background: transparent;
-          color: #7A93FF;
+          color: #879CF7;
           font-size: 13px;
           font-weight: 500;
           padding: 8px 14px;

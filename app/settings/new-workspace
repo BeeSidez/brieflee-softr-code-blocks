@@ -249,12 +249,12 @@ function Style() {
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          padding: 9px 16px;
+          padding: 8px 18px;
           background: #879CF7;
           color: #FFFFFF;
           border: none;
           border-radius: 999px;
-          font-size: 13px;
+          font-size: 14px;
           font-weight: 600;
           cursor: pointer;
           box-shadow: 0 2px 8px rgba(135, 156, 247, 0.30);
