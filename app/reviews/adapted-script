@@ -1,0 +1,309 @@
+// /submission-details · Adapted (Remixed) Script
+//
+// Renders the storyboard script from reviews.adapted_script (or the
+// cleaned formula reviews.clean_adapted_script when populated). Parses
+// [timestamp] markers into scene rows so the script reads like a
+// storyboard table instead of a wall of plain text.
+//
+// SOFTR CONFIG REQUIRED:
+//   Source tab: bind to REVIEWS table, filtered to the page's record
+//   (e.g. record id = page record id, or via the parent submission's
+//   linked review).
+
+import { useRecord, useCurrentRecordId, q } from "@/lib/datasource";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Copy, Check } from "lucide-react";
+import { toast } from "sonner";
+import { Toaster } from "@/components/ui/sonner";
+import { useState } from "react";
+
+// ─── Brand palette ────────────────────────────────────────────────
+const BL_NAVY       = "#001364";
+const BL_DEEP       = "#000F4D";
+const BL_PERIWINKLE = "#879CF7";
+const BL_BORDER     = "rgba(217, 224, 255, 0.55)";
+const BL_MUTED      = "#6B7A99";
+
+// ─── Field map (Reviews table) ────────────────────────────────────
+// Primary field MUST be included or useRecord returns an error and the
+// block renders "no data available" even when the record exists.
+const select = q.select({
+  reviewId:           "Odw6q", // primary
+  adaptedScript:      "Z95A7", // LONG_TEXT
+  cleanAdaptedScript: "k99NF", // FORMULA — preferred when populated
+});
+
+// ─── Parsing ─────────────────────────────────────────────────────
+// Splits the script text into scenes keyed by [timestamp] markers.
+// Handles two observed formats:
+//   A)  [0s] Visual: ... | Dialogue: ... | Text: ...
+//   B)  [00:00] VISUAL: ...
+//       TEXT OVERLAY: "..."
+//       AUDIO: ...
+function parseScenes(text) {
+  if (!text) return [];
+  const lines = String(text).split("\n");
+  const scenes = [];
+  let current = null;
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (!line.trim() && !current) continue;
+    const tsMatch = line.match(/^\s*\[([^\]]+)\]\s*(.*)$/);
+    if (tsMatch) {
+      if (current) scenes.push(current);
+      current = { time: tsMatch[1].trim(), lines: [] };
+      const trailing = tsMatch[2].trim();
+      if (trailing) {
+        const inline = trailing.split("|").map((s) => s.trim()).filter(Boolean);
+        current.lines.push(...inline);
+      }
+    } else if (current) {
+      if (line.trim()) current.lines.push(line);
+    } else {
+      scenes.push({ time: null, lines: [line] });
+    }
+  }
+  if (current) scenes.push(current);
+  return scenes;
+}
+
+// ─── Sub-components ──────────────────────────────────────────────
+function ScriptLine({ text }) {
+  // If the line starts with a Label: (e.g. "Visual:", "AUDIO:", "TEXT
+  // OVERLAY:") and that label is short, render the label bold.
+  const match = text.match(/^([A-Z][A-Za-z][A-Za-z\s]*?):\s*(.+)$/);
+  if (match && match[1].length <= 20) {
+    return (
+      <div className="adapt-line">
+        <span className="adapt-line-label">{match[1]}:</span>{" "}
+        <span className="adapt-line-text">{match[2]}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="adapt-line">
+      <span className="adapt-line-text">{text}</span>
+    </div>
+  );
+}
+
+function SceneRow({ scene }) {
+  return (
+    <div className="adapt-scene">
+      <div className="adapt-scene-time">
+        {scene.time ? `[${scene.time}]` : ""}
+      </div>
+      <div className="adapt-scene-lines">
+        {scene.lines.map((line, i) => (
+          <ScriptLine key={i} text={line} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Block ──────────────────────────────────────────────────
+export default function Block() {
+  const recordId = useCurrentRecordId();
+  const { data, status } = useRecord({ recordId, select });
+  const [copied, setCopied] = useState(false);
+
+  const f = data?.fields || {};
+  const scriptText =
+    (f.cleanAdaptedScript && String(f.cleanAdaptedScript).trim()) ||
+    (f.adaptedScript && String(f.adaptedScript).trim()) ||
+    "";
+  const scenes = parseScenes(scriptText);
+
+  const handleCopy = async () => {
+    if (!scriptText) {
+      toast.error("No script to copy");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(scriptText);
+      setCopied(true);
+      toast.success("Script copied");
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      toast.error("Couldn't copy. Select the text and copy manually.");
+    }
+  };
+
+  // Studio editor has no current record so useRecord hangs in
+  // "pending" forever. Only show Loading when there's actually a
+  // recordId we're waiting on; otherwise render the empty design
+  // state so the block stays visible/editable in Studio.
+  if (recordId && status === "pending") {
+    return (
+      <>
+        <Style />
+        <div
+          className="bl-adapted-script content mx-auto py-4"
+          style={{ maxWidth: 1140 }}
+        >
+          <div className="text-sm" style={{ color: BL_MUTED }}>Loading…</div>
+        </div>
+      </>
+    );
+  }
+
+  if (recordId && !data) {
+    return (
+      <>
+        <Style />
+        <div
+          className="bl-adapted-script content mx-auto py-4"
+          style={{ maxWidth: 1140 }}
+        >
+          <div className="text-sm" style={{ color: BL_MUTED }}>
+            Couldn't load this review's script.
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Toaster />
+      <Style />
+      <div
+        className="bl-adapted-script content mx-auto py-4 space-y-4"
+        style={{ maxWidth: 1140 }}
+      >
+        {/* Section pill */}
+        <div
+          className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider"
+          style={{
+            backgroundColor: "rgba(135, 156, 247, 0.10)",
+            color: BL_PERIWINKLE,
+            border: `1px solid ${BL_PERIWINKLE}40`,
+          }}
+        >
+          <span
+            className="rounded-full"
+            style={{ width: 6, height: 6, backgroundColor: BL_PERIWINKLE }}
+          />
+          Remixed Script
+        </div>
+
+        <Card className="bg-white" style={{ borderColor: BL_BORDER }}>
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+              <div>
+                <h2
+                  className="text-2xl font-bold"
+                  style={{ color: BL_NAVY, margin: 0 }}
+                >
+                  Remixed Script
+                </h2>
+                <p className="text-sm mt-1" style={{ color: BL_MUTED }}>
+                  Their script rewritten for your brand.
+                </p>
+              </div>
+              <Button
+                onClick={handleCopy}
+                disabled={!scriptText}
+                className="font-semibold gap-2"
+                style={{ backgroundColor: BL_PERIWINKLE, color: "#fff" }}
+              >
+                {copied ? (
+                  <Check className="h-4 w-4" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+                {copied ? "Copied" : "Copy script"}
+              </Button>
+            </div>
+
+            {scenes.length === 0 ? (
+              <div className="adapt-empty">
+                No script available yet for this review.
+              </div>
+            ) : (
+              <div className="adapt-storyboard">
+                {scenes.map((scene, i) => (
+                  <SceneRow key={i} scene={scene} />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </>
+  );
+}
+
+function Style() {
+  return (
+    <style>
+      {`
+        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+        .bl-adapted-script * { font-family: 'League Spartan', sans-serif; }
+        .bl-adapted-script .adapt-scene-time {
+          font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace;
+        }
+
+        .adapt-storyboard {
+          display: flex;
+          flex-direction: column;
+        }
+        .adapt-scene {
+          display: flex;
+          gap: 20px;
+          padding: 14px 0;
+          border-top: 1px solid ${BL_BORDER};
+          align-items: flex-start;
+        }
+        .adapt-scene:first-child {
+          border-top: none;
+          padding-top: 4px;
+        }
+        .adapt-scene:last-child {
+          padding-bottom: 4px;
+        }
+
+        .adapt-scene-time {
+          flex: 0 0 64px;
+          font-size: 12px;
+          font-weight: 700;
+          color: ${BL_PERIWINKLE};
+          padding-top: 3px;
+          letter-spacing: -0.01em;
+        }
+        .adapt-scene-lines {
+          flex: 1;
+          font-size: 14px;
+          line-height: 1.55;
+          color: ${BL_NAVY};
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          min-width: 0;
+          word-wrap: break-word;
+        }
+        .adapt-line {
+          word-wrap: break-word;
+        }
+        .adapt-line-label {
+          font-weight: 700;
+          color: ${BL_DEEP};
+          text-transform: capitalize;
+          letter-spacing: -0.005em;
+        }
+        .adapt-line-text {
+          color: ${BL_NAVY};
+        }
+
+        .adapt-empty {
+          padding: 32px 0;
+          text-align: center;
+          color: ${BL_MUTED};
+          font-size: 14px;
+        }
+      `}
+    </style>
+  );
+}
