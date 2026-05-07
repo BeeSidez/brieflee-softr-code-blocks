@@ -1,0 +1,325 @@
+// /submission-details · Transcript (review-bound block)
+//
+// Reads reviews.transcript (the creator's spoken transcript) and
+// renders it. If the transcript contains [timestamp] markers it'll
+// be parsed into a storyboard table; otherwise it falls back to a
+// plain pre-formatted text block. Mirrors app/reviews/adapted-script.
+//
+// SOFTR CONFIG REQUIRED:
+//   Source tab: bind to REVIEWS, with the same "Record ID in page URL"
+//   filter the native rich-text block uses. We read via useRecords +
+//   take the first record so the Source filter does the scoping.
+
+import { useRecords, q } from "@/lib/datasource";
+import { Button } from "@/components/ui/button";
+import { Copy, Check } from "lucide-react";
+import { toast } from "sonner";
+import { Toaster } from "@/components/ui/sonner";
+import { useState } from "react";
+
+// ─── Brand palette ────────────────────────────────────────────────
+const BL_NAVY        = "#001364";
+const BL_PERIWINKLE  = "#879CF7";
+const BL_BORDER      = "rgba(217, 224, 255, 0.55)";
+const BL_BORDER_SOFT = "rgba(217, 224, 255, 0.4)";
+const BL_MUTED       = "#6B7A99";
+
+// ─── Field map (Reviews table) ────────────────────────────────────
+const select = q.select({
+  reviewId:   "Odw6q", // primary — required
+  transcript: "5kQxm", // LONG_TEXT — raw creator transcript
+});
+
+// Defensive value lookup — Softr's data layer is supposed to alias
+// q.select keys to camelCase but in practice values sometimes come
+// back keyed by snake_case or raw field ID. Try all three.
+function pickField(fields, ...keys) {
+  for (const k of keys) {
+    const v = fields?.[k];
+    if (v != null && String(v).trim() !== "") return String(v).trim();
+  }
+  return "";
+}
+
+// ─── Parsing ─────────────────────────────────────────────────────
+// Most transcripts are free-form prose with no structure, so the
+// table path won't fire and we fall through to plain text. Kept
+// here so timestamped transcripts get the same storyboard layout
+// as the adapted-script block.
+function parseScript(text) {
+  const scenes = [];
+  let current = null;
+  let lastLabel = null;
+
+  for (const raw of String(text).split("\n")) {
+    const line = raw.trim();
+    if (!line) {
+      lastLabel = null;
+      continue;
+    }
+
+    const tsMatch = line.match(/^\[([^\]]+)\]\s*(.*)$/);
+    if (tsMatch) {
+      if (current) scenes.push(current);
+      current = { time: tsMatch[1].trim(), parts: {} };
+      lastLabel = null;
+
+      const trailing = tsMatch[2].trim();
+      if (trailing) {
+        for (const seg of trailing.split("|")) {
+          const p = parsePart(seg);
+          if (p) {
+            current.parts[p.label] = p.value;
+            lastLabel = p.label;
+          }
+        }
+      }
+      continue;
+    }
+
+    if (!current) continue;
+
+    const p = parsePart(line);
+    if (p) {
+      current.parts[p.label] = p.value;
+      lastLabel = p.label;
+    } else if (lastLabel) {
+      current.parts[lastLabel] = (current.parts[lastLabel] || "") + " " + line;
+    }
+  }
+
+  if (current) scenes.push(current);
+  return scenes;
+}
+
+function parsePart(text) {
+  const m = String(text).trim().match(/^([A-Za-z][A-Za-z\s]*?):\s*(.+)$/);
+  if (!m) return null;
+  const rawLabel = m[1].trim();
+  if (rawLabel.length > 20) return null;
+  const label = rawLabel
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return { label, value: m[2].trim() };
+}
+
+const LABEL_ORDER = ["Visual", "Dialogue", "Audio", "Text", "Text Overlay"];
+function getColumns(scenes) {
+  const found = new Set();
+  for (const s of scenes) {
+    for (const k of Object.keys(s.parts)) found.add(k);
+  }
+  return Array.from(found).sort((a, b) => {
+    const ai = LABEL_ORDER.indexOf(a);
+    const bi = LABEL_ORDER.indexOf(b);
+    if (ai === -1 && bi === -1) return a.localeCompare(b);
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+}
+
+// ─── Main Block ──────────────────────────────────────────────────
+export default function Block() {
+  const { data, status } = useRecords({ select, count: 1 });
+  const [copied, setCopied] = useState(false);
+
+  const records = data?.pages?.flatMap((p) => p?.items ?? []) ?? [];
+  const fields = records[0]?.fields || {};
+
+  const transcriptText = pickField(
+    fields,
+    "transcript",
+    "5kQxm",
+  );
+
+  const handleCopy = async () => {
+    if (!transcriptText) {
+      toast.error("No transcript to copy");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(transcriptText);
+      setCopied(true);
+      toast.success("Transcript copied");
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      toast.error("Couldn't copy. Select the text and copy manually.");
+    }
+  };
+
+  const scenes = parseScript(transcriptText);
+  const columns = getColumns(scenes);
+  const hasTable = scenes.length > 0 && columns.length > 0;
+
+  return (
+    <>
+      <Toaster />
+      <Style />
+      <div
+        className="bl-transcript content mx-auto py-4"
+        style={{ maxWidth: 1140 }}
+      >
+        <div className="bl-transcript-header">
+          <div>
+            <h2 className="bl-transcript-title">Transcript</h2>
+            <p className="bl-transcript-sub">
+              What the creator said in their video.
+            </p>
+          </div>
+          <Button
+            onClick={handleCopy}
+            disabled={!transcriptText}
+            className="font-semibold gap-2"
+            style={{ backgroundColor: BL_PERIWINKLE, color: "#fff" }}
+          >
+            {copied ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+            {copied ? "Copied" : "Copy transcript"}
+          </Button>
+        </div>
+
+        {status === "pending" ? (
+          <div className="bl-transcript-empty">Loading…</div>
+        ) : !transcriptText ? (
+          <div className="bl-transcript-empty">No transcript yet.</div>
+        ) : hasTable ? (
+          <div className="bl-transcript-table-wrap">
+            <table className="bl-transcript-table">
+              <thead>
+                <tr>
+                  <th className="bl-transcript-th-time">Time</th>
+                  {columns.map((c) => (
+                    <th key={c}>{c}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {scenes.map((s, i) => (
+                  <tr key={i}>
+                    <td className="bl-transcript-td-time">
+                      {s.time ? `[${s.time}]` : ""}
+                    </td>
+                    {columns.map((c) => (
+                      <td key={c}>
+                        {s.parts[c] ? (
+                          s.parts[c]
+                        ) : (
+                          <span className="bl-transcript-dash">—</span>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <pre className="bl-transcript-raw">{transcriptText}</pre>
+        )}
+      </div>
+    </>
+  );
+}
+
+function Style() {
+  return (
+    <style>
+      {`
+        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+        .bl-transcript * { font-family: 'League Spartan', sans-serif; }
+
+        .bl-transcript-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 16px;
+          flex-wrap: wrap;
+          padding-bottom: 16px;
+          border-bottom: 1px solid ${BL_BORDER};
+          margin-bottom: 16px;
+        }
+        .bl-transcript-title {
+          font-size: 24px;
+          font-weight: 400;
+          color: ${BL_NAVY};
+          margin: 0;
+          line-height: 1.2;
+          letter-spacing: -0.01em;
+        }
+        .bl-transcript-sub {
+          font-size: 14px;
+          color: ${BL_MUTED};
+          margin: 4px 0 0;
+        }
+
+        .bl-transcript-table-wrap {
+          width: 100%;
+          overflow-x: auto;
+        }
+        .bl-transcript-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 14px;
+          table-layout: auto;
+        }
+        .bl-transcript-table thead th {
+          text-align: left;
+          padding: 8px 14px 12px;
+          font-weight: 600;
+          font-size: 11px;
+          color: ${BL_MUTED};
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          border-bottom: 1px solid ${BL_BORDER};
+          white-space: nowrap;
+          vertical-align: bottom;
+        }
+        .bl-transcript-table tbody td {
+          padding: 14px;
+          border-bottom: 1px solid ${BL_BORDER_SOFT};
+          vertical-align: top;
+          color: ${BL_NAVY};
+          line-height: 1.6;
+        }
+        .bl-transcript-table tbody tr:last-child td {
+          border-bottom: none;
+        }
+        .bl-transcript-th-time,
+        .bl-transcript-td-time {
+          width: 72px;
+          white-space: nowrap;
+        }
+        .bl-transcript-td-time {
+          font-weight: 600;
+          color: ${BL_PERIWINKLE};
+          font-size: 13px;
+          letter-spacing: -0.01em;
+        }
+        .bl-transcript-dash {
+          color: ${BL_MUTED};
+          opacity: 0.6;
+        }
+
+        .bl-transcript-raw {
+          font-family: 'League Spartan', sans-serif;
+          font-size: 14px;
+          line-height: 1.7;
+          color: ${BL_NAVY};
+          white-space: pre-wrap;
+          word-wrap: break-word;
+          margin: 0;
+        }
+
+        .bl-transcript-empty {
+          padding: 24px 0;
+          color: ${BL_MUTED};
+          font-size: 14px;
+        }
+      `}
+    </style>
+  );
+}
