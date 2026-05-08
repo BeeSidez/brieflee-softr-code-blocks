@@ -8,6 +8,10 @@ Last updated: 2026-05-06
 
 ## What's shipped
 
+### Cleanup ✅ done
+
+14 cannibalizing pages drafted to fix Google cannibalization. See `Brieflee/SEO/brieflee.co_cannibalization.xls` for the source data. Drafted pages: Video Analysis AI, Video Analysis Software, Video Analysis App, Video Analysis Tool, AI Video Checker, AI Tools for Content Creators, AI Content Moderation, AI Ad Video Checker, AI UGC Video Checker, AI TikTok Ads Video Checker, AI YouTube Shorts Ads Video Checker, AI Influencer Video Checker, Brieflee vs Dropbox, Brieflee vs Google Drive, Brieflee vs WeTransfer.
+
 ### `/free-tool-video-breakdown` ✅ blocks built
 
 Eight Vibe Coding blocks live in [`video-breakdown/`](./video-breakdown):
@@ -53,16 +57,22 @@ Eight Vibe Coding blocks live in [`video-breakdown/`](./video-breakdown):
 
 **Status:** not started. Needs same hero + Trojan-horse + supporting sections treatment.
 
-### 2. Platform-specific video analyser pages
+### 2. Platform-specific video analyser pages ✅ hero blocks built
 
-Split-offs of `/free-tool-video-breakdown` with the same backend but platform-specific SEO targeting. We already rank top 10 for several of these without dedicated pages.
+Split-offs of `/free-tool-video-breakdown` with the same backend but platform-specific SEO targeting. All four hero blocks are in the repo, each writing to the same Tools table with their own `Page` value.
 
-- [ ] `/free-tool-tiktok-video-analyser` — "tiktok video analyzer free" (19 imp/mo, pos 6.5)
-- [ ] `/free-tool-instagram-reel-analyser` — "instagram video analyser" (50% CTR), "instagram video analysis tools/ai"
-- [ ] `/free-tool-youtube-shorts-analyser` — "youtube shorts checker", "yt shorts analyzer"
-- [ ] `/free-tool-facebook-ad-video-checker` — "facebook video checker" (already converting)
+- [x] `/free-tool-tiktok-video-analyser` — `tiktok-video-analyser/hero.jsx` — Page = TikTok Video Analyser
+- [x] `/free-tool-instagram-reel-analyser` — `instagram-reel-analyser/hero.jsx` — Page = Instagram Reel Analyser
+- [x] `/free-tool-youtube-shorts-analyser` — `youtube-shorts-analyser/hero.jsx` — Page = YouTube Shorts Analyser
+- [x] `/free-tool-facebook-ad-video-checker` — `facebook-ad-video-checker/hero.jsx` — Page = Facebook Ad Video Checker
 
-Each is the same hero block with platform-specific copy, pre-filtered URL validation, and a tighter feature list. Most of the work is reused.
+Each one uses single-platform URL validation, one floating logo (the relevant platform), and platform-specific copy. The supporting sections (what-you-get, how-it-works, comparison, faq, etc.) from `video-breakdown/` can be reused as-is on each platform page if you want depth, or you can ship them hero-only first.
+
+**Bev still needs to (in Softr UI):**
+- [ ] Create the 4 new pages on the Brieflee Softr app at the URLs above
+- [ ] Paste each `hero.jsx` into a Vibe Coding block on its page
+- [ ] Source tab → Tools table; Actions tab → enable Add Record
+- [ ] Publish
 
 ### 3. UGC creator finding guide
 
