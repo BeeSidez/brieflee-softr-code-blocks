@@ -8,9 +8,15 @@ Last updated: 2026-05-06
 
 ## What's shipped
 
-### Cleanup ✅ done
+### Cleanup ✅ in progress
 
-14 cannibalizing pages drafted to fix Google cannibalization. See `Brieflee/SEO/brieflee.co_cannibalization.xls` for the source data. Drafted pages: Video Analysis AI, Video Analysis Software, Video Analysis App, Video Analysis Tool, AI Video Checker, AI Tools for Content Creators, AI Content Moderation, AI Ad Video Checker, AI UGC Video Checker, AI TikTok Ads Video Checker, AI YouTube Shorts Ads Video Checker, AI Influencer Video Checker, Brieflee vs Dropbox, Brieflee vs Google Drive, Brieflee vs WeTransfer.
+Drafting cannibalising pages so the new dedicated pages can rank cleanly. See `Brieflee/SEO/brieflee.co_cannibalization.xls` for the source data.
+
+**Round 1 (done):** Video Analysis AI, Video Analysis Software, Video Analysis App, Video Analysis Tool, AI Video Checker, AI Tools for Content Creators, AI Content Moderation, AI Ad Video Checker, AI UGC Video Checker, AI TikTok Ads Video Checker, AI YouTube Shorts Ads Video Checker, AI Influencer Video Checker, Brieflee vs Dropbox, Brieflee vs Google Drive, Brieflee vs WeTransfer.
+
+**Round 2 (added after building the platform-specific analyser pages):**
+- [ ] `AI Facebook Ads Video Checker` — cannibalises the new `/free-tool-facebook-ad-video-checker`
+- [ ] `Check Video Quality` — generic page that overlaps with all 4 new platform analyser pages
 
 ### `/free-tool-video-breakdown` ✅ blocks built
 
