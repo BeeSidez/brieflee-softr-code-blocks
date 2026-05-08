@@ -46,24 +46,40 @@ const HERO_ASSET = {
   alt: "Brieflee analysing a TikTok video frame by frame",
 };
 
-// ----- Single floating logo (TikTok) -----
+// ----- Floating logos: 3 TikTok + 2 upload, varied angles, some flipped -----
 const LOGO_BASE = "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_";
+const TIKTOK_LOGO = `${LOGO_BASE}tiktok-logo-3d-transparent_2026-05.png`;
+const UPLOAD_LOGO = `${LOGO_BASE}upload-cloud-3d-transparent_2026-05.png`;
 const FLOATING_LOGOS = [
   {
-    src: `${LOGO_BASE}tiktok-logo-3d-transparent_2026-05.png`,
-    alt: "TikTok",
-    desktop: { top: "-8%",  right: "-6%",  size: 120, rotate: 12 },
-    mobile:  { top: "-4%",  right: "-3%",  size: 72,  rotate: 12 },
-    delay: 0,
-    reverse: false,
+    src: TIKTOK_LOGO, alt: "TikTok",
+    desktop: { top: "-10%", right: "-8%",  size: 110, rotate: 12 },
+    mobile:  { top: "-5%",  right: "-4%",  size: 64,  rotate: 12 },
+    delay: 0,    reverse: false, flipX: false,
   },
   {
-    src: `${LOGO_BASE}upload-cloud-3d-transparent_2026-05.png`,
-    alt: "Upload",
-    desktop: { bottom: "-6%", left: "-8%", size: 90, rotate: -10 },
-    mobile:  { bottom: "-3%", left: "-3%", size: 56, rotate: -10 },
-    delay: 0.6,
-    reverse: true,
+    src: UPLOAD_LOGO, alt: "Upload",
+    desktop: { top: "38%",  right: "-14%", size: 78,  rotate: 6 },
+    mobile:  { top: "40%",  right: "-7%",  size: 46,  rotate: 6 },
+    delay: 0.5,  reverse: true,  flipX: true,
+  },
+  {
+    src: TIKTOK_LOGO, alt: "TikTok",
+    desktop: { bottom: "-4%", right: "0%",  size: 92,  rotate: -14 },
+    mobile:  { bottom: "-2%", right: "0%",  size: 54,  rotate: -14 },
+    delay: 1.0,  reverse: false, flipX: true,
+  },
+  {
+    src: UPLOAD_LOGO, alt: "Upload",
+    desktop: { bottom: "12%", left: "-12%", size: 72,  rotate: -8 },
+    mobile:  { bottom: "8%",  left: "-5%",  size: 42,  rotate: -8 },
+    delay: 0.3,  reverse: true,  flipX: false,
+  },
+  {
+    src: TIKTOK_LOGO, alt: "TikTok",
+    desktop: { top: "8%",   left: "-10%",  size: 88,  rotate: 18 },
+    mobile:  { top: "4%",   left: "-5%",   size: 52,  rotate: 18 },
+    delay: 0.8,  reverse: false, flipX: true,
   },
 ];
 
@@ -134,7 +150,7 @@ function FloatingLogo({ logo, isDesktop }) {
         right: dims.right ?? "auto",
         width: dims.size,
         height: dims.size,
-        transform: `rotate(${dims.rotate}deg)`,
+        transform: `rotate(${dims.rotate}deg)${logo.flipX ? " scaleX(-1)" : ""}`,
         animation: `briefleeHeroFloatY 7s ease-in-out ${logo.delay}s infinite ${
           logo.reverse ? "alternate-reverse" : "alternate"
         }`,
