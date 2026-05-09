@@ -109,9 +109,6 @@ export default function Block() {
                         <div className="flex flex-wrap gap-3 justify-center max-w-xs">
                           {[
                             "tiktok-logo-3d-transparent",
-                            "instagram-logo-3d-transparent",
-                            "youtube-shorts-logo-3d-transparent",
-                            "facebook-logo-3d-transparent",
                             "upload-cloud-3d-transparent",
                           ].map((slug) => (
                             <img

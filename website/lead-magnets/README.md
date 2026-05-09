@@ -63,21 +63,34 @@ Eight Vibe Coding blocks live in [`video-breakdown/`](./video-breakdown):
 
 **Status:** not started. Needs same hero + Trojan-horse + supporting sections treatment.
 
-### 2. Platform-specific video analyser pages ✅ hero blocks built
+### 2. Platform-specific video analyser pages ✅ hero + key sections built
 
-Split-offs of `/free-tool-video-breakdown` with the same backend but platform-specific SEO targeting. All four hero blocks are in the repo, each writing to the same Tools table with their own `Page` value.
+Split-offs of `/free-tool-video-breakdown` with the same backend but platform-specific SEO targeting. Each hero writes to the same Tools table with its own `Page` value.
 
-- [x] `/free-tool-tiktok-video-analyser` — `tiktok-video-analyser/hero.jsx` — Page = TikTok Video Analyser
-- [x] `/free-tool-instagram-reel-analyser` — `instagram-reel-analyser/hero.jsx` — Page = Instagram Reel Analyser
-- [x] `/free-tool-youtube-shorts-analyser` — `youtube-shorts-analyser/hero.jsx` — Page = YouTube Shorts Analyser
-- [x] `/free-tool-facebook-ad-video-checker` — `facebook-ad-video-checker/hero.jsx` — Page = Facebook Ad Video Checker
+- [x] `/free-tool-tiktok-video-analyser` — Page = TikTok Video Analyser
+- [x] `/free-tool-instagram-reel-analyser` — Page = Instagram Reel Analyser
+- [x] `/free-tool-youtube-shorts-analyser` — Page = YouTube Shorts Analyser
+- [x] `/free-tool-facebook-ad-video-checker` — Page = Facebook Ad Video Checker
 
-Each one uses single-platform URL validation, one floating logo (the relevant platform), and platform-specific copy. The supporting sections (what-you-get, how-it-works, comparison, faq, etc.) from `video-breakdown/` can be reused as-is on each platform page if you want depth, or you can ship them hero-only first.
+#### What's in each platform folder (and what to paste from where)
+
+Each platform folder contains **only the files that meaningfully differ from the video-breakdown originals.** The other sections are pasted from `video-breakdown/` because nothing platform-specific changes about them.
+
+| Block | Where to paste from | Why |
+|---|---|---|
+| Hero | `<platform>/hero.jsx` | Fully platform-specific (URL validator, single logo, headline, typing words, page value) |
+| What you get | `<platform>/what-you-get.jsx` | Multiple copy substitutions (TikTok / Reel / Short / Facebook ad) |
+| How it works | `<platform>/how-it-works.jsx` | Step 1 shows only that platform's logo + upload, copy mentions one platform |
+| Final CTA | `<platform>/final-cta.jsx` | Logo strip is one platform + upload, headline mentions the platform |
+| FAQ | `<platform>/faq.jsx` | Most Qs and answers reference the specific platform |
+| Frame by frame | `video-breakdown/frame-by-frame.jsx` | Same content works for any platform |
+| Comparison table | `video-breakdown/comparison.jsx` | Same competitors regardless of platform |
+| Who uses it | `video-breakdown/who-uses-it.jsx` | Same personas regardless of platform |
 
 **Bev still needs to (in Softr UI):**
 - [ ] Create the 4 new pages on the Brieflee Softr app at the URLs above
-- [ ] Paste each `hero.jsx` into a Vibe Coding block on its page
-- [ ] Source tab → Tools table; Actions tab → enable Add Record
+- [ ] Paste each block on its page using the table above
+- [ ] Hero block: Source tab → Tools table; Actions tab → enable Add Record
 - [ ] Publish
 
 ### 3. UGC creator finding guide

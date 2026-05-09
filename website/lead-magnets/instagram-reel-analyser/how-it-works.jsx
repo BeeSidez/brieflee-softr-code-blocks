@@ -108,10 +108,7 @@ export default function Block() {
                       <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/[0.04] aspect-[4/3] grid place-items-center p-6">
                         <div className="flex flex-wrap gap-3 justify-center max-w-xs">
                           {[
-                            "tiktok-logo-3d-transparent",
                             "instagram-logo-3d-transparent",
-                            "youtube-shorts-logo-3d-transparent",
-                            "facebook-logo-3d-transparent",
                             "upload-cloud-3d-transparent",
                           ].map((slug) => (
                             <img
