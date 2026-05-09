@@ -105,21 +105,25 @@ export default function Block() {
                       </div>
                     ) : (
                       // Step 1: visual placeholder showing platform icons
-                      <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/[0.04] aspect-[4/3] grid place-items-center p-6">
-                        <div className="flex flex-wrap gap-3 justify-center max-w-xs">
-                          {[
-                            "instagram-logo-3d-transparent",
-                            "upload-cloud-3d-transparent",
-                          ].map((slug) => (
-                            <img
-                              key={slug}
-                              src={`https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_${slug}_2026-05.png`}
-                              alt=""
-                              className="h-14 w-14 md:h-16 md:w-16 object-contain"
-                              draggable={false}
-                              loading="lazy"
-                            />
-                          ))}
+                      <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/[0.04] aspect-[4/3] grid place-items-center p-6 overflow-hidden">
+                        <div className="flex items-center justify-center gap-6 md:gap-10">
+                          <img
+                            src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_instagram-logo-3d-transparent_2026-05.png"
+                            alt="Instagram"
+                            className="h-32 w-32 md:h-44 md:w-44 object-contain"
+                            draggable={false}
+                            loading="lazy"
+                            style={{ transform: "rotate(-6deg)", filter: "drop-shadow(0 16px 32px hsl(var(--primary) / 0.30))" }}
+                          />
+                          <span className="text-3xl md:text-4xl font-bold text-primary/40 select-none">+</span>
+                          <img
+                            src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_upload-cloud-3d-transparent_2026-05.png"
+                            alt="Upload"
+                            className="h-20 w-20 md:h-28 md:w-28 object-contain"
+                            draggable={false}
+                            loading="lazy"
+                            style={{ transform: "rotate(8deg)", filter: "drop-shadow(0 12px 24px hsl(var(--primary) / 0.25))" }}
+                          />
                         </div>
                       </div>
                     )}
