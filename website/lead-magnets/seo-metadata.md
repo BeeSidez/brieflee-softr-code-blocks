@@ -1,10 +1,13 @@
-# Lead magnet pages — SEO + social metadata
+# Lead magnet pages — page names + SEO + social metadata
 
-Copy-paste each block into the page's SEO settings in Softr. SEO titles are kept under 60 chars, descriptions under 160 chars, no em dashes anywhere.
+Copy-paste each block into the page's settings in Softr. SEO titles under 60 chars, descriptions under 160 chars, no em dashes anywhere.
 
 ---
 
-## /free-tool-video-breakdown
+## Video Breakdown
+
+**Page name** (Softr internal): `Free Tool | Video Breakdown`
+**URL**: `/free-tool-video-breakdown`
 
 **SEO Title** *(58 chars)*
 Free Video Breakdown Tool | AI Hook + CTA Score | Brieflee
@@ -20,7 +23,10 @@ Paste a URL or upload a file. Get a frame-by-frame AI breakdown in 60 seconds. H
 
 ---
 
-## /free-tool-tiktok-video-analyser
+## TikTok Video Analyser
+
+**Page name** (Softr internal): `Free Tool | TikTok Video Analyser`
+**URL**: `/free-tool-tiktok-video-analyser`
 
 **SEO Title** *(57 chars)*
 Free TikTok Video Analyser | AI Frame-by-Frame | Brieflee
@@ -36,7 +42,10 @@ Paste a TikTok URL. Get a frame-by-frame AI breakdown in 60 seconds. Hook, struc
 
 ---
 
-## /free-tool-instagram-reel-analyser
+## Instagram Reel Analyser
+
+**Page name** (Softr internal): `Free Tool | Instagram Reel Analyser`
+**URL**: `/free-tool-instagram-reel-analyser`
 
 **SEO Title** *(60 chars)*
 Free Instagram Reel Analyser | AI Hook + CTA Score | Brieflee
@@ -52,7 +61,10 @@ Paste an Instagram Reel URL. Get a frame-by-frame AI breakdown in 60 seconds. Ho
 
 ---
 
-## /free-tool-youtube-shorts-analyser
+## YouTube Shorts Analyser
+
+**Page name** (Softr internal): `Free Tool | YouTube Shorts Analyser`
+**URL**: `/free-tool-youtube-shorts-analyser`
 
 **SEO Title** *(59 chars)*
 Free YouTube Shorts Analyser | AI Hook + CTA Score | Brieflee
@@ -68,7 +80,10 @@ Paste a YouTube Short URL. Get a frame-by-frame AI breakdown in 60 seconds. Hook
 
 ---
 
-## /free-tool-facebook-ad-video-checker
+## Facebook Ad Video Checker
+
+**Page name** (Softr internal): `Free Tool | Facebook Ad Video Checker`
+**URL**: `/free-tool-facebook-ad-video-checker`
 
 **SEO Title** *(58 chars)*
 Free Facebook Ad Video Checker | AI Score in 60s | Brieflee
@@ -84,7 +99,10 @@ Paste a Facebook video URL. Get a frame-by-frame AI check in 60 seconds. Hook, s
 
 ---
 
-## /free-tool-ai-brief-generator
+## AI Brief Generator
+
+**Page name** (Softr internal): `Free Tool | AI Brief Generator`
+**URL**: `/free-tool-ai-brief-generator`
 
 **SEO Title** *(58 chars)*
 Free AI Brief Generator | Creator Briefs in 60s | Brieflee
