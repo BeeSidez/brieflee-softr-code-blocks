@@ -52,16 +52,30 @@ Eight Vibe Coding blocks live in [`video-breakdown/`](./video-breakdown):
 
 ## What's next (priority order)
 
-### 1. `/ai-brief-generator` — highest-leverage new build
+### 1. `/free-tool-ai-brief-generator` ✅ hero + key sections built
 
 **SEO bet:** biggest under-served keyword cluster on-segment.
-- "ai creative brief to video" (16 imp/mo, pos 16) — already showing impressions with no real page
+- "ai creative brief to video" (16 imp/mo, pos 16)
 - "how to brief ugc creators" (17 imp/mo, pos 37)
-- "ugc brief", "ugc creator brief", "ugc content brief template" (small but on-intent)
+- "ugc brief", "ugc creator brief", "ugc content brief template"
 
-**Why now:** strongest direct match for the B1 DTC marketer + A agency segments. Natural exit ramp from Video Breakdown ("you analysed a winning ad — now generate a brief from it").
+Files in [`brief-generator/`](./brief-generator):
+- `hero.jsx` — form (3 fields) OR URL paste, fake-loading, "your brief is queued" email gate
+- `what-you-get.jsx` — what's IN the generated brief (hook, scenes, CTA, etc.)
+- `how-it-works.jsx` — 3-step explainer (tell us / AI writes / get brief)
+- `faq.jsx` — 8 brief-specific PAA-targeted questions
+- `final-cta.jsx` — scroll-to-top CTA bookend
 
-**Status:** not started. Needs same hero + Trojan-horse + supporting sections treatment.
+Email campaign drafted in `Brieflee/emails/leadmag-brief-generator/` (5 emails over 30 days using the playbook skeleton).
+
+**Bev still needs to (in Softr UI):**
+- [ ] Create the page on Softr at `/free-tool-ai-brief-generator`
+- [ ] Paste each block into a Vibe Coding block on the page
+- [ ] Hero block: Source tab → Tools table; Actions tab → enable Add Record (aliases auto-populate)
+- [ ] Publish
+
+**Outstanding work** (separate future task, flagged in the email strategy):
+- [ ] Build the post-signup workflow that reads new Tools rows with `Page = Brief Generator`, calls the AI generator, and writes the result into the main app's Briefs table
 
 ### 2. Platform-specific video analyser pages ✅ hero + key sections built
 
