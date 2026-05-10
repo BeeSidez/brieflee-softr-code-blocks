@@ -113,7 +113,7 @@ const FLOATING_LOGOS = [
   },
 ];
 
-const SIGNUP_URL = "https://www.brieflee.co/sign-up";
+const SIGNUP_URL = "https://www.brieflee.co/signup";
 const LOGIN_URL = "https://www.brieflee.co/login";
 
 const TYPING_WORDS = ["TikTok", "Instagram Reel", "YouTube Short", "Facebook Reel", "Video file"];

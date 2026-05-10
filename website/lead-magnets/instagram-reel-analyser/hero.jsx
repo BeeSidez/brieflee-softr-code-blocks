@@ -78,7 +78,7 @@ const FLOATING_LOGOS = [
 const BRIEFLEE_EYES =
   "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_sticker-blue-cartoon-eyes-looking-side-navy_2026-03.png";
 
-const SIGNUP_URL = "https://www.brieflee.co/sign-up";
+const SIGNUP_URL = "https://www.brieflee.co/signup";
 const LOGIN_URL = "https://www.brieflee.co/login";
 
 const TYPING_WORDS = ["Instagram Reel", "Reel", "Instagram ad", "Branded Reel", "IG video"];
