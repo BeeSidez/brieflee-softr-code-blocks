@@ -493,6 +493,156 @@ Use Tailwind responsive prefixes (`sm:`, `md:`, `lg:`). Vibe blocks must work on
 
 ---
 
+## Adapting design-canvas mockups (1920×1080 fixed-pixel JSX) to Softr blocks
+
+Bev sometimes hands over a JSX/HTML "design canvas" — a mockup file (often called `heroes.jsx`, `hero-v2.html`, etc.) drawn at a fixed 1920×1080 desktop frame, with everything `position: absolute` at exact pixel coordinates and font-sizes like `124px` for headlines. Foreplay/Frame.io style design comps. They look gorgeous in the design preview but they are **not** drop-in Softr blocks. Adapt them — don't paste them as-is.
+
+**When you see a fixed-canvas mockup, automatically apply these adaptations without being asked:**
+
+### 1. Strip the navigation bar
+
+Softr provides the page chrome (logo, nav, login, CTA). Mockup nav bars are decoration only. Delete the entire `<Nav />` (or equivalent) component before porting.
+
+### 2. Don't size the canvas with `aspect-ratio: 16/9`
+
+The mockup is 1920×1080 (16:9). If you wrap it in `aspect-ratio: 16 / 9` and let it fill viewport width, the hero will be **taller than the viewport** on every realistic laptop:
+
+| Viewport | aspect-ratio: 16/9 hero | Available viewport (after Softr nav + browser chrome) | Fits? |
+|---|---|---|---|
+| 1920×1080 | 1080px tall | ~900–980px | **No, scrolls** |
+| 1440×900 | 810px tall | ~780–820px | **Barely** |
+| 1280×720 | 720px tall | ~600–680px | **No, scrolls** |
+
+**Use viewport-height sizing instead** so the canvas always fits ONE screen:
+
+```jsx
+<div ref={outerRef} style={{
+  width: "100%",
+  height: "100vh",     // hero fills the viewport vertically
+  minHeight: 560,      // floor for very short windows
+  maxHeight: 920,      // ceiling so 4K / portrait monitors don't go giant
+  position: "relative",
+  overflow: "hidden",
+}}>
+  <div ref={innerRef} style={{ width: 1920, height: 1080, transformOrigin: "top left" }}>
+    {/* canvas content */}
+  </div>
+</div>
+```
+
+The JS scaler picks `Math.min(w/1920, h/1080)` so the 1920×1080 canvas fits BOTH dimensions of whatever container you give it. Letterboxes gracefully on extreme aspect ratios.
+
+### 3. Centre absolute-positioned chips/badges with `translate(-50%, -50%)`
+
+Mockups commonly do `position: absolute; left: <x>; top: <y>` to place floating chips around a hero card. The `left/top` values position the chip's **top-left corner**, not its centre. With chips having natural width (~150–180px), this means:
+
+- Left-side chips' RIGHT edges visually overlap the hero card area → they look "close to" the card
+- Right-side chips' LEFT edges start AFTER the hero card edge → they look "far from" the card (asymmetric, detached)
+
+**Fix:** wrap each chip in a positioning div that centres it on the offset point:
+
+```jsx
+{chips.map((c, i) => (
+  // Outer wrapper: centres the chip on (cx, cy) so left/right are symmetric
+  <div key={i} style={{
+    position: "absolute", left: cx, top: cy,
+    transform: "translate(-50%, -50%)",
+  }}>
+    {/* Inner wrapper holds the float/entry animations so they don't fight the centring transform */}
+    <div style={{ animation: `chipIn 0.6s both, chipFloat 4s ease-in-out infinite` }}>
+      <div className="bl-glass">{/* chip visual */}</div>
+    </div>
+  </div>
+))}
+```
+
+If the chip animations also use `transform`, nest them in an inner div so the outer's centring transform isn't overridden mid-animation.
+
+### 4. Add real responsive tiers — don't rely on the JS scaler alone
+
+The JS scaler keeps the canvas LOOKING right at any viewport, but at narrow widths everything just gets tiny. Real responsive design needs **at least two layouts**:
+
+```jsx
+return (
+  <>
+    {/* Desktop + tablet (md+, ≥768px) — full canvas with floating chips, peek cards, etc. */}
+    <div className="hidden md:block">
+      <DesktopCanvas {...sharedProps} />
+    </div>
+    {/* Mobile (<md, <768px) — stacked Tailwind layout, simplified */}
+    <div className="md:hidden">
+      <MobileStacked {...sharedProps} />
+    </div>
+  </>
+);
+```
+
+Lift fetched data + cycle/animation state into the parent so both layouts share state and only one renders at a time. The desktop canvas naturally scales down to tablet (768px) via the JS scaler — keep peek cards + floating chips on tablet, strip them on mobile only.
+
+**Picking the breakpoint:**
+
+- `md:` (768px+) for the canvas if the layout has rich floating elements that survive at half-scale (HeroV1 with peek cards + 4 chips)
+- `lg:` (1024px+) if the design is too dense for tablet and needs a tablet-specific simpler version
+- Don't use `sm:` — the canvas at <640px renders chips at ~5px font
+
+### 5. Clip rounded cards with `clipPath`, not just `overflow: hidden`
+
+Mockups use `borderRadius: 28; overflow: hidden` on cards. In Softr's render environment (or any browser with a parent CSS transform animating the card), the rounded clip can fail intermittently — corners show as square. Belt-and-braces fix:
+
+```jsx
+<div style={{
+  borderRadius: 48,
+  clipPath: "inset(0 round 48px)",   // ← bulletproof clip; works through transform contexts
+  isolation: "isolate",              // ← forces a new stacking context
+  overflow: "hidden",
+}}>
+  <video style={{ position: "absolute", inset: 0, ... }} />
+</div>
+```
+
+`clipPath: inset(0 round Npx)` is the only one of the three that's reliable when a parent has `transform` (typical for card-entry / cycle animations). Bump the radius up too — at scaled-down sizes a `borderRadius: 28` becomes ~14px on screen and reads as nearly-square.
+
+### 6. Inner-content padding scales with the canvas
+
+Mockup positions like `left: 80` mean **80px on a 1920px canvas**. At a 1024px viewport, the JS scaler renders that as `80 × (1024/1920) = 43px` of physical padding. Tight for big headlines.
+
+Rule of thumb: for content that needs visual breathing room from the screen edge, position at `left: 160` minimum on the canvas. That guarantees ~85px of physical padding even at the smallest desktop viewport (1024px).
+
+### 7. Lead-magnet CTA flow drops in cleanly
+
+If the homepage hero needs the same paste-URL-then-email-capture flow as the lead-magnet pages, port the entire 3-step flow (`hero` → `loading` → `email`) from `/website/lead-magnets/video-breakdown/hero.jsx` and reuse `createFields`, `PLATFORM_BRIEFLEE`, `PAGE_VIDEO_BREAKDOWN`. Don't rebuild it from scratch — the validation, upload, write-to-Tools, and signup-redirect logic is already production-tested.
+
+### 8. Reading from one table while writing to another in the same block
+
+If the block reads from one table (e.g. `Video Formats` for a cycler) and writes to another (e.g. `Tools` for lead capture), declare both selects with explicit field IDs:
+
+```jsx
+const readSelect = q.select({ caption: "RLkzt", videoUrl: "e4FOk", ... });   // Video Formats
+const createFields = q.select({ email: "65Dkd", page: "o55YI", ... });        // Tools
+
+// useRecords reads from the Source-tab table; field IDs in the select route correctly
+const { data } = useRecords({ select: readSelect, count: 200 });
+// useRecordCreate writes to whatever table the field IDs belong to
+const create = useRecordCreate({ fields: createFields });
+```
+
+Set the Source tab to the table you're READING from. The write goes through `useRecordCreate` with explicit field IDs — those IDs identify the target table.
+
+### Summary checklist for a design-canvas adaptation
+
+- [ ] Strip the mockup's nav bar
+- [ ] Replace `aspect-ratio` on the canvas wrapper with `height: 100vh` (capped via min/max)
+- [ ] Centre all `position: absolute` chips with `transform: translate(-50%, -50%)` on a wrapper div
+- [ ] Add at least two responsive tiers (desktop canvas + mobile stacked, lifted state)
+- [ ] Use `clipPath: inset(0 round Npx)` + `isolation: isolate` on rounded video/image cards
+- [ ] Bump inner-content padding from 80 → 160+ on the canvas so text doesn't hit the screen edge
+- [ ] Keep the headline picker / debug-only UI out of the production block (but preserve in the design file)
+- [ ] If the design needs lead capture, copy the video-breakdown CTA flow verbatim — don't rebuild
+
+**Why this matters:** Bev has run this exact loop multiple times and each missed step costs an iteration. If a design-canvas mockup hits this skill, **apply all eight rules without waiting to be asked.**
+
+---
+
 ## HTML format: when to use, what it looks like
 
 For purely visual blocks with no data, a plain HTML file works in a vibe block. The structure is a complete standalone HTML document:
