@@ -1,0 +1,575 @@
+// =====================================================================
+// Vibe Coding block: Homepage · Before / After Brieflee
+// =====================================================================
+// Sits below the hero on the homepage. Foreplay-style two-card section.
+//
+// Design rules locked in this block (apply to ALL future marketing
+// blocks unless explicitly overridden):
+//   - Section heading h2: text-3xl md:text-4xl lg:text-5xl font-bold
+//     tracking-tight leading-[1.1] (matches lead-magnet faq.jsx)
+//   - font-weight 700 max for body sections. NEVER 800 outside the hero.
+//   - Eyebrow: copy of the hero's Eyebrow component (peri-tinted pill,
+//     14px, navy text, 8px dot with peri ring) — verbatim.
+//   - Section background: HERO_BG (cloud-in-the-middle radial gradient,
+//     same one the hero uses) — section-to-section continuity.
+//   - Plus Jakarta Sans font-family explicit on the section root.
+//   - bl-glass class for any glass surface (matches hero floating chips).
+//
+// SOFTR UI SETUP (one-time):
+//   1. Source tab → none required (purely visual block).
+//   2. Visibility tab → public.
+// =====================================================================
+
+const NAVY = "#001364";
+const PERI = "#879CF7";
+
+// Same gradient the hero uses — soft periwinkle cloud on a #FAFBFF base
+// (#FAFBFF matches the Softr nav colour so there's no seam between
+// blocks).
+const HERO_BG =
+  "radial-gradient(ellipse 65% 50% at 50% 50%, rgba(135,156,247,0.28) 0%, rgba(180,192,245,0.14) 40%, rgba(180,192,245,0) 75%), #FAFBFF";
+
+// ----- Asset URLs -----
+const APP_ICON = (slug) =>
+  `https://res.cloudinary.com/dchroynzv/image/upload/brieflee_app-icon_${slug}-transparent_2026-05.png`;
+const PORTRAIT_SRC =
+  "https://res.cloudinary.com/dchroynzv/image/upload/v1778618704/brieflee_feature-card_creator-still-black-woman-grey-set-apartment-transparent_2026-05.png";
+const USER_PHOTOS = {
+  man:   "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_user-photo_man-moustache-cap-hoodie_2026-05.png",
+  woman: "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_user-photo_woman-yellow-sweater-smiling_2026-05.png",
+};
+
+// ----- Before card · 18-item pile, batched drops -----
+// Foreplay-style stratification: messages at the BOTTOM (foreground),
+// app icons piled on TOP. Items fall in 6 batches of varied sizes
+// (3 / 1 / 4 / 2 / 3 / 5) instead of one continuous waterfall, so it
+// reads as a natural cascade — some hit together, some land alone.
+// Bottom items fall first (and form the pile floor); top items fall
+// last (and pile on top). DOM order = z-order, so later items render
+// on top of earlier ones — no extra z-index needed.
+const FALLING = [
+  // ─ BATCH 1 · t=0.00s — 3 items hit together, bottom-most layer ─
+  { type: "comment", label: "They forgot to mention the date the offer ends",
+    avatar: USER_PHOTOS.man,                              finalLeft: "4%",  finalBottom: "1%",  finalRot: -3,  delay: 0.00 },
+  { type: "comment", label: "I like the concept but something feels off 🤔",
+    avatar: USER_PHOTOS.woman,                            finalLeft: "44%", finalBottom: "3%",  finalRot: 2,   delay: 0.05 },
+  { type: "pill", icon: "crop", label: "Screenshots",     finalLeft: "78%", finalBottom: "1%",  finalRot: 5,   delay: 0.10 },
+
+  // ─ BATCH 2 · t=0.45s — 1 item alone ──────────────────────────
+  { type: "pill", icon: "play", label: "Video Recording", finalLeft: "8%",  finalBottom: "11%", finalRot: -5,  delay: 0.45 },
+
+  // ─ BATCH 3 · t=0.80s — 4 items together ─────────────────────
+  { type: "pill", icon: "infinity", label: "Endless Slack channels",
+                                                          finalLeft: "30%", finalBottom: "12%", finalRot: 4,   delay: 0.80 },
+  { type: "pill", icon: "broken", label: "Broken Links",  finalLeft: "60%", finalBottom: "13%", finalRot: -3,  delay: 0.85 },
+  { type: "rec",                                          finalLeft: "85%", finalBottom: "11%", finalRot: -10, delay: 0.90 },
+  { type: "folder", label: "Ad Insp...",                  finalLeft: "16%", finalBottom: "19%", finalRot: 6,   delay: 0.95 },
+
+  // ─ BATCH 4 · t=1.30s — 2 items together, mid layer ──────────
+  { type: "app", src: APP_ICON("dropbox"),        size: 50, finalLeft: "44%", finalBottom: "19%", finalRot: -8, delay: 1.30 },
+  { type: "app", src: APP_ICON("notion"),         size: 55, finalLeft: "70%", finalBottom: "20%", finalRot: 5,  delay: 1.35 },
+
+  // ─ BATCH 5 · t=1.65s — 3 items together, mid-upper ──────────
+  { type: "app", src: APP_ICON("microsoft-word"), size: 50, finalLeft: "8%",  finalBottom: "24%", finalRot: 7,  delay: 1.65 },
+  { type: "app", src: APP_ICON("airtable"),       size: 60, finalLeft: "32%", finalBottom: "23%", finalRot: -5, delay: 1.70 },
+  { type: "app", src: APP_ICON("frame-io"),       size: 56, finalLeft: "60%", finalBottom: "24%", finalRot: 4,  delay: 1.75 },
+
+  // ─ BATCH 6 · t=2.10s — 5 items, top of pile (biggest icons) ─
+  { type: "app", src: APP_ICON("instagram"),      size: 60, finalLeft: "20%", finalBottom: "28%", finalRot: -7, delay: 2.10 },
+  { type: "app", src: APP_ICON("slack"),          size: 70, finalLeft: "44%", finalBottom: "27%", finalRot: 6,  delay: 2.15 },
+  { type: "app", src: APP_ICON("tiktok"),         size: 65, finalLeft: "66%", finalBottom: "28%", finalRot: 10, delay: 2.20 },
+  { type: "app", src: APP_ICON("microsoft-excel"), size: 56, finalLeft: "86%", finalBottom: "27%", finalRot: -4, delay: 2.25 },
+  { type: "app", src: APP_ICON("canva"),          size: 50, finalLeft: "6%",  finalBottom: "30%", finalRot: -10, delay: 2.30 },
+];
+
+// ----- After card · 3 left + 3 right floating pills -----
+// Mirror the hero floating chips exactly. Both base + spread positions
+// live in CSS variables so the :hover rule actually applies (inline
+// `style={{ left: ... }}` would beat the cascade and break the
+// transition).
+const PILLS_LEFT = [
+  { l: "Visual hook",     v: "0.6s",  ok: true,
+    base: { left: "8%",  top: "8%"  }, spread: { left: "-2%",  top: "2%"  } },
+  { l: "Face time",       v: "58%",   ok: true,
+    base: { left: "6%",  top: "42%" }, spread: { left: "-4%",  top: "42%" } },
+  { l: "Product visible", v: "47%",   ok: true,
+    base: { left: "8%",  bottom: "10%" }, spread: { left: "-2%", bottom: "2%" } },
+];
+
+const PILLS_RIGHT = [
+  { l: "Audio clarity",   v: "94%",   ok: true,
+    base: { right: "8%",  top: "8%"  }, spread: { right: "-2%",  top: "2%"  } },
+  { l: "Brand mention",   v: "3×",    ok: true,
+    base: { right: "6%",  top: "42%" }, spread: { right: "-4%",  top: "42%" } },
+  { l: "CTA timing",      v: "Last 3s", ok: true,
+    base: { right: "8%",  bottom: "10%" }, spread: { right: "-2%", bottom: "2%" } },
+];
+
+// =====================================================================
+// Block
+// =====================================================================
+export default function Block() {
+  return (
+    <section
+      className="relative w-full py-16 md:py-24 px-5 md:px-10"
+      style={{
+        background: HERO_BG,
+        fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+      }}
+    >
+      <Keyframes />
+
+      {/* Section header — eyebrow + h2 + subhead */}
+      <div className="max-w-3xl mx-auto flex flex-col items-center text-center">
+        <Eyebrow>The Problem</Eyebrow>
+        <h2
+          className="mt-6 text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight leading-[1.1] text-balance"
+          style={{ color: NAVY }}
+        >
+          Why you need Brieflee to check
+          <br className="hidden sm:block" /> your video content
+        </h2>
+        <p
+          className="mt-5 text-base md:text-lg leading-relaxed max-w-2xl mx-auto font-medium"
+          style={{ color: NAVY, opacity: 0.7 }}
+        >
+          When you're creating multiple videos or managing multiple creators,
+          maintaining consistent quality standards is nearly impossible. Brieflee
+          checks every submission against the same standards automatically, so
+          nothing slips through.
+        </p>
+      </div>
+
+      {/* Two cards — side-by-side from sm (640px) so tablet doesn't stack */}
+      <div className="max-w-6xl mx-auto mt-12 md:mt-16 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
+        <BeforeCard />
+        <AfterCard />
+      </div>
+    </section>
+  );
+}
+
+// ─── Eyebrow (copied verbatim from hero) ─────────────────────────────
+function Eyebrow({ children }) {
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 18px",
+        background: "rgba(135,156,247,0.16)",
+        color: NAVY,
+        fontSize: 14,
+        fontWeight: 700,
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+        borderRadius: 999,
+        width: "fit-content",
+      }}
+    >
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: PERI, boxShadow: `0 0 0 3px ${PERI}33` }} />
+      {children}
+    </div>
+  );
+}
+
+// ─── Before card ─────────────────────────────────────────────────────
+function BeforeCard() {
+  return (
+    <div className="ba-card before-card">
+      <div className="card-head">
+        <div className="card-title">Before <span className="dots">…</span></div>
+        <div className="card-sub">Group chats, expired links and constant back-and-forth.</div>
+      </div>
+      <div className="pile">
+        {FALLING.map((item, i) => (
+          <FallingItem key={i} item={item} index={i} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FallingItem({ item, index }) {
+  const animName = `bl-drop-${index}`;
+  const finalRot = `${item.finalRot}deg`;
+  const startRot = `${item.finalRot - 22}deg`;
+  const overshootRot = `${item.finalRot + 5}deg`;
+  return (
+    <>
+      <style>{`
+        @keyframes ${animName} {
+          0%   { transform: translateY(-360px) rotate(${startRot}); opacity: 0; }
+          22%  { opacity: 1; }
+          70%  { transform: translateY(0)       rotate(${finalRot}); }
+          80%  { transform: translateY(-18px)   rotate(${overshootRot}); }
+          90%  { transform: translateY(0)       rotate(${finalRot}); }
+          96%  { transform: translateY(-5px)    rotate(${overshootRot}); }
+          100% { transform: translateY(0)       rotate(${finalRot}); }
+        }
+      `}</style>
+      <div
+        className={`falling-item ${item.type}`}
+        style={{
+          left: item.finalLeft,
+          bottom: item.finalBottom,
+          animation: `${animName} 1.4s ${item.delay}s cubic-bezier(.36,.07,.32,1) both`,
+        }}
+      >
+        {renderItem(item)}
+      </div>
+    </>
+  );
+}
+
+function renderItem(item) {
+  if (item.type === "app") {
+    return (
+      <div className="app-tile bl-glass" style={{ width: item.size, height: item.size }}>
+        <img src={item.src} alt="" draggable={false} style={{ width: item.size * 0.6, height: item.size * 0.6 }} />
+      </div>
+    );
+  }
+  if (item.type === "rec") {
+    return (
+      <div className="rec-pill bl-glass">
+        <span className="rec-dot" />
+        REC
+      </div>
+    );
+  }
+  if (item.type === "folder") {
+    return (
+      <div className="folder-card bl-glass">
+        <div className="folder-icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
+        <span>{item.label}</span>
+      </div>
+    );
+  }
+  if (item.type === "comment") {
+    return (
+      <div className="comment-pill bl-glass">
+        <img src={item.avatar} alt="" draggable={false} className="comment-avatar" />
+        <span>{item.label}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="text-pill bl-glass">
+      <PillIcon name={item.icon} />
+      <span>{item.label}</span>
+    </div>
+  );
+}
+
+function PillIcon({ name }) {
+  const common = { width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: NAVY, strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round" };
+  if (name === "crop") return (
+    <svg {...common}><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
+  );
+  if (name === "play") return (
+    <svg {...common} fill={PERI} stroke="none"><path d="M8 5v14l11-7z"/></svg>
+  );
+  if (name === "infinity") return (
+    <svg {...common}><path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.7-8-4.7 0-4.7 8 0 8 5.567 0 7.605-8 12.7-8z"/></svg>
+  );
+  if (name === "broken") return (
+    <svg {...common}><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 4 8"/><line x1="8" y1="12" x2="12" y2="12"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+  );
+  return null;
+}
+
+// ─── After card ──────────────────────────────────────────────────────
+function AfterCard() {
+  return (
+    <div className="ba-card after-card">
+      <div className="card-head">
+        <div className="card-title">After Brieflee</div>
+        <div className="card-sub">Instant quality scores, specific feedback, every video reviewed.</div>
+      </div>
+      <div className="portrait-zone">
+        <img
+          src={PORTRAIT_SRC}
+          alt="Creator on camera"
+          className="portrait"
+          draggable={false}
+        />
+        {PILLS_LEFT.map((p, i) => <FloatingPill key={`l-${i}`} pill={p} />)}
+        {PILLS_RIGHT.map((p, i) => <FloatingPill key={`r-${i}`} pill={p} />)}
+      </div>
+    </div>
+  );
+}
+
+function FloatingPill({ pill }) {
+  const okBg = pill.ok ? "#dcfce7" : "#fee2e2";
+  const okFg = pill.ok ? "#166534" : "#991b1b";
+  return (
+    <div
+      className="float-pill bl-glass"
+      style={{
+        "--base-left":     pill.base.left     ?? "auto",
+        "--base-right":    pill.base.right    ?? "auto",
+        "--base-top":      pill.base.top      ?? "auto",
+        "--base-bottom":   pill.base.bottom   ?? "auto",
+        "--spread-left":   pill.spread.left   ?? "auto",
+        "--spread-right":  pill.spread.right  ?? "auto",
+        "--spread-top":    pill.spread.top    ?? "auto",
+        "--spread-bottom": pill.spread.bottom ?? "auto",
+      }}
+    >
+      <div
+        style={{
+          width: 20, height: 20, borderRadius: 6,
+          background: okBg, color: okFg,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+          {pill.ok
+            ? <polyline points="20 6 9 17 4 12" />
+            : <path d="M18 6L6 18M6 6l12 12" />}
+        </svg>
+      </div>
+      <div>
+        <div style={{ fontSize: 8, color: NAVY, opacity: 0.55, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+          {pill.l}
+        </div>
+        <div style={{ fontSize: 13, color: NAVY, fontWeight: 700, letterSpacing: "-0.005em", lineHeight: 1.15 }}>
+          {pill.v}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Keyframes + shared CSS ──────────────────────────────────────────
+function Keyframes() {
+  return (
+    <style>{`
+      /* ─── Card outer ─────────────────────────────────────────── */
+      .ba-card {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 1 / 1.05;
+        background: transparent;
+        border: 1px solid rgba(135,156,247,0.20);
+        border-radius: 28px;
+        box-shadow:
+          0 1px 0 0 rgba(255,255,255,0.95) inset,
+          0 12px 32px -16px rgba(0,19,100,0.06);
+        overflow: hidden;
+      }
+      .card-head {
+        position: absolute;
+        top: 28px; left: 28px; right: 28px;
+        z-index: 5;
+      }
+      .card-title {
+        font-size: clamp(20px, 2.4vw, 26px);
+        font-weight: 700;
+        color: #001364;
+        letter-spacing: -0.015em;
+        line-height: 1.1;
+      }
+      .card-title .dots { color: #001364; opacity: 0.5; margin-left: 2px; }
+      .card-sub {
+        margin-top: 6px;
+        font-size: clamp(13px, 1.4vw, 15px);
+        color: #001364;
+        opacity: 0.65;
+        font-weight: 500;
+        line-height: 1.45;
+        max-width: 360px;
+      }
+
+      /* ─── Apple Liquid Glass (same recipe as hero floating chips) ─ */
+      .bl-glass {
+        background: linear-gradient(135deg,
+          rgba(255,255,255,0.62) 0%,
+          rgba(244,246,255,0.42) 55%,
+          rgba(236,240,255,0.34) 100%);
+        -webkit-backdrop-filter: blur(28px) saturate(220%);
+        backdrop-filter: blur(28px) saturate(220%);
+        border: 1px solid rgba(255,255,255,0.55);
+        box-shadow:
+          0 1px 0 0 rgba(255,255,255,1)    inset,
+          1px 0 0 0 rgba(255,255,255,0.6)  inset,
+          0 -1px 0 0 rgba(0,19,100,0.10)   inset,
+          -1px 0 0 0 rgba(0,19,100,0.05)   inset,
+          0 12px 32px -10px rgba(0,19,100,0.18),
+          0 4px 10px -4px rgba(0,19,100,0.08);
+      }
+
+      /* ─── Before card · pile area (bottom 32%) ───────────────── */
+      .pile {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+      /* Tablet (sm–lg, 640–1023px): shrink the pile items so they fit
+         the narrower card column when 2 cards sit side-by-side. Sizes
+         use !important to override the inline width/height on app tiles
+         (varied 50–70px on desktop). */
+      @media (min-width: 640px) and (max-width: 1023px) {
+        .app-tile { width: 42px !important; height: 42px !important; }
+        .app-tile img { width: 26px !important; height: 26px !important; }
+        .text-pill { font-size: 10px; padding: 6px 10px 6px 8px; border-radius: 10px; }
+        .folder-card { font-size: 9px; padding: 6px 10px 6px 6px; border-radius: 10px; }
+        .folder-icon { width: 22px; height: 22px; }
+        .comment-pill { font-size: 10px; padding: 5px 12px 5px 5px; border-radius: 10px; max-width: 200px; }
+        .comment-avatar { width: 22px; height: 22px; }
+        .rec-pill { font-size: 9px; padding: 5px 9px 5px 7px; }
+      }
+      .falling-item {
+        position: absolute;
+        transform-origin: 50% 50%;
+        will-change: transform, opacity;
+      }
+
+      /* App icon tile — varied sizes via inline style, rounded square */
+      .app-tile {
+        border-radius: 14px;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .app-tile img {
+        object-fit: contain;
+        display: block;
+      }
+
+      /* Text pill — rounded rectangle */
+      .text-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 14px 9px 12px;
+        border-radius: 14px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #001364;
+        white-space: nowrap;
+      }
+
+      /* REC badge */
+      .rec-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 12px 7px 10px;
+        border-radius: 12px;
+        color: #ef4444;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        font-size: 11px;
+      }
+      .rec-dot {
+        width: 8px; height: 8px; border-radius: 50%; background: #ef4444;
+        box-shadow: 0 0 0 3px rgba(239,68,68,0.18);
+      }
+
+      /* Folder card */
+      .folder-card {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 14px 9px 8px;
+        border-radius: 14px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #001364;
+      }
+      .folder-icon {
+        width: 30px; height: 30px;
+        background: linear-gradient(135deg, #879CF7 0%, #6B82E8 100%);
+        border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+      }
+
+      /* Comment pill (with face avatar) */
+      .comment-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 16px 7px 7px;
+        border-radius: 14px;
+        font-size: 12.5px;
+        font-weight: 500;
+        color: #001364;
+        max-width: 280px;
+      }
+      .comment-avatar {
+        width: 28px; height: 28px;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+      }
+
+      /* ─── After card · portrait + 3-left/3-right pills ─────── */
+      .portrait-zone {
+        position: absolute;
+        top: 96px;
+        left: 0; right: 0; bottom: 0;
+      }
+      /* Portrait — rounded corners only (no shadow, no border) */
+      .portrait {
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1;
+        width: 50%;
+        max-height: 80%;
+        object-fit: contain;
+        border-radius: 18px;
+      }
+
+      /* Float pill — half-size hero chip dimensions */
+      .float-pill {
+        position: absolute;
+        z-index: 2;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px 8px 8px;
+        border-radius: 12px;
+        white-space: nowrap;
+        /* Base position from CSS variables (NOT inline) so :hover applies */
+        left:   var(--base-left);
+        right:  var(--base-right);
+        top:    var(--base-top);
+        bottom: var(--base-bottom);
+        transition: left 0.6s cubic-bezier(.4,0,.2,1),
+                    right 0.6s cubic-bezier(.4,0,.2,1),
+                    top 0.6s cubic-bezier(.4,0,.2,1),
+                    bottom 0.6s cubic-bezier(.4,0,.2,1);
+      }
+
+      /* Hover: pills glide outward */
+      .after-card:hover .float-pill {
+        left:   var(--spread-left);
+        right:  var(--spread-right);
+        top:    var(--spread-top);
+        bottom: var(--spread-bottom);
+      }
+
+      /* ─── Mobile (<sm, <768px) ────────────────────────────────── */
+      @media (max-width: 767px) {
+        .ba-card { aspect-ratio: 1 / 1.18; border-radius: 22px; }
+        .card-head { top: 22px; left: 22px; right: 22px; }
+        .text-pill, .folder-card, .comment-pill { font-size: 11px; padding: 7px 11px 7px 8px; border-radius: 11px; }
+        /* After card pills (separate from .pile) */
+        .float-pill { padding: 6px 10px 6px 6px; gap: 6px; border-radius: 10px; }
+        .float-pill > div:first-child { width: 16px; height: 16px; border-radius: 5px; }
+        .float-pill > div:first-child svg { width: 9px; height: 9px; }
+        .portrait { width: 56%; }
+        .portrait-zone { top: 80px; }
+      }
+    `}</style>
+  );
+}
