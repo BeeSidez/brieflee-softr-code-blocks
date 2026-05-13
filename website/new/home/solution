@@ -1,0 +1,297 @@
+// =====================================================================
+// Vibe Coding block: Homepage · The Solution (5-card feature grid)
+// =====================================================================
+// 5 feature cards in a bento-style grid. Top row: 3 cards (Video Checker,
+// Video Breakdown, UGC Content Checker). Bottom row: 2 wider cards
+// (Ad Content Review, Content Moderation).
+//
+// Each card:
+//   - Transparent fill, shimmer outline (matches plan.jsx cards)
+//   - Square animated GIF at the top
+//   - Title + description on a "silver glass" panel below the GIF
+//
+// Section background: HERO_BG (continues the page's cloud-in-the-middle
+// gradient). Plus Jakarta Sans on the section root. Eyebrow copied
+// verbatim from hero.
+//
+// SOFTR UI SETUP:
+//   1. Source tab → none required.
+//   2. Visibility tab → public.
+// =====================================================================
+
+const NAVY = "#001364";
+const PERI = "#879CF7";
+
+const HERO_BG =
+  "radial-gradient(ellipse 65% 50% at 50% 50%, rgba(135,156,247,0.28) 0%, rgba(180,192,245,0.14) 40%, rgba(180,192,245,0) 75%), #FAFBFF";
+
+// ----- Card data -----------------------------------------------------
+const CARDS = [
+  {
+    title: "Video Checker",
+    body: "Check your videos for quality issues, performance potential, and brand compliance before posting.",
+    image: "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/56a3f96f-6aff-4810-b3e2-f8a1c25fc5e8.gif",
+    alt: "Brieflee scoring a creator video for facetime, original content, and review status",
+  },
+  {
+    title: "Video Breakdown",
+    body: "Analyze any high-performing video to understand exactly what makes it work.",
+    image: "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/b13a6557-8f35-4373-be77-163e17bc3865.gif",
+    alt: "Three-frame storyboard breakdown of a video — hook, story, end",
+  },
+  {
+    title: "UGC Content Checker",
+    body: "Check creator submissions for brand compliance and quality standards automatically.",
+    image: "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/67cf964b-07bc-4141-a753-d8aa833704ef.gif",
+    alt: "Brieflee analysing a creator submission against brand thresholds",
+  },
+  {
+    title: "Ad Content Review",
+    body: "Review video ads for quality and performance before spending money on them.",
+    image: "https://res.cloudinary.com/dchroynzv/image/upload/v1778599095/brieflee_feature-card_feedback-panel-between-creator-videos-transparent_2026-05.png",
+    alt: "Brieflee tracking creator movement and product handling on a video ad",
+  },
+  {
+    title: "Content Moderation",
+    body: "Automatically flag videos that don't meet your quality or brand requirements before they go live.",
+    image: "https://res.cloudinary.com/dchroynzv/image/upload/v1778599098/brieflee_feature-card_swipe-add-to-brief-single-card-transparent_2026-05.png",
+    alt: "Brieflee batch-flagging creator videos with pass / fail decisions",
+  },
+];
+
+// =====================================================================
+// Block
+// =====================================================================
+export default function Block() {
+  return (
+    <section
+      className="relative w-full py-16 md:py-24 lg:py-28 px-5 md:px-10"
+      style={{
+        background: HERO_BG,
+        fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+      }}
+    >
+      <Keyframes />
+
+      {/* Section header */}
+      <div className="max-w-3xl mx-auto flex flex-col items-center text-center">
+        <Eyebrow>The Solution</Eyebrow>
+        <h2
+          className="mt-6 text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight leading-[1.1] text-balance"
+          style={{ color: NAVY }}
+        >
+          Instant brand-perfect safe content moderation for influencer & UGC content.
+        </h2>
+        <p
+          className="mt-5 text-base md:text-lg leading-relaxed max-w-2xl mx-auto font-medium"
+          style={{ color: NAVY, opacity: 0.7 }}
+        >
+          AI analyses every submission against your brand guidelines, catching
+          issues before they become problems.
+        </p>
+      </div>
+
+      {/* Bento grid · 6-col on md+ — top 3 cards span 2 cols, bottom 2 span 3 */}
+      <div className="max-w-6xl mx-auto mt-12 md:mt-16 solution-grid">
+        {CARDS.map((c, i) => (
+          <SolutionCard key={c.title} card={c} index={i} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ─── Eyebrow (copied verbatim from hero) ─────────────────────────────
+function Eyebrow({ children }) {
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 18px",
+        background: "rgba(135,156,247,0.16)",
+        color: NAVY,
+        fontSize: 14,
+        fontWeight: 700,
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+        borderRadius: 999,
+        width: "fit-content",
+      }}
+    >
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: PERI, boxShadow: `0 0 0 3px ${PERI}33` }} />
+      {children}
+    </div>
+  );
+}
+
+// ─── Solution card · transparent shell, shimmer outline, silver-glass text ──
+function SolutionCard({ card, index }) {
+  return (
+    <div className="solution-card shimmer-card">
+      {/* Text first — renders at the TOP of every card */}
+      <div className="solution-text">
+        <h3 className="solution-title" style={{ color: NAVY }}>
+          {card.title}
+        </h3>
+        <p className="solution-body" style={{ color: NAVY }}>
+          {card.body}
+        </p>
+      </div>
+      {/* Image second — renders at the BOTTOM of every card */}
+      <div className="solution-image-wrap">
+        <img
+          src={card.image}
+          alt={card.alt}
+          draggable={false}
+          className="solution-image"
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── Keyframes + shared CSS ──────────────────────────────────────────
+function Keyframes() {
+  return (
+    <style>{`
+      /* ─── Bento grid · 6-col on md+, stacks on mobile ──────────── */
+      .solution-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
+      @media (min-width: 640px) {
+        .solution-grid {
+          grid-template-columns: 1fr 1fr;
+          gap: 18px;
+        }
+      }
+      @media (min-width: 1024px) {
+        .solution-grid {
+          grid-template-columns: repeat(6, 1fr);
+          gap: 20px;
+        }
+        /* Top row: 3 cards span 2 cols each (= 6 cols total) */
+        .solution-card:nth-child(1),
+        .solution-card:nth-child(2),
+        .solution-card:nth-child(3) { grid-column: span 2; }
+        /* Bottom row: 2 cards span 3 cols each (= 6 cols total) */
+        .solution-card:nth-child(4),
+        .solution-card:nth-child(5) { grid-column: span 3; }
+      }
+
+      /* ─── Shimmer outline · transparent fill + animated outline ── */
+      @property --shimmer-angle {
+        syntax: '<angle>';
+        initial-value: 0deg;
+        inherits: false;
+      }
+      @keyframes shimmer-rotate {
+        to { --shimmer-angle: 360deg; }
+      }
+      .shimmer-card {
+        position: relative;
+        background: transparent;
+      }
+      .shimmer-card::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 2px;
+        background: conic-gradient(
+          from var(--shimmer-angle, 0deg),
+          rgba(135,156,247,0.18) 0deg,
+          rgba(135,156,247,0.18) 200deg,
+          rgba(135,156,247,0.85) 250deg,
+          #ffffff 280deg,
+          rgba(135,156,247,0.85) 310deg,
+          rgba(135,156,247,0.18) 360deg
+        );
+        -webkit-mask:
+          linear-gradient(#000 0 0) content-box,
+          linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+                mask-composite: exclude;
+        pointer-events: none;
+        animation: shimmer-rotate 3.5s linear infinite;
+      }
+      /* Stagger card shimmers so they don't all sweep together */
+      .solution-card:nth-child(2)::before { animation-delay: -0.7s; }
+      .solution-card:nth-child(3)::before { animation-delay: -1.4s; }
+      .solution-card:nth-child(4)::before { animation-delay: -2.1s; }
+      .solution-card:nth-child(5)::before { animation-delay: -2.8s; }
+
+      /* ─── Card outer ─────────────────────────────────────────── */
+      .solution-card {
+        border-radius: 24px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;            /* spacing between image + text — works in either order */
+        padding: 14px;
+      }
+
+      /* ─── Image area ─────────────────────────────────────────── */
+      .solution-image-wrap {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        border-radius: 16px;
+        overflow: hidden;
+        background: rgba(135,156,247,0.10);
+      }
+      .solution-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      /* Bottom-row cards (4 and 5) on desktop: image cropped to a wider
+         16:9 rectangle. (Text is at the top of every card by DOM order
+         now, so no flex-reverse needed.) */
+      @media (min-width: 1024px) {
+        .solution-card:nth-child(4) .solution-image-wrap,
+        .solution-card:nth-child(5) .solution-image-wrap {
+          aspect-ratio: 16 / 9;
+        }
+      }
+
+      /* ─── Text · fully transparent, no panel ─────────────────── */
+      .solution-text {
+        padding: 4px 4px 0;
+        background: transparent;
+      }
+      .solution-title {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        line-height: 1.25;
+      }
+      .solution-body {
+        margin: 6px 0 0;
+        font-size: 13.5px;
+        font-weight: 500;
+        opacity: 0.72;
+        line-height: 1.5;
+      }
+
+      /* Tablet (sm-lg, 640-1023px) — 2 columns, slightly smaller text */
+      @media (min-width: 640px) and (max-width: 1023px) {
+        .solution-title { font-size: 16px; }
+        .solution-body { font-size: 13px; }
+      }
+
+      /* Mobile (<640px) — single column, slightly tighter padding */
+      @media (max-width: 639px) {
+        .solution-card { padding: 12px; gap: 12px; }
+        .solution-text { padding: 4px 4px 0; }
+        .solution-title { font-size: 16px; }
+        .solution-body { font-size: 13px; }
+      }
+    `}</style>
+  );
+}
