@@ -48,13 +48,13 @@ const CARDS = [
   {
     title: "Ad Content Review",
     body: "Review video ads for quality and performance before spending money on them.",
-    image: "https://res.cloudinary.com/dchroynzv/image/upload/v1778599095/brieflee_feature-card_feedback-panel-between-creator-videos-transparent_2026-05.png",
+    image: "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/3e054a4f-136a-422b-99e5-148a58f2cc55.gif",
     alt: "Brieflee tracking creator movement and product handling on a video ad",
   },
   {
     title: "Content Moderation",
     body: "Automatically flag videos that don't meet your quality or brand requirements before they go live.",
-    image: "https://res.cloudinary.com/dchroynzv/image/upload/v1778599098/brieflee_feature-card_swipe-add-to-brief-single-card-transparent_2026-05.png",
+    image: "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/48acd332-b590-4ae9-97be-4a0d1747cd25.gif",
     alt: "Brieflee batch-flagging creator videos with pass / fail decisions",
   },
 ];
@@ -130,16 +130,6 @@ function Eyebrow({ children }) {
 function SolutionCard({ card, index }) {
   return (
     <div className="solution-card shimmer-card">
-      {/* Text first — renders at the TOP of every card */}
-      <div className="solution-text">
-        <h3 className="solution-title" style={{ color: NAVY }}>
-          {card.title}
-        </h3>
-        <p className="solution-body" style={{ color: NAVY }}>
-          {card.body}
-        </p>
-      </div>
-      {/* Image second — renders at the BOTTOM of every card */}
       <div className="solution-image-wrap">
         <img
           src={card.image}
@@ -147,6 +137,14 @@ function SolutionCard({ card, index }) {
           draggable={false}
           className="solution-image"
         />
+      </div>
+      <div className="solution-text">
+        <h3 className="solution-title" style={{ color: NAVY }}>
+          {card.title}
+        </h3>
+        <p className="solution-body" style={{ color: NAVY }}>
+          {card.body}
+        </p>
       </div>
     </div>
   );
@@ -249,20 +247,35 @@ function Keyframes() {
         display: block;
       }
 
-      /* Bottom-row cards (4 and 5) on desktop: image cropped to a wider
-         16:9 rectangle. (Text is at the top of every card by DOM order
-         now, so no flex-reverse needed.) */
+      /* Bottom-row cards (4 and 5) on desktop: text on TOP, image
+         cropped to a wider rectangle on the BOTTOM. column-reverse
+         swaps the visual order while keeping the DOM order. */
       @media (min-width: 1024px) {
+        .solution-card:nth-child(4),
+        .solution-card:nth-child(5) {
+          flex-direction: column-reverse;
+        }
         .solution-card:nth-child(4) .solution-image-wrap,
         .solution-card:nth-child(5) .solution-image-wrap {
           aspect-ratio: 16 / 9;
         }
       }
 
-      /* ─── Text · fully transparent, no panel ─────────────────── */
+      /* ─── Silver-glass text panel ───────────────────────────── */
       .solution-text {
-        padding: 4px 4px 0;
-        background: transparent;
+        padding: 16px 18px 18px;
+        border-radius: 14px;
+        /* Silver glass — cooler/grayer than the periwinkle bl-glass */
+        background: linear-gradient(135deg,
+          rgba(248,249,253,0.55) 0%,
+          rgba(225,229,238,0.40) 100%);
+        -webkit-backdrop-filter: blur(24px) saturate(180%);
+        backdrop-filter: blur(24px) saturate(180%);
+        border: 1px solid rgba(255,255,255,0.55);
+        box-shadow:
+          0 1px 0 0 rgba(255,255,255,0.95) inset,
+          0 -1px 0 0 rgba(0,19,100,0.06) inset,
+          0 8px 20px -8px rgba(0,19,100,0.10);
       }
       .solution-title {
         margin: 0;
@@ -288,7 +301,7 @@ function Keyframes() {
       /* Mobile (<640px) — single column, slightly tighter padding */
       @media (max-width: 639px) {
         .solution-card { padding: 12px; gap: 12px; }
-        .solution-text { padding: 4px 4px 0; }
+        .solution-text { padding: 14px 16px 16px; }
         .solution-title { font-size: 16px; }
         .solution-body { font-size: 13px; }
       }
