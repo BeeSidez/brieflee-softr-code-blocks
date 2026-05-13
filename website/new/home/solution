@@ -130,14 +130,7 @@ function Eyebrow({ children }) {
 function SolutionCard({ card, index }) {
   return (
     <div className="solution-card shimmer-card">
-      <div className="solution-image-wrap">
-        <img
-          src={card.image}
-          alt={card.alt}
-          draggable={false}
-          className="solution-image"
-        />
-      </div>
+      {/* Text first — renders at the TOP of every card */}
       <div className="solution-text">
         <h3 className="solution-title" style={{ color: NAVY }}>
           {card.title}
@@ -145,6 +138,15 @@ function SolutionCard({ card, index }) {
         <p className="solution-body" style={{ color: NAVY }}>
           {card.body}
         </p>
+      </div>
+      {/* Image second — renders at the BOTTOM of every card */}
+      <div className="solution-image-wrap">
+        <img
+          src={card.image}
+          alt={card.alt}
+          draggable={false}
+          className="solution-image"
+        />
       </div>
     </div>
   );
@@ -222,14 +224,36 @@ function Keyframes() {
       .solution-card:nth-child(4)::before { animation-delay: -2.1s; }
       .solution-card:nth-child(5)::before { animation-delay: -2.8s; }
 
-      /* ─── Card outer ─────────────────────────────────────────── */
+      /* ─── Card outer · Apple Liquid Glass ─────────────────────
+         Subtle frosted glass fill (not opaque) + backdrop-filter so
+         what's behind the card actually blurs through. Dual inset rims
+         (white top-left, navy bottom-right) give the perceived 3D
+         curvature. The shimmer outline (.shimmer-card::before) sits
+         ON TOP of all of this. */
       .solution-card {
+        position: relative;
         border-radius: 24px;
         overflow: hidden;
         display: flex;
         flex-direction: column;
-        gap: 14px;            /* spacing between image + text — works in either order */
+        gap: 14px;
         padding: 14px;
+        background: linear-gradient(135deg,
+          rgba(255,255,255,0.55) 0%,
+          rgba(244,246,255,0.38) 55%,
+          rgba(236,240,255,0.28) 100%);
+        -webkit-backdrop-filter: blur(24px) saturate(200%);
+        backdrop-filter: blur(24px) saturate(200%);
+        box-shadow:
+          /* Inner top + left highlight rims — the "lit edge" of glass */
+          0 1px 0 0 rgba(255,255,255,0.95)  inset,
+          1px 0 0 0 rgba(255,255,255,0.55)  inset,
+          /* Inner bottom + right shadow rims — the "shadow edge" */
+          0 -1px 0 0 rgba(0,19,100,0.08)    inset,
+          -1px 0 0 0 rgba(0,19,100,0.04)    inset,
+          /* Outer drop shadow — lifts the card off the gradient */
+          0 14px 36px -12px rgba(0,19,100,0.18),
+          0 4px 12px -4px rgba(0,19,100,0.08);
       }
 
       /* ─── Image area ─────────────────────────────────────────── */
@@ -247,35 +271,20 @@ function Keyframes() {
         display: block;
       }
 
-      /* Bottom-row cards (4 and 5) on desktop: text on TOP, image
-         cropped to a wider rectangle on the BOTTOM. column-reverse
-         swaps the visual order while keeping the DOM order. */
+      /* Bottom-row cards (4 and 5) on desktop: image cropped to a wider
+         16:9 rectangle. (Text is at the top of every card by DOM order
+         now, so no flex-reverse needed.) */
       @media (min-width: 1024px) {
-        .solution-card:nth-child(4),
-        .solution-card:nth-child(5) {
-          flex-direction: column-reverse;
-        }
         .solution-card:nth-child(4) .solution-image-wrap,
         .solution-card:nth-child(5) .solution-image-wrap {
           aspect-ratio: 16 / 9;
         }
       }
 
-      /* ─── Silver-glass text panel ───────────────────────────── */
+      /* ─── Text · fully transparent, no panel ─────────────────── */
       .solution-text {
-        padding: 16px 18px 18px;
-        border-radius: 14px;
-        /* Silver glass — cooler/grayer than the periwinkle bl-glass */
-        background: linear-gradient(135deg,
-          rgba(248,249,253,0.55) 0%,
-          rgba(225,229,238,0.40) 100%);
-        -webkit-backdrop-filter: blur(24px) saturate(180%);
-        backdrop-filter: blur(24px) saturate(180%);
-        border: 1px solid rgba(255,255,255,0.55);
-        box-shadow:
-          0 1px 0 0 rgba(255,255,255,0.95) inset,
-          0 -1px 0 0 rgba(0,19,100,0.06) inset,
-          0 8px 20px -8px rgba(0,19,100,0.10);
+        padding: 4px 4px 0;
+        background: transparent;
       }
       .solution-title {
         margin: 0;
@@ -301,7 +310,7 @@ function Keyframes() {
       /* Mobile (<640px) — single column, slightly tighter padding */
       @media (max-width: 639px) {
         .solution-card { padding: 12px; gap: 12px; }
-        .solution-text { padding: 14px 16px 16px; }
+        .solution-text { padding: 4px 4px 0; }
         .solution-title { font-size: 16px; }
         .solution-body { font-size: 13px; }
       }

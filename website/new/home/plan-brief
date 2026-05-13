@@ -33,7 +33,7 @@ const HERO_BG =
 const VISUAL_BG =
   "radial-gradient(circle at 0% 0%, #8d87f7 0%, #d4d9ff 50%, #ffffff 100%)";
 
-const SIGNUP_URL = "https://www.brieflee.co/signup";
+const SIGNUP_URL = "https://www.brieflee.co/sign-up";
 
 // ----- Module data (Briefs only for now) -----------------------------
 const MODULES = [

@@ -37,7 +37,7 @@ const videoFormatsSelect = q.select({
   logoUrl:      "3Q9oG",
 });
 
-const SIGNUP_URL = "https://www.brieflee.co/signup";
+const SIGNUP_URL = "https://www.brieflee.co/sign-up";
 
 // Hero background. Base = nav colour (#FAFBFF) so the seam between nav
 // and hero disappears. On top of that, a soft periwinkle "cloud"

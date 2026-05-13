@@ -17,7 +17,7 @@ const PERI = "#879CF7";
 const HERO_BG =
     "radial-gradient(ellipse 65% 50% at 50% 50%, rgba(135,156,247,0.28) 0%, rgba(180,192,245,0.14) 40%, rgba(180,192,245,0) 75%), #FAFBFF";
 
-const SIGNUP_URL = "https://www.brieflee.co/signup";
+const SIGNUP_URL = "https://www.brieflee.co/sign-up";
 
 // ----- Module data (7c · Revisions) ----------------------------------
 const MODULE = {
