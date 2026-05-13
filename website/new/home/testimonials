@@ -1,0 +1,168 @@
+import { useState } from "react";
+import { useRecords, q } from "@/lib/datasource";
+import { Star } from "lucide-react";
+
+const select = q.select({
+  name: "Epb5M",
+  title: "aXyVM",
+  review: "9YIaR",
+  avatar: "bcHbT",
+  rating: "saxUQ",
+});
+
+export default function Block() {
+  const { data, status } = useRecords({ select, count: 100 });
+
+  if (status === "pending") {
+    return (
+      <div style={{ backgroundColor: '#FAFBFF' }} className="min-h-[400px] flex items-center justify-center">
+        <div className="text-muted-foreground">Loading testimonials...</div>
+      </div>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <div className="min-h-[400px] flex items-center justify-center bg-[#FAFBFF]">
+        <div className="text-destructive">Error loading testimonials</div>
+      </div>
+    );
+  }
+
+  const items = data?.pages.flatMap((page) => page.items) || [];
+
+  if (items.length === 0) {
+    return (
+      <div className="min-h-[400px] flex items-center justify-center bg-[#FAFBFF]">
+        <div className="text-muted-foreground">No testimonials yet</div>
+      </div>
+    );
+  }
+
+  // Duplicate items for seamless infinite scroll
+  const duplicatedItems = [...items, ...items];
+  
+  // Split items for offset rows
+  const midpoint = Math.floor(items.length / 2);
+  const firstRowItems = [...items, ...items];
+  const secondRowItems = [...items.slice(midpoint), ...items.slice(0, midpoint), ...items.slice(midpoint), ...items.slice(0, midpoint)];
+
+  const TestimonialCard = ({ item }: { item: typeof items[0] }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+    const rating = typeof item.fields.rating === "number" ? item.fields.rating : 0;
+
+    return (
+      <div className="flex-shrink-0 w-[350px] mx-3">
+        <div className="bg-white rounded-lg shadow-md p-8 h-full">
+          <div className="flex items-start gap-4 mb-4">
+            <div className="flex-shrink-0">
+              {item.fields.avatar ? (
+                <img
+                  src={item.fields.avatar as string}
+                  alt={item.fields.name as string}
+                  className="w-12 h-12 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-muted-foreground font-semibold">
+                  {(item.fields.name as string)?.charAt(0) || "?"}
+                </div>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-foreground truncate">
+                {item.fields.name}
+              </h3>
+              <p className="text-sm text-muted-foreground truncate">
+                {item.fields.title}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-1 mb-3">
+            {[...Array(5)].map((_, i) => (
+              <Star
+                key={i}
+                className={`w-4 h-4 ${
+                  i < rating
+                    ? "fill-yellow-400 text-yellow-400"
+                    : "fill-gray-200 text-gray-200"
+                }`}
+              />
+            ))}
+          </div>
+
+          <div className="text-sm text-foreground">
+            <p className={isExpanded ? "" : "line-clamp-4"}>
+              {item.fields.review}
+            </p>
+            {(item.fields.review as string)?.length > 200 && (
+              <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="text-primary hover:underline text-xs mt-2 font-medium"
+              >
+                {isExpanded ? "Show less" : "Read more"}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ backgroundColor: '#FAFBFF' }} className="w-full pb-40 overflow-hidden">
+      <div className="container">
+        <h2 className="text-4xl font-bold text-center mb-12" style={{ color: '#001364' }}>
+          What people are saying about us
+        </h2>
+      </div>
+      <div className="space-y-8">
+        {/* First row - scrolling left */}
+        <div className="relative overflow-hidden group">
+          <div className="flex animate-scroll-left group-hover:[animation-play-state:paused]">
+            {firstRowItems.map((item, idx) => (
+              <TestimonialCard key={`left-${idx}`} item={item} />
+            ))}
+          </div>
+        </div>
+
+        {/* Second row - scrolling right */}
+        <div className="relative overflow-hidden group">
+          <div className="flex animate-scroll-right group-hover:[animation-play-state:paused]">
+            {secondRowItems.map((item, idx) => (
+              <TestimonialCard key={`right-${idx}`} item={item} />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <style jsx>{`
+        @keyframes scroll-left {
+          0% {
+            transform: translateX(0);
+          }
+          100% {
+            transform: translateX(-50%);
+          }
+        }
+
+        @keyframes scroll-right {
+          0% {
+            transform: translateX(-50%);
+          }
+          100% {
+            transform: translateX(0);
+          }
+        }
+
+        .animate-scroll-left {
+          animation: scroll-left 40s linear infinite;
+        }
+
+        .animate-scroll-right {
+          animation: scroll-right 40s linear infinite;
+        }
+      `}</style>
+    </div>
+  );
+}
