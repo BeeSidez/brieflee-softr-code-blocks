@@ -1,6 +1,57 @@
-# Lead magnet pages — page names + SEO + social metadata
+# Brieflee pages — page names + SEO + social metadata
 
 Copy-paste each block into the page's settings in Softr. SEO titles under 60 chars, descriptions under 160 chars, no em dashes anywhere.
+
+---
+
+## Homepage
+
+**Page name** (Softr internal): `Home`
+**URL**: `/`
+
+**SEO Title — recommended** *(51 chars)*
+Brieflee | Spell Check for Short-Form Video
+
+**SEO Description — recommended** *(148 chars)*
+Brieflee is the AI quality control layer for short-form video. Score TikToks, Reels and Shorts against your brand standards in seconds. Free trial.
+
+**Social Title — recommended**
+Spell check for short-form video. Built for brands, agencies and creators.
+
+**Social Description — recommended**
+Stop reviewing every creator video by hand. Brieflee scores TikToks, Reels and Shorts against your brand standards in seconds. AI catches what you'd miss.
+
+---
+
+### Alternative 1 — function-led
+
+**SEO Title** *(56 chars)*
+Brieflee | AI Reviews Short-Form Video Frame by Frame
+
+**SEO Description** *(154 chars)*
+AI reviews every TikTok, Reel, and Short against your brand standards in seconds. Frame by frame. Used by brands, agencies, and creators. Free trial.
+
+**Social Title**
+Brieflee. AI reviews short-form video frame by frame.
+
+**Social Description**
+The fastest way to know your video works. Hook timing, product visibility, brand compliance, all scored in seconds. Before it goes live.
+
+---
+
+### Alternative 2 — audience-led
+
+**SEO Title** *(57 chars)*
+Brieflee | AI Video Review for Brands + Agencies
+
+**SEO Description** *(151 chars)*
+Stop reviewing every creator video by hand. Brieflee uses AI to score TikToks, Reels and Shorts against your brand standards in seconds. Free trial.
+
+**Social Title**
+Built for the people writing the briefs.
+
+**Social Description**
+Brands, agencies and creator teams use Brieflee to review short-form video at scale. AI catches the misses, you ship more, faster. Free trial.
 
 ---
 
