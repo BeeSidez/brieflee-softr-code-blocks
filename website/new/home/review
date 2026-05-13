@@ -1,0 +1,480 @@
+// =====================================================================
+// Vibe Coding block: Homepage · Review 7a · AI Video Review
+// =====================================================================
+// First block of the REVIEW section. Includes the REVIEW category
+// banner (eyebrow + headline + subhead) at the top, followed by the
+// 7a module card. 7b (qa-checklist.jsx) and 7c (revisions.jsx) drop
+// in below as standalone blocks with no header.
+//
+// Card alternation matches Plan section: 7a = text LEFT / visual RIGHT,
+// 7b = visual LEFT / text RIGHT, 7c = text LEFT / visual RIGHT.
+//
+// SOFTR UI SETUP:
+//   1. Source tab → none required.
+//   2. Visibility tab → public.
+// =====================================================================
+
+const NAVY = "#001364";
+const PERI = "#879CF7";
+
+const HERO_BG =
+  "radial-gradient(ellipse 65% 50% at 50% 50%, rgba(135,156,247,0.28) 0%, rgba(180,192,245,0.14) 40%, rgba(180,192,245,0) 75%), #FAFBFF";
+
+const SIGNUP_URL = "https://www.brieflee.co/signup";
+
+// ----- Module data (7a · AI Video Review) ----------------------------
+const MODULE = {
+  name: "AI Video Review",
+  icon: "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-analyse-eyes-glass-3d-transparent_2026-05.png",
+  headline: "Pick the review mode that fits your team.",
+  body: "Brieflee's AI watches every submission the moment a creator uploads. You decide how much of the decision it gets to make.",
+  bullets: ["Autonomous, hybrid, or manual.", "AI scores every video against your brief."],
+  cta: { label: "Start free trial", href: SIGNUP_URL },
+  mockup: "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_feature-card_review-modes-autonomous-manual-hybrid-creator-video-mockup_2025-12.png",
+  mockupAlt: "Brieflee three review modes: autonomous, hybrid, manual",
+};
+
+// =====================================================================
+// Block
+// =====================================================================
+export default function Block() {
+  return (
+    <section
+      className="relative w-full py-16 md:py-24 lg:py-28 px-5 md:px-10"
+      style={{
+        background: HERO_BG,
+        fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+      }}
+    >
+      <Keyframes />
+
+      {/* REVIEW category banner */}
+      <div className="max-w-3xl mx-auto flex flex-col items-center text-center">
+        <Eyebrow>Review</Eyebrow>
+        <h2
+          className="mt-6 text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight leading-[1.1] text-balance"
+          style={{ color: NAVY }}
+        >
+          Review with accuracy and control.
+        </h2>
+        <p
+          className="mt-5 text-base md:text-lg leading-relaxed max-w-2xl mx-auto font-medium"
+          style={{ color: NAVY, opacity: 0.7 }}
+        >
+          Three tools that turn 50 submissions a week from a Monday-morning slog
+          into a 20-minute approval session.
+        </p>
+      </div>
+
+      {/* Module card */}
+      <div className="max-w-6xl mx-auto mt-14 md:mt-20">
+        <div className="plan-row">
+          {/* LEFT — text card */}
+          <div className="text-card shimmer-card">
+            <img
+              src={MODULE.icon}
+              alt={`${MODULE.name} icon`}
+              draggable={false}
+              className="plan-icon"
+            />
+            <div className="mt-5">
+              <ModuleEyebrow>{MODULE.name}</ModuleEyebrow>
+            </div>
+            <h3
+              className="mt-5 text-2xl md:text-3xl lg:text-[34px] font-bold tracking-tight leading-[1.12] text-balance"
+              style={{ color: NAVY }}
+            >
+              {MODULE.headline}
+            </h3>
+            <p
+              className="mt-4 text-base leading-relaxed font-medium"
+              style={{ color: NAVY, opacity: 0.72 }}
+            >
+              {MODULE.body}
+            </p>
+            <ul className="plan-bullets">
+              {MODULE.bullets.map((b, i) => (
+                <li key={i}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={PERI} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  <span>{b}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-7">
+              <PrimaryCta label={MODULE.cta.label} href={MODULE.cta.href} />
+            </div>
+          </div>
+
+          {/* RIGHT — visual card with mockup + glass UI overlays */}
+          <div className="visual-card shimmer-card">
+            <img
+              src={MODULE.mockup}
+              alt={MODULE.mockupAlt}
+              draggable={false}
+              className="plan-mockup"
+            />
+
+            {/* Glass UI overlay 1 — review-mode toggle */}
+            <div className="glass-toolbar">
+              <div className="glass-tool active">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span>Autonomous</span>
+              </div>
+              <div className="glass-tool">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
+                <span>Hybrid</span>
+              </div>
+              <div className="glass-tool">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+                <span>Manual</span>
+              </div>
+            </div>
+
+            {/* Glass UI overlay 2 — score panel */}
+            <div className="glass-panel">
+              <div className="glass-panel-row"><span className="glass-check on" />Hook speed <span className="glass-tag">2.4s</span></div>
+              <div className="glass-panel-row"><span className="glass-check on" />Face time <span className="glass-tag">58%</span></div>
+              <div className="glass-panel-row"><span className="glass-check on" />Brand mention <span className="glass-tag">3×</span></div>
+              <div className="glass-panel-row"><span className="glass-check on" />CTA placement <span className="glass-tag">last 3s</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Eyebrow (copied verbatim from hero) ─────────────────────────────
+function Eyebrow({ children }) {
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 18px",
+        background: "rgba(135,156,247,0.16)",
+        color: NAVY,
+        fontSize: 14,
+        fontWeight: 700,
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+        borderRadius: 999,
+        width: "fit-content",
+      }}
+    >
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: PERI, boxShadow: `0 0 0 3px ${PERI}33` }} />
+      {children}
+    </div>
+  );
+}
+
+function ModuleEyebrow({ children }) {
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 12px",
+        background: "rgba(135,156,247,0.16)",
+        color: NAVY,
+        fontSize: 11,
+        fontWeight: 800,
+        letterSpacing: "0.10em",
+        textTransform: "uppercase",
+        borderRadius: 999,
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: PERI, boxShadow: `0 0 0 3px ${PERI}44` }} />
+      {children}
+    </div>
+  );
+}
+
+function PrimaryCta({ label, href }) {
+  return (
+    <a
+      href={href}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 9,
+        padding: "13px 22px",
+        borderRadius: 12,
+        background: PERI,
+        color: "#ffffff",
+        fontSize: 15,
+        fontWeight: 700,
+        textDecoration: "none",
+        boxShadow:
+          "0 2px 0 rgba(0,0,0,0.14), 0 12px 24px -10px rgba(135,156,247,0.55)",
+      }}
+    >
+      {label}
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M5 12h14M13 5l7 7-7 7" />
+      </svg>
+    </a>
+  );
+}
+
+// ─── Keyframes + shared CSS ──────────────────────────────────────────
+function Keyframes() {
+  return (
+    <style>{`
+      .plan-row {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        align-items: stretch;
+      }
+      @media (min-width: 768px) {
+        .plan-row {
+          flex-direction: row;
+          gap: 20px;
+          min-height: 540px;
+        }
+      }
+
+      @property --shimmer-angle {
+        syntax: '<angle>';
+        initial-value: 0deg;
+        inherits: false;
+      }
+      @keyframes shimmer-rotate {
+        to { --shimmer-angle: 360deg; }
+      }
+      .shimmer-card {
+        position: relative;
+        background: transparent;
+      }
+      .shimmer-card::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 2.5px;
+        background: conic-gradient(
+          from var(--shimmer-angle, 0deg),
+          rgba(135,156,247,0.18) 0deg,
+          rgba(135,156,247,0.18) 200deg,
+          rgba(135,156,247,0.85) 250deg,
+          #ffffff 280deg,
+          rgba(135,156,247,0.85) 310deg,
+          rgba(135,156,247,0.18) 360deg
+        );
+        -webkit-mask:
+          linear-gradient(#000 0 0) content-box,
+          linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+                mask-composite: exclude;
+        pointer-events: none;
+        animation: shimmer-rotate 3.5s linear infinite;
+      }
+
+      .text-card {
+        flex: 1;
+        background: transparent;
+        border-radius: 28px;
+        padding: 36px 28px;
+        display: flex;
+        flex-direction: column;
+      }
+      @media (min-width: 768px) {
+        .text-card { flex: 1; padding: 56px 48px; }
+      }
+
+      .visual-card {
+        flex: 1;
+        background: transparent;
+        border-radius: 28px;
+        padding: 20px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 320px;
+        overflow: hidden;
+        position: relative;
+      }
+      @media (min-width: 768px) {
+        .visual-card { flex: 1.5; padding: 24px 20px; }
+      }
+      .visual-card.shimmer-card::before { animation-delay: -2.5s; }
+
+      .plan-icon {
+        width: 120px;
+        height: 120px;
+        object-fit: contain;
+        display: block;
+        transform-origin: center 70%;
+        transition: transform 0.3s ease-out;
+      }
+      @media (min-width: 768px) {
+        .plan-icon { width: 180px; height: 180px; }
+      }
+      .text-card:hover .plan-icon {
+        animation: icon-wiggle 0.9s cubic-bezier(.36,.07,.32,1.5);
+      }
+      @keyframes icon-wiggle {
+        0%   { transform: rotate(0deg) translateY(0) scale(1); }
+        15%  { transform: rotate(-10deg) translateY(-6px) scale(1.06); }
+        30%  { transform: rotate(8deg)  translateY(-4px) scale(1.08); }
+        45%  { transform: rotate(-6deg) translateY(-5px) scale(1.06); }
+        60%  { transform: rotate(4deg)  translateY(-3px) scale(1.04); }
+        75%  { transform: rotate(-2deg) translateY(-1px) scale(1.02); }
+        100% { transform: rotate(0deg)  translateY(0)    scale(1); }
+      }
+
+      .plan-bullets {
+        list-style: none;
+        padding: 0;
+        margin: 22px 0 0;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .plan-bullets li {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        font-size: 15px;
+        font-weight: 600;
+        color: ${NAVY};
+        opacity: 0.85;
+      }
+      .plan-bullets li svg {
+        margin-top: 4px;
+        flex-shrink: 0;
+      }
+
+      .plan-mockup {
+        width: 100%;
+        height: auto;
+        display: block;
+        border-radius: 16px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .glass-toolbar {
+        position: absolute;
+        top: 14%;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 3;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 6px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, rgba(255,255,255,0.62) 0%, rgba(244,246,255,0.42) 100%);
+        -webkit-backdrop-filter: blur(20px) saturate(220%);
+        backdrop-filter: blur(20px) saturate(220%);
+        border: 1px solid rgba(255,255,255,0.55);
+        box-shadow:
+          0 1px 0 0 rgba(255,255,255,0.95) inset,
+          0 -1px 0 0 rgba(0,19,100,0.08) inset,
+          0 12px 28px -10px rgba(0,19,100,0.22);
+      }
+      .glass-tool {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 10px;
+        border-radius: 9px;
+        font-size: 11px;
+        font-weight: 700;
+        color: ${NAVY};
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .glass-tool.active {
+        background: ${PERI};
+        color: #fff;
+        box-shadow: 0 2px 6px -1px rgba(135,156,247,0.5);
+      }
+
+      .glass-panel {
+        position: absolute;
+        top: 32%;
+        left: 8%;
+        z-index: 3;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, rgba(255,255,255,0.62) 0%, rgba(244,246,255,0.42) 100%);
+        -webkit-backdrop-filter: blur(20px) saturate(220%);
+        backdrop-filter: blur(20px) saturate(220%);
+        border: 1px solid rgba(255,255,255,0.55);
+        box-shadow:
+          0 1px 0 0 rgba(255,255,255,0.95) inset,
+          0 -1px 0 0 rgba(0,19,100,0.08) inset,
+          0 16px 36px -12px rgba(0,19,100,0.22);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 168px;
+      }
+      .glass-panel-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+        font-weight: 600;
+        color: ${NAVY};
+      }
+      .glass-check {
+        width: 14px;
+        height: 14px;
+        border-radius: 4px;
+        background: rgba(0,19,100,0.06);
+        border: 1px solid rgba(0,19,100,0.10);
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .glass-check.on {
+        background: ${PERI};
+        border-color: ${PERI};
+      }
+      .glass-check.on::after {
+        content: '';
+        width: 7px;
+        height: 4px;
+        border-left: 1.6px solid #fff;
+        border-bottom: 1.6px solid #fff;
+        transform: rotate(-45deg) translate(0, -1px);
+      }
+      .glass-tag {
+        margin-left: auto;
+        padding: 2px 6px;
+        border-radius: 5px;
+        background: rgba(0,19,100,0.08);
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        color: ${NAVY};
+      }
+
+      @media (max-width: 639px) {
+        .glass-panel { display: none; }
+        .glass-toolbar { top: 8%; padding: 4px; }
+        .glass-tool { padding: 5px 8px; font-size: 10px; }
+      }
+
+      @media (min-width: 640px) and (max-width: 1023px) {
+        .text-card { padding: 36px 28px; }
+        .visual-card { padding: 32px 20px; }
+        .plan-icon { width: 120px; height: 120px; }
+      }
+
+      @media (max-width: 639px) {
+        .visual-card { min-height: 260px; padding: 28px 20px; }
+        .plan-icon { width: 96px; height: 96px; }
+      }
+    `}</style>
+  );
+}
