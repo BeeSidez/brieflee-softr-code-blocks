@@ -17,7 +17,7 @@ const PERI = "#879CF7";
 const HERO_BG =
   "radial-gradient(ellipse 65% 50% at 50% 50%, rgba(135,156,247,0.28) 0%, rgba(180,192,245,0.14) 40%, rgba(180,192,245,0) 75%), #FAFBFF";
 
-const SIGNUP_URL = "https://www.brieflee.co/signup";
+const SIGNUP_URL = "https://www.brieflee.co/sign-up";
 
 // ----- Module data (7b · QA Checklist) -------------------------------
 const MODULE = {
@@ -27,7 +27,7 @@ const MODULE = {
   body: "Every submission scored across 9 categories: hook, product, audio, text, pacing, creator, CTA, brief, brand. Set the thresholds, Brieflee enforces them.",
   bullets: ["26 checks across 9 categories.", "Set the thresholds that matter."],
   cta: { label: "Start free trial", href: SIGNUP_URL },
-  mockup: "https://res.cloudinary.com/dchroynzv/image/upload/v1778619940/brieflee_feature-card_chat-panel-creator-videos-annotations-transparent_2026-05.png",
+  mockup: "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/357ebeeb-d580-4441-aa02-21e96c90bc8d.gif",
   mockupAlt: "Brieflee scoring creator videos with pass/fail clips into a chat report",
 };
 
