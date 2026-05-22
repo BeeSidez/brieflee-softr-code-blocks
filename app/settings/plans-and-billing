@@ -7,20 +7,22 @@
 // (Manage billing + Change plan).
 //
 // Data source: the usage table (brieflee beta DB, id dw2IeLOtYJLulR).
-// usage joins to accounts + subscriptions + billing + pricing, exposing
-// per-workspace tier / max-* / total-* / *_remaining values as LOOKUP
-// and FORMULA fields on one row. We read that row directly here.
+// Usage joins to accounts + subscriptions + billing + pricing,
+// exposing tier / max-* / total-* / *_remaining values as LOOKUP and
+// FORMULA fields on one row.
+//
+// Billing is PER USER (not per workspace) — a user with multiple
+// workspaces still only has ONE usage row that holds their plan tier,
+// max videos, etc. So we list-and-take-first from the usage table
+// rather than trying to fetch by URL workspace id (the URL passes an
+// account id, not a usage id).
 //
 // SOFTR CONFIG REQUIRED:
-//   Source tab: bind to USAGE, filtered so the row for the current
-//   workspace is selected — usage.accounts (LINKED_RECORD) equals URL
-//   parameter `workspace`, fallback to the user's first usage row when
-//   absent. The URL fallback in this code still passes the URL param
-//   verbatim to useRecord; if Softr's source binding gives us the
-//   right usage record via context, useCurrentRecordId() is the path
-//   that fires.
+//   Source tab: bind to USAGE. The Source filter should restrict to
+//   the logged-in user (e.g. `user includes exactly current user id`)
+//   so this list returns the user's one usage row in preview/live mode.
 
-import { useRecord, useCurrentRecordId, q } from "@/lib/datasource";
+import { useRecords, q } from "@/lib/datasource";
 import { Video, Users, Layers } from "lucide-react";
 
 const CHANGE_PLAN_PATH = "/plan";
@@ -62,18 +64,14 @@ const select = q.select({
   totalUsers:                 "6J1sE", // total_members (LOOKUP)
 });
 
-function useWorkspaceRecordId() {
-  const fromContext = useCurrentRecordId();
-  const fromUrl =
-    typeof window !== "undefined"
-      ? new URL(window.location.href).searchParams.get("workspace")
-      : null;
-  return fromUrl || fromContext;
-}
-
 export default function Block() {
-  const recordId = useWorkspaceRecordId();
-  const { data: record, status } = useRecord({ recordId, select });
+  // List the user's usage rows (Softr Source filter restricts to the
+  // logged-in user). Take the first — billing is per-user, the user
+  // only ever has one usage row even with multiple workspaces.
+  const { data, status } = useRecords({ select, count: 1 });
+  const record =
+    data?.pages?.[0]?.items?.[0] ??
+    (Array.isArray(data) ? data[0] : null);
 
   if (status === "pending") {
     return <Shell><Loading /></Shell>;

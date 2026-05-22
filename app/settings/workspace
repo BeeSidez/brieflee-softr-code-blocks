@@ -714,10 +714,13 @@ function Style() {
           min-height: 64px;
         }
         .workspace-logo-preview img {
-          width: 120px;
-          height: auto;
-          max-height: 120px;
+          width: 64px;
+          height: 64px;
+          border-radius: 12px;
           object-fit: contain;
+          background: #FFFFFF;
+          border: 1px solid rgba(217, 224, 255, 0.6);
+          padding: 6px;
         }
         .workspace-logo-placeholder {
           font-size: 12px;
