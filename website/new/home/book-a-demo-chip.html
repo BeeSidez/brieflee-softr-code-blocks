@@ -1,0 +1,157 @@
+<!-- ====================================================================
+     Custom Code block: Floating "Book a call" chip (homepage)
+     ====================================================================
+     Drop this in a Softr CUSTOM CODE block (NOT vibe code) on the
+     homepage. Recommended placement: anywhere on the page — the chip
+     is `position: fixed` so it anchors to the bottom-left of the
+     viewport regardless of where the block sits in the layout.
+
+     Click behaviour: opens /book-a-demo in a Softr modal (size: lg)
+     via window.openSwModal. Falls back to a normal anchor navigation
+     if the helper isn't on window (preview / edge case).
+
+     IMPORTANT — for the modal to actually overlay (not full-page
+     navigate), the /book-a-demo page in Softr Studio must have its
+     Page Type set to "Modal page".
+
+     SPA-safe: the DOM lives inside this block's own scope, so Softr
+     cleans it up automatically when the user navigates away. No
+     SOFTR_PAGE.beforeUnload needed.
+
+     If you want the chip on EVERY marketing page (not just homepage),
+     move this same code into Settings → Custom Code → Footer instead.
+==================================================================== -->
+
+<a
+  href="/book-a-demo"
+  class="bl-demo-chip"
+  id="bl-demo-chip"
+  aria-label="Book a 30-minute Brieflee walkthrough"
+>
+  <span class="bl-demo-chip-avatar-wrap">
+    <img
+      src="https://res.cloudinary.com/dchroynzv/image/upload/v1778675610/_Profile_Picture_nwejiq.png"
+      alt=""
+      class="bl-demo-chip-avatar"
+      draggable="false"
+    />
+    <span class="bl-demo-chip-status" aria-hidden="true"></span>
+  </span>
+  <span class="bl-demo-chip-text">
+    <span class="bl-demo-chip-title">Book a call</span>
+    <span class="bl-demo-chip-sub">30-min Brieflee walkthrough</span>
+  </span>
+</a>
+
+<style>
+  .bl-demo-chip {
+    position: fixed;
+    left: 20px;
+    bottom: 20px;
+    z-index: 9999;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 18px 10px 10px;
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow:
+      0 16px 36px -10px rgba(0, 19, 100, 0.22),
+      0 6px 14px -4px rgba(0, 19, 100, 0.12),
+      0 0 0 1px rgba(0, 19, 100, 0.06);
+    text-decoration: none !important;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    color: #001364;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    cursor: pointer;
+    max-width: calc(100vw - 40px);
+  }
+  .bl-demo-chip:hover {
+    transform: translateY(-3px);
+    box-shadow:
+      0 24px 48px -12px rgba(0, 19, 100, 0.28),
+      0 8px 18px -4px rgba(0, 19, 100, 0.16),
+      0 0 0 1px rgba(0, 19, 100, 0.10);
+  }
+  .bl-demo-chip:focus-visible {
+    outline: 3px solid #879CF7;
+    outline-offset: 2px;
+  }
+  .bl-demo-chip-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+  }
+  .bl-demo-chip-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    object-fit: cover;
+    display: block;
+    background: #e9ecf6;
+  }
+  .bl-demo-chip-status {
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: #22c55e;
+    box-shadow: 0 0 0 2px #ffffff;
+  }
+  .bl-demo-chip-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    line-height: 1.25;
+    min-width: 0;
+  }
+  .bl-demo-chip-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #001364;
+    letter-spacing: -0.005em;
+  }
+  .bl-demo-chip-sub {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: #001364;
+    opacity: 0.62;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  @media (max-width: 480px) {
+    .bl-demo-chip {
+      left: 12px;
+      bottom: 12px;
+      padding: 8px 16px 8px 8px;
+      gap: 10px;
+    }
+    .bl-demo-chip-avatar-wrap,
+    .bl-demo-chip-avatar {
+      width: 36px;
+      height: 36px;
+    }
+    .bl-demo-chip-title { font-size: 13px; }
+    .bl-demo-chip-sub { font-size: 12px; }
+  }
+</style>
+
+<script type="module">
+  // Open /book-a-demo as a large Softr modal. If window.openSwModal
+  // isn't available for any reason (preview, runtime not ready), the
+  // anchor's href takes over and the user lands on the page directly
+  // — same destination, just no overlay.
+  const chip = document.getElementById('bl-demo-chip');
+  if (chip) {
+    chip.addEventListener('click', (e) => {
+      if (typeof window !== 'undefined' && typeof window.openSwModal === 'function') {
+        e.preventDefault();
+        window.openSwModal('/book-a-demo', 'lg');
+      }
+    });
+  }
+</script>

@@ -21,53 +21,58 @@
       "id": "aud_4D2CLqQohy7lOMT8wESKL5uSGEa",
       "name": "BL | Team Members",
       "purpose": "Members invited by an account owner. Shorter member-specific drip."
+    },
+    "BL | Video Breakdown leads": {
+      "id": "aud_4DSA1XCCy85CAbxnaGHSm2e1CVm",
+      "name": "BL | Video Breakdown leads",
+      "purpose": "Users who submit a video to /free-tool-video-breakdown but haven't signed up. Drives the 5-email Video Breakdown lead-nurture automation."
     }
   },
   "templates": {
     "bl-features-day-01-welcome": {
       "id": "tem_4D1p09oxLT1bQmc2aaBiJUmNdSi",
       "alias": "bl-features-day-01-welcome",
-      "name": "BL | Day 1 \u2014 Welcome"
+      "name": "BL | 7-day \u00b7 Welcome"
     },
     "bl-features-day-02-account": {
       "id": "tem_4D1p0Hc1NgIGq6BR3FWIZBofVUb",
       "alias": "bl-features-day-02-account",
-      "name": "BL | Day 2 \u2014 Set up your account"
+      "name": "BL | 7-day \u00b7 Day 2 \u2014 3-step setup"
     },
     "bl-features-day-03-swipe-videos": {
       "id": "tem_4D1p0KXIO3ZzhG3gnGfWqPB4AZl",
       "alias": "bl-features-day-03-swipe-videos",
-      "name": "BL | Day 3 \u2014 Swipe videos"
+      "name": "BL | Nurture \u00b7 Swipe files"
     },
     "bl-features-day-04-quality-settings": {
       "id": "tem_4D1p0Hc1NgIGR8weGoyGpza8h0t",
       "alias": "bl-features-day-04-quality-settings",
-      "name": "BL | Day 4 \u2014 Quality settings"
+      "name": "BL | 7-day \u00b7 Day 4 \u2014 Quality thresholds"
     },
     "bl-features-day-05-review-content": {
       "id": "tem_4D1p0Hc1NgI6mE0CVrKzusapzoV",
       "alias": "bl-features-day-05-review-content",
-      "name": "BL | Day 5 \u2014 Review content"
+      "name": "BL | Nurture \u00b7 AI review walkthrough"
     },
     "bl-features-day-06-remix-content": {
       "id": "tem_4D1p0KXIO3ZqRIQ6mVoK884auki",
       "alias": "bl-features-day-06-remix-content",
-      "name": "BL | Day 6 \u2014 Remix content"
+      "name": "BL | 7-day \u00b7 Day 5 E1 \u2014 Remix"
     },
     "bl-features-day-07-create-campaign": {
       "id": "tem_4D1p0Hc1NgHx7J95L5lAziBwKdB",
       "alias": "bl-features-day-07-create-campaign",
-      "name": "BL | Day 7 \u2014 Create campaign"
+      "name": "BL | Nurture \u00b7 Campaigns"
     },
     "bl-features-day-08-create-brief": {
       "id": "tem_4D1p0PP5PtYVHQqzCLBgxALSqNF",
       "alias": "bl-features-day-08-create-brief",
-      "name": "BL | Day 8 \u2014 Create brief"
+      "name": "BL | 7-day \u00b7 Day 3 \u2014 Mastering the brief"
     },
     "bl-features-day-09-invite-team": {
       "id": "tem_4D1p0PP5PtYcvZrF43fLsVoVHts",
       "alias": "bl-features-day-09-invite-team",
-      "name": "BL | Day 9 \u2014 Invite team"
+      "name": "BL | 7-day \u00b7 Day 6 E1 \u2014 Team collab"
     },
     "bl-features-day-10-invite-members": {
       "id": "tem_4D1p0PP5PtYcWccQww0ZClfGCEi",
@@ -77,12 +82,12 @@
     "bl-features-day-11-invite-creators": {
       "id": "tem_4D1p0SKMQGqMBh5QI68mYHC5wpz",
       "alias": "bl-features-day-11-invite-creators",
-      "name": "BL | Day 11 \u2014 Invite creators"
+      "name": "BL | Nurture \u00b7 Creator workflow"
     },
     "bl-features-day-12-bulk-upload-briefs": {
       "id": "tem_4D1p0SKMQGqUEn64wEdftinJ8Lb",
       "alias": "bl-features-day-12-bulk-upload-briefs",
-      "name": "BL | Day 12 \u2014 Bulk upload briefs"
+      "name": "BL | 7-day \u00b7 Day 7 E1 \u2014 Bulk upload"
     },
     "bl-features-day-13-bulk-upload-videos": {
       "id": "tem_4D1p0PP5PtYJbjxdGXlTKmyAJRe",
@@ -92,17 +97,17 @@
     "bl-features-day-14-affiliate": {
       "id": "tem_4D1p0PP5PtYcvZrGDTez1jMrbbs",
       "alias": "bl-features-day-14-affiliate",
-      "name": "BL | Day 14 \u2014 Affiliate offer"
+      "name": "BL | Nurture \u00b7 Affiliate program (Day 30 paid)"
     },
     "bl-trial-create-account": {
       "id": "tem_4D1p0a7QSU6pvJQ4FbTyiN68rb5",
       "alias": "bl-trial-create-account",
-      "name": "BL | Trial \u2014 Create account"
+      "name": "BL | Trial \u2014 Create account (redesigned)"
     },
     "bl-trial-pick-review-mode": {
       "id": "tem_4D1p0XC9S6ooxBLkwomrlozjyBK",
       "alias": "bl-trial-pick-review-mode",
-      "name": "BL | Trial \u2014 Pick review mode"
+      "name": "BL | Trial \u2014 Pick review mode (redesigned)"
     },
     "bl-trial-set-quality-settings": {
       "id": "tem_4D1p0a7QSU6YcFlfDkxtF3l2tyf",
@@ -112,7 +117,7 @@
     "bl-trial-first-review": {
       "id": "tem_4D1p0XC9S6ofIGUdnRH56OQUw9V",
       "alias": "bl-trial-first-review",
-      "name": "BL | Trial \u2014 First review"
+      "name": "BL | Trial \u2014 First review (redesigned, retime Day 5\u21923)"
     },
     "bl-trial-reminder-1": {
       "id": "tem_4D1p0XC9S6ofhDdQ6NDdr7Gh4Ev",
@@ -122,62 +127,411 @@
     "bl-trial-reminder-2-48h": {
       "id": "tem_4D1p0XC9S6oz13X2zmIlU1nNroo",
       "alias": "bl-trial-reminder-2-48h",
-      "name": "BL | Trial reminder 2 \u2014 48h, 20% off"
+      "name": "BL | 7-day \u00b7 Day 5 E2 \u2014 48h, 20% off"
     },
     "bl-trial-reminder-3-24h": {
       "id": "tem_4D1p0huUUhMuImNDzw5uSwpVfHk",
       "alias": "bl-trial-reminder-3-24h",
-      "name": "BL | Trial reminder 3 \u2014 24h, 20% off"
+      "name": "BL | 7-day \u00b7 Day 6 E2 \u2014 24h, 20% off"
     },
     "bl-trial-ends-today": {
       "id": "tem_4D1p0huUUhN3xh52NXpuspoOsxl",
       "alias": "bl-trial-ends-today",
-      "name": "BL | Trial ends today \u2014 final offer"
+      "name": "BL | 7-day \u00b7 Day 7 E2 \u2014 Trial ends, FINALDAY"
     },
     "bl-trial-winback": {
       "id": "tem_4D1p0huUUhN4MeQyyhmZb00x4Gv",
       "alias": "bl-trial-winback",
-      "name": "BL | Win-back"
+      "name": "BL | Win-back (redesigned)"
     },
     "bl-tx-payment-success": {
       "id": "tem_4D1p0huUUhMuhjRSEZhdZ6HQ94b",
       "alias": "bl-tx-payment-success",
-      "name": "BL | Payment success"
+      "name": "BL | Payment success (redesigned)"
     },
     "bl-tx-payment-failed": {
       "id": "tem_4D1p0huUUhNCPkRdej2ijeycgJu",
       "alias": "bl-tx-payment-failed",
-      "name": "BL | Payment failed"
+      "name": "BL | Payment failed (redesigned)"
     },
     "bl-winback-30d": {
       "id": "tem_4D1rc16nL0omZ4L0eCiKMcXMOhb",
       "alias": "bl-winback-30d",
-      "name": "BL | Win-back 30d"
+      "name": "BL | Win-back 30d (redesigned, COMEBACK20)"
     },
     "bl-winback-60d": {
       "id": "tem_4D1rc424LO6dTKDiztI1QzNPXum",
       "alias": "bl-winback-60d",
-      "name": "BL | Win-back 60d"
+      "name": "BL | Win-back 60d (redesigned, customer story)"
     },
     "bl-winback-90d-final": {
       "id": "tem_4D1rc16nL0oSqHHxhOg6U5iSqif",
       "alias": "bl-winback-90d-final",
-      "name": "BL | Win-back 90d final"
+      "name": "BL | Win-back 90d final (redesigned)"
     },
     "bl-tx-team-invite": {
       "id": "tem_4D1rc8trNE4pKi7idCSJYIUSStk",
       "alias": "bl-tx-team-invite",
-      "name": "BL | Team invite"
+      "name": "BL | Team invite (redesigned)"
     },
     "bl-trial-create-account-day6": {
       "id": "tem_4D2FO5uKCRJRlJlIKU7Em8oTuqR",
       "alias": "bl-trial-create-account-day6",
       "name": "BL | Trial \u2014 Create account (day 6 stronger CTA)"
+    },
+    "bl-7day-activate": {
+      "id": "tem_4DOvZSl4VDi4PgVHOLioqK1MIX5",
+      "alias": "bl-7day-activate",
+      "name": "BL | 7-day \u00b7 Activate"
+    },
+    "bl-7day-founder": {
+      "id": "tem_4DOvZPpnUqQVDRNWo0FSMu0Xfm6",
+      "alias": "bl-7day-founder",
+      "name": "BL | 7-day \u00b7 Founder note"
+    },
+    "bl-reengagement-d0-gift": {
+      "id": "tem_4DR4JcOo7iUBwhRjfOOsaQbJdTz",
+      "alias": "bl-reengagement-d0-gift",
+      "name": "BL | Re-engagement \u00b7 Day 0 \u2014 Gift announcement"
+    },
+    "bl-reengagement-d5-48h": {
+      "id": "tem_4DR4JfK585mrAJzZ6zOZ7vMQOnE",
+      "alias": "bl-reengagement-d5-48h",
+      "name": "BL | Re-engagement \u00b7 Day 5 \u2014 48h, WELCOMEBACK20"
+    },
+    "bl-reengagement-d6-24h": {
+      "id": "tem_4DR4JfK585n0pEvWNGaQxf9mOMF",
+      "alias": "bl-reengagement-d6-24h",
+      "name": "BL | Re-engagement \u00b7 Day 6 \u2014 24h, LASTCHANCEBACK"
+    },
+    "bl-reengagement-d7-ends": {
+      "id": "tem_4DR4JfK585mh6RuVent57VjqAwT",
+      "alias": "bl-reengagement-d7-ends",
+      "name": "BL | Re-engagement \u00b7 Day 7 \u2014 Studio ends, WELCOMEBACK50"
+    },
+    "bl-leadmag-vb-d0-breakdown-ready": {
+      "id": "tem_4DRtENfv7hPi8CtLL9RFfF6J0YD",
+      "alias": "bl-leadmag-vb-d0-breakdown-ready",
+      "name": "BL | Video Breakdown \u00b7 Day 0 \u2014 Your breakdown is ready"
+    },
+    "bl-leadmag-vb-d2-score-your-own": {
+      "id": "tem_4DRtEYOGAHyYyTnZtub5KsBHYZe",
+      "alias": "bl-leadmag-vb-d2-score-your-own",
+      "name": "BL | Video Breakdown \u00b7 Day 2 \u2014 Score your own"
+    },
+    "bl-leadmag-vb-d4-still-here": {
+      "id": "tem_4DRtEYOGAHyYyTnarMNAGmi854Q",
+      "alias": "bl-leadmag-vb-d4-still-here",
+      "name": "BL | Video Breakdown \u00b7 Day 4 \u2014 Still here"
+    },
+    "bl-leadmag-vb-d14-reply-ask": {
+      "id": "tem_4DRtEVSz9ufu9oSebTgo6sgu0J7",
+      "alias": "bl-leadmag-vb-d14-reply-ask",
+      "name": "BL | Video Breakdown \u00b7 Day 14 \u2014 Reply ask"
+    },
+    "bl-leadmag-vb-d30-hooks-roundup": {
+      "id": "tem_4DRtEdG3C7wPuCy3x2wzt4GgMoe",
+      "alias": "bl-leadmag-vb-d30-hooks-roundup",
+      "name": "BL | Video Breakdown \u00b7 Day 30 \u2014 5 hooks roundup"
     }
   },
   "totals": {
-    "audiences": 4,
-    "templates": 30
+    "audiences": 5,
+    "templates": 41
   },
-  "note_renamed_2026_04_29": "Audiences renamed for clarity: First 14 Days \u2192 Onboarding, Active Subscribers \u2192 Subscribers. Added Team Members audience. Lapsed kept as-is."
+  "note_renamed_2026_04_29": "Audiences renamed for clarity: First 14 Days \u2192 Onboarding, Active Subscribers \u2192 Subscribers. Added Team Members audience. Lapsed kept as-is.",
+  "last_migration": {
+    "date": "2026-05-07",
+    "summary": "14-day onboarding \u2192 7-day. 10 existing templates re-skinned with new HTML (alias+ID unchanged, name updated). 2 new templates created (activate + founder).",
+    "new_template_ids": {
+      "bl-7day-activate": "tem_4DOvZSl4VDi4PgVHOLioqK1MIX5",
+      "bl-7day-founder": "tem_4DOvZPpnUqQVDRNWo0FSMu0Xfm6"
+    },
+    "transactional_redesign": {
+      "date": "2026-05-07",
+      "templates": [
+        "bl-tx-payment-success",
+        "bl-tx-payment-failed",
+        "bl-tx-team-invite"
+      ],
+      "summary": "Redesigned in new 'Spell check for video' style. Variable names updated to snake_case (first_name, owner_name, workspace_name) \u2014 workflows that fire these need their variable casing audited."
+    },
+    "trial_nudges_redesign": {
+      "date": "2026-05-07",
+      "templates": [
+        "bl-trial-create-account",
+        "bl-trial-first-review",
+        "bl-trial-winback",
+        "bl-trial-pick-review-mode"
+      ],
+      "skipped_for_archive": [
+        "bl-trial-set-quality-settings"
+      ],
+      "summary": "4 of 5 workflow trial nudges redesigned in new style. bl-trial-set-quality-settings deliberately skipped \u2014 content fully duplicated by bl-7day-d4-quality-thresholds. Bev to archive in EmailIt UI.",
+      "retiming_required": {
+        "bl-trial-first-review": "Day 5 \u2192 Day 3 (workflow side, not template side)"
+      }
+    },
+    "winback_and_nurture_redesign": {
+      "date": "2026-05-07",
+      "winback_drip": [
+        "bl-winback-30d",
+        "bl-winback-60d",
+        "bl-winback-90d-final"
+      ],
+      "nurture_post_trial": [
+        "bl-features-day-03-swipe-videos",
+        "bl-features-day-05-review-content",
+        "bl-features-day-07-create-campaign",
+        "bl-features-day-11-invite-creators",
+        "bl-features-day-14-affiliate"
+      ],
+      "summary": "Final redesign batch. Win-back drip (30/60/90) re-skinned in new design. 5 ex-14-day templates repurposed as post-trial nurture broadcasts for BL | Subscribers \u2014 drip-day references removed, eyebrows changed from 'Day N of 7' to 'Feature \u00b7' / 'Affiliate \u00b7'. Generated via emails/generate-batch3.py.",
+      "url_fix_applied_to_existing": "Fragment-before-query bug fixed across 5 previously-pushed templates: bl-7day-d1-welcome, bl-7day-d2-getting-started, bl-7day-d4-quality-thresholds, bl-7day-d6e1-team-collab, bl-trial-pick-review-mode. 19 broken /settings#tabN?utm_* URLs corrected to /settings?utm_*#tabN."
+    },
+    "reengagement_campaign_2026_05_08": {
+      "date": "2026-05-08",
+      "summary": "Built + pushed 4 new re-engagement templates for the BL | Re-engagement audience (168 early Brieflee users). Cadence: 7 days, 10 emails (4 new + 6 reused from existing 7-day drip). Stripe promo codes WELCOMEBACK20 / LASTCHANCEBACK / WELCOMEBACK50 (50% off 3 months) + COMEBACK20 (winback Day 30) created via Stripe MCP.",
+      "templates": {
+        "bl-reengagement-d0-gift": {
+          "id": "tem_4DR4JcOo7iUBwhRjfOOsaQbJdTz",
+          "name": "BL | Re-engagement \u00b7 Day 0 \u2014 Gift announcement"
+        },
+        "bl-reengagement-d5-48h": {
+          "id": "tem_4DR4JfK585mrAJzZ6zOZ7vMQOnE",
+          "name": "BL | Re-engagement \u00b7 Day 5 \u2014 48h, WELCOMEBACK20"
+        },
+        "bl-reengagement-d6-24h": {
+          "id": "tem_4DR4JfK585n0pEvWNGaQxf9mOMF",
+          "name": "BL | Re-engagement \u00b7 Day 6 \u2014 24h, LASTCHANCEBACK"
+        },
+        "bl-reengagement-d7-ends": {
+          "id": "tem_4DR4JfK585mh6RuVent57VjqAwT",
+          "name": "BL | Re-engagement \u00b7 Day 7 \u2014 Studio ends, WELCOMEBACK50"
+        }
+      }
+    },
+    "leadmag_video_breakdown_2026_05_08": {
+      "date": "2026-05-08",
+      "summary": "Built + pushed 5 new templates for the Video Breakdown lead-magnet campaign. First instance of the lead-magnet 5-slot pattern from leadmag-email-playbook.md. 5 emails over 30 days with 10-day silence between Day 4 and Day 14. Day 30 evergreen (no recurring content commitment).",
+      "templates": {
+        "bl-leadmag-vb-d0-breakdown-ready": {
+          "id": "tem_4DRtENfv7hPi8CtLL9RFfF6J0YD",
+          "name": "BL | Video Breakdown \u00b7 Day 0 \u2014 Your breakdown is ready"
+        },
+        "bl-leadmag-vb-d2-score-your-own": {
+          "id": "tem_4DRtEYOGAHyYyTnZtub5KsBHYZe",
+          "name": "BL | Video Breakdown \u00b7 Day 2 \u2014 Score your own"
+        },
+        "bl-leadmag-vb-d4-still-here": {
+          "id": "tem_4DRtEYOGAHyYyTnarMNAGmi854Q",
+          "name": "BL | Video Breakdown \u00b7 Day 4 \u2014 Still here"
+        },
+        "bl-leadmag-vb-d14-reply-ask": {
+          "id": "tem_4DRtEVSz9ufu9oSebTgo6sgu0J7",
+          "name": "BL | Video Breakdown \u00b7 Day 14 \u2014 Reply ask"
+        },
+        "bl-leadmag-vb-d30-hooks-roundup": {
+          "id": "tem_4DRtEdG3C7wPuCy3x2wzt4GgMoe",
+          "name": "BL | Video Breakdown \u00b7 Day 30 \u2014 5 hooks roundup"
+        }
+      }
+    },
+    "leadmag_vb_automation_2026_05_08": {
+      "date": "2026-05-08",
+      "summary": "Built BL | Video Breakdown leads audience + BL | Video Breakdown \u00b7 Lead nurture automation entirely via EmailIt REST API (UI bug had blocked the create-automation modal).",
+      "audience_id": "aud_4DSA1XCCy85CAbxnaGHSm2e1CVm",
+      "automation_id": "aut_4DSA7Bo8ZkxNo478XyEweEBamji",
+      "automation_status": "running"
+    },
+    "cs_automations_2026_05_08": {
+      "date": "2026-05-08",
+      "summary": "Built 3 CS automations entirely via API (UI bug bypass): CS | Onboarding \u00b7 7-day (8 emails), CS | Subscribers \u00b7 Engagement nurture (8 emails weekly), CS | Re-engagement \u00b7 20-day (7 emails). Also fixed date references in cs-reengage-3 and cs-reengage-5 ('30th May' \u2192 '31st May', and 'a week away' \u2192 'less than a week away').",
+      "automations": {
+        "CS | Onboarding \u00b7 7-day": {
+          "id": "aut_4DSLsbrCpnPdQhyamhpeMTj57vU",
+          "audience_id": "aud_4D31xCyzoTTt4H5IMqWoSpV2uQg",
+          "status": "running",
+          "templates_in_order": [
+            "cs-welcome",
+            "cs-bootcamp-1",
+            "cs-bootcamp-2",
+            "cs-bootcamp-3",
+            "cs-bootcamp-4",
+            "cs-bootcamp-5",
+            "cs-bootcamp-6",
+            "cs-bootcamp-7"
+          ],
+          "wait_intervals_seconds": [
+            86400,
+            86400,
+            86400,
+            86400,
+            86400,
+            86400,
+            86400
+          ]
+        },
+        "CS | Subscribers \u00b7 Engagement nurture": {
+          "id": "aut_4DSLsgizrdNBRYg9WpspCYznNQc",
+          "audience_id": "aud_4D31xFuGoqm3IMr1Xev1MvXm47V",
+          "status": "running",
+          "templates_in_order": [
+            "cs-eng-money",
+            "cs-eng-take-home",
+            "cs-eng-income-spy",
+            "cs-eng-rate",
+            "cs-eng-brand-deal",
+            "cs-eng-ugc",
+            "cs-eng-ai-twin",
+            "cs-eng-diamond-live"
+          ],
+          "wait_intervals_seconds": [
+            604800,
+            604800,
+            604800,
+            604800,
+            604800,
+            604800,
+            604800
+          ]
+        },
+        "CS | Re-engagement \u00b7 20-day": {
+          "id": "aut_4DSLsgizrdNUlOMZIpw3MdCir5n",
+          "audience_id": "aud_4D31xFuGoqllaM7QmnibdrHSHWl",
+          "status": "running",
+          "templates_in_order": [
+            "cs-reengage-1",
+            "cs-reengage-2",
+            "cs-reengage-3",
+            "cs-reengage-4",
+            "cs-reengage-5",
+            "cs-reengage-6",
+            "cs-reengage-7"
+          ],
+          "wait_intervals_seconds": [
+            172800,
+            345600,
+            345600,
+            345600,
+            259200,
+            259200
+          ]
+        }
+      }
+    }
+  },
+  "automations": {
+    "BL | Video Breakdown \u00b7 Lead nurture": {
+      "id": "aut_4DSA7Bo8ZkxNo478XyEweEBamji",
+      "name": "BL | Video Breakdown \u00b7 Lead nurture",
+      "audience_id": "aud_4DSA1XCCy85CAbxnaGHSm2e1CVm",
+      "status": "running",
+      "templates_in_order": [
+        "bl-leadmag-vb-d0-breakdown-ready",
+        "bl-leadmag-vb-d2-score-your-own",
+        "bl-leadmag-vb-d4-still-here",
+        "bl-leadmag-vb-d14-reply-ask",
+        "bl-leadmag-vb-d30-hooks-roundup"
+      ],
+      "wait_intervals_seconds": [
+        172800,
+        172800,
+        864000,
+        1382400
+      ],
+      "purpose": "5 emails over 30 days for users who submitted a video to the free Video Breakdown tool but haven't signed up."
+    },
+    "BL | Onboarding \u00b7 7-day trial": {
+      "name": "BL | Onboarding \u00b7 7-day trial",
+      "id": "aut_4D2BHl1bPTT4ZD1vEshrbw4uxq3",
+      "audience_id": "aud_4D1p0CkELqJe0jjrJ4aOuVywgP6",
+      "status": "running"
+    },
+    "BL | Subscribers \u00b7 Paid welcome + nurture": {
+      "name": "BL | Subscribers \u00b7 Paid welcome + nurture",
+      "id": "aut_4DQxsVr6CCwwCP7VP0X2vJPJV52",
+      "audience_id": "aud_4D1p0CkELqJULokJegC0AoQhoCM",
+      "status": "running"
+    },
+    "BL | Re-engagement \u00b7 7-day": {
+      "name": "BL | Re-engagement \u00b7 7-day",
+      "id": "aut_4DR7Sv2z671IQQzF3z4kj3QSvWI",
+      "audience_id": "aud_4DR6qSt4AeH7L3Gch79qIpOYnNJ",
+      "status": "running"
+    },
+    "CS | Onboarding \u00b7 7-day": {
+      "name": "CS | Onboarding \u00b7 7-day",
+      "id": "aut_4DSLsbrCpnPdQhyamhpeMTj57vU",
+      "audience_id": "aud_4D31xCyzoTTt4H5IMqWoSpV2uQg",
+      "status": "running",
+      "templates_in_order": [
+        "cs-welcome",
+        "cs-bootcamp-1",
+        "cs-bootcamp-2",
+        "cs-bootcamp-3",
+        "cs-bootcamp-4",
+        "cs-bootcamp-5",
+        "cs-bootcamp-6",
+        "cs-bootcamp-7"
+      ],
+      "wait_intervals_seconds": [
+        86400,
+        86400,
+        86400,
+        86400,
+        86400,
+        86400,
+        86400
+      ]
+    },
+    "CS | Subscribers \u00b7 Engagement nurture": {
+      "name": "CS | Subscribers \u00b7 Engagement nurture",
+      "id": "aut_4DSLsgizrdNBRYg9WpspCYznNQc",
+      "audience_id": "aud_4D31xFuGoqm3IMr1Xev1MvXm47V",
+      "status": "running",
+      "templates_in_order": [
+        "cs-eng-money",
+        "cs-eng-take-home",
+        "cs-eng-income-spy",
+        "cs-eng-rate",
+        "cs-eng-brand-deal",
+        "cs-eng-ugc",
+        "cs-eng-ai-twin",
+        "cs-eng-diamond-live"
+      ],
+      "wait_intervals_seconds": [
+        604800,
+        604800,
+        604800,
+        604800,
+        604800,
+        604800,
+        604800
+      ]
+    },
+    "CS | Re-engagement \u00b7 20-day": {
+      "name": "CS | Re-engagement \u00b7 20-day",
+      "id": "aut_4DSLsgizrdNUlOMZIpw3MdCir5n",
+      "audience_id": "aud_4D31xFuGoqllaM7QmnibdrHSHWl",
+      "status": "running",
+      "templates_in_order": [
+        "cs-reengage-1",
+        "cs-reengage-2",
+        "cs-reengage-3",
+        "cs-reengage-4",
+        "cs-reengage-5",
+        "cs-reengage-6",
+        "cs-reengage-7"
+      ],
+      "wait_intervals_seconds": [
+        172800,
+        345600,
+        345600,
+        345600,
+        259200,
+        259200
+      ]
+    }
+  }
 }

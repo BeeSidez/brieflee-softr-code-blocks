@@ -40,10 +40,10 @@ export default function Block() {
       </div>
 
       <div className="container py-20 md:py-24 lg:py-28">
-        <div className="content max-w-4xl mx-auto text-center">
+        <div className="content max-w-3xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card pl-1.5 pr-3 py-1 text-xs font-medium text-muted-foreground mb-6">
             <img src={BRIEFLEE_EYES} alt="" className="h-5 w-5" draggable={false} />
-            Free, no credit card
+            Free to use
           </div>
 
           <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05] text-foreground">

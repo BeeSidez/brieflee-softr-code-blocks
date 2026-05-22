@@ -51,6 +51,10 @@ const PAGE_VIDEO_BREAKDOWN = {
   label: "Video Breakdown",
 };
 
+// Shared lead-capture workflow — fires alongside the Tools-table write
+// so EmailIt nurture + Google Sheet backup run for every magnet submission.
+const EMAIL_WORKFLOW_URL = "https://workflows-api.softr.io/v1/workflows/1e28685f-1a24-4042-80ac-cadfedef7336/executions/22b90d5d-a73b-43b5-ac1b-f24843b781bd";
+
 // ----- Hero asset options -----
 const HERO_OPTIONS = {
   animatedFeature: {
@@ -69,6 +73,9 @@ const HERO_OPTIONS = {
 const HERO_ASSET = HERO_OPTIONS.animatedFeature;
 
 // ----- Floating platform logos around the hero asset (3D, transparent) -----
+const NAVY = "#001364";
+const PERIWINKLE = "#879CF7";
+
 const LOGO_BASE = "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_";
 const FLOATING_LOGOS = [
   {
@@ -133,6 +140,33 @@ function isValidShortFormUrl(input) {
 
 function isValidEmail(input) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((input || "").trim());
+}
+
+// Personal / throwaway email domains — blocked across every Brieflee
+// lead-magnet form to keep lead quality high.
+const FREE_EMAIL_DOMAINS = new Set([
+  "gmail.com", "googlemail.com",
+  "yahoo.com", "yahoo.co.uk", "yahoo.fr", "yahoo.de", "ymail.com",
+  "hotmail.com", "hotmail.co.uk", "hotmail.fr", "live.com", "live.co.uk",
+  "msn.com", "outlook.com", "outlook.co.uk",
+  "aol.com",
+  "icloud.com", "me.com", "mac.com",
+  "proton.me", "protonmail.com", "pm.me",
+  "mail.com", "gmx.com", "gmx.de", "gmx.net",
+  "yandex.com", "yandex.ru",
+  "zoho.com", "hey.com",
+  "fastmail.com", "fastmail.fm",
+  "tutanota.com", "tutanota.de",
+  "mailinator.com", "guerrillamail.com", "10minutemail.com",
+  "tempmail.com", "trashmail.com", "throwawaymail.com", "yopmail.com",
+]);
+
+function isWorkEmail(value) {
+  const v = (value || "").trim().toLowerCase();
+  if (!v) return false;
+  const at = v.lastIndexOf("@");
+  if (at === -1) return false;
+  return !FREE_EMAIL_DOMAINS.has(v.slice(at + 1));
 }
 
 // ----- Typing cycle hook -----
@@ -232,12 +266,32 @@ export default function Block() {
       setError("Enter a valid email address.");
       return;
     }
+    if (!isWorkEmail(email)) {
+      setError("Use your company email instead. Personal @gmail.com, @yahoo.com, etc. aren't supported.");
+      return;
+    }
     if (!createRecord.enabled) {
       setError("We can't start your analysis right now. Try again in a moment.");
       return;
     }
 
     setSubmitting(true);
+
+    // Best-effort lead capture via shared workflow — runs in parallel
+    // with the Tools-table write. Don't block the user on this.
+    fetch(EMAIL_WORKFLOW_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: email.trim(),
+        website: "",
+        source: "video-breakdown",
+        video_url: tab === "url" ? url.trim() : "",
+        page_url: typeof window !== "undefined" ? window.location.href : "",
+        submitted_at: new Date().toISOString(),
+      }),
+    }).catch((e) => console.error("Lead capture failed (continuing):", e));
+
     try {
       let videoAttachment = null;
       if (tab === "file" && file) {
@@ -306,32 +360,54 @@ export default function Block() {
             {/* LEFT: copy + input */}
             <div className="space-y-6">
               {/* Eyebrow */}
-              <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/70 backdrop-blur pl-1.5 pr-3 py-1 text-xs font-medium text-muted-foreground">
-                <img src={BRIEFLEE_EYES} alt="" className="h-5 w-5" draggable={false} />
-                Free AI video breakdown
+              <div
+                className="inline-flex items-center"
+                style={{
+                  gap: 10,
+                  padding: "10px 18px",
+                  background: "rgba(135,156,247,0.16)",
+                  color: NAVY,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  borderRadius: 999,
+                  width: "fit-content",
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: PERIWINKLE,
+                    boxShadow: `0 0 0 3px ${PERIWINKLE}33`,
+                  }}
+                />
+                Video Breakdown
               </div>
 
               {/* H1 + typing text. Same size, same weight. */}
               <div className="space-y-1">
-                <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] text-foreground">
+                <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight leading-[1.05]" style={{ color: NAVY }}>
                   See a video you love.
                   <br />
                   Break it down in seconds.
                 </h1>
                 <div
-                  className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] text-primary"
+                  className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight leading-[1.05]"
+                  style={{ color: PERIWINKLE }}
                   aria-live="polite"
                 >
                   <span>{typedWord}</span>
-                  <span className="ml-0.5 inline-block w-[3px] h-[0.85em] align-[-0.05em] bg-primary animate-pulse" />
+                  <span className="ml-0.5 inline-block w-[3px] h-[0.85em] align-[-0.05em] animate-pulse" style={{ background: PERIWINKLE }} />
                 </div>
               </div>
 
               {/* Subhead */}
               <p className="text-base md:text-lg text-muted-foreground max-w-xl leading-relaxed">
                 Paste it or upload it. In 60 seconds, you'll know exactly why it worked
-                and which bits to copy. Hook, structure, pacing, CTA, all scored. Free,
-                no credit card.
+                and which bits to copy. Hook, structure, pacing, CTA, all scored.
               </p>
 
               {/* ---------------- STEP 1: HERO INPUT ---------------- */}
@@ -424,7 +500,7 @@ export default function Block() {
                         className="inline-block w-2 h-2 rounded-full bg-primary"
                         style={{ animation: "briefleeHeroPulseDot 1.4s ease-in-out infinite" }}
                       />
-                      Free, no credit card
+                      Free to use
                     </span>
                     <span className="flex items-center gap-1.5">
                       <Check className="h-4 w-4 text-primary" /> Under 60 seconds

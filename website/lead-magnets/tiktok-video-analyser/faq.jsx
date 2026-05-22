@@ -27,7 +27,7 @@ const FAQS = [
   },
   {
     q: "Is it really free?",
-    a: "Yes. Free to paste a URL, free to upload a file, free to view your breakdown. You sign up with an email so we can save the analysis to your dashboard, but no credit card.",
+    a: "Yes. Free to paste a URL, free to upload a file, free to view your breakdown. You sign up with an email so we can save the analysis to your dashboard.",
   },
   {
     q: "Can it analyse any TikTok?",

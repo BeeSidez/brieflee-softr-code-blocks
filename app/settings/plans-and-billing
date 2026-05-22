@@ -6,16 +6,19 @@
 // (Videos / Team / Workspaces) with an actions card on the right
 // (Manage billing + Change plan).
 //
-// Data source: accounts.subscription_* lookups (which resolve through
-// accounts.current_subscription → subscriptions table). No more
-// dependency on the legacy usage table — subscription_max_videos,
-// subscription_max_members, etc. are the source of truth now.
+// Data source: the usage table (brieflee beta DB, id dw2IeLOtYJLulR).
+// usage joins to accounts + subscriptions + billing + pricing, exposing
+// per-workspace tier / max-* / total-* / *_remaining values as LOOKUP
+// and FORMULA fields on one row. We read that row directly here.
 //
 // SOFTR CONFIG REQUIRED:
-//   Source tab: bind to ACCOUNTS, filter by URL parameter `workspace`
-//   so the workspace switcher works on this tab too (id equals URL
-//   parameter `workspace`, fallback to user's first account when
-//   absent).
+//   Source tab: bind to USAGE, filtered so the row for the current
+//   workspace is selected — usage.accounts (LINKED_RECORD) equals URL
+//   parameter `workspace`, fallback to the user's first usage row when
+//   absent. The URL fallback in this code still passes the URL param
+//   verbatim to useRecord; if Softr's source binding gives us the
+//   right usage record via context, useCurrentRecordId() is the path
+//   that fires.
 
 import { useRecord, useCurrentRecordId, q } from "@/lib/datasource";
 import { Video, Users, Layers } from "lucide-react";
@@ -32,23 +35,31 @@ const BL_BORDER = "rgba(217, 224, 255, 0.55)";
 const BL_TRACK = "rgba(217, 224, 255, 0.6)";
 const BL_MUTED = "#6B7A99";
 
+// usage table field aliases — names kept identical to the prior accounts
+// binding so the rendering layer doesn't need to change. Field IDs swap
+// to the usage equivalents (LOOKUP / FORMULA fields on usage that resolve
+// through its linked accounts / subscription / billing / pricing rows).
+//
+// Note: usage has no direct `subscription_status` field. The StatusBadge
+// falls back to its "Trial" preset when status is empty. Reintroduce a
+// status lookup on the usage table if you want the badge to flip between
+// Active / Trial / Past due / Canceled.
 const select = q.select({
-  // Primary field of the accounts table — useRecord requires it.
-  name:                       "aAKkT",
-  subscriptionTier:           "oYTWQ",
-  subscriptionStatus:         "LX54T",
-  subscriptionPeriodEnd:      "xhi4r",
-  subscriptionProductName:    "eX2ZC",
-  subscriptionInterval:       "nhVIe",
-  subscriptionMaxVideos:      "cNlUS",
-  subscriptionMaxWorkspaces:  "MFzCN",
-  subscriptionMaxMembers:     "2k4fx",
-  videosRemaining:            "A0Cwp",
-  workspacesRemaining:        "ILIg2",
-  membersRemaining:           "VY8Ge",
-  totalVideos:                "qyGWx",
-  totalWorkspaces:            "3gogx",
-  totalUsers:                 "qwSF2",
+  // Primary field of the usage table — useRecord requires it.
+  id:                         "coEny",
+  subscriptionTier:           "Uhc4j", // subscription_tier (LOOKUP)
+  subscriptionPeriodEnd:      "kzlDm", // renewal_date (FORMULA)
+  subscriptionProductName:    "eA3R2", // plan (FORMULA)
+  subscriptionInterval:       "11KIV", // interval (LOOKUP via billing/pricing)
+  subscriptionMaxVideos:      "rXOcE", // max_videos (LOOKUP)
+  subscriptionMaxWorkspaces:  "Kejms", // max_workspaces (FORMULA)
+  subscriptionMaxMembers:     "UnMPU", // max_members (FORMULA)
+  videosRemaining:            "1Ghgt", // videos_remaining (FORMULA)
+  workspacesRemaining:        "TMIgG", // workspaces_remaining (FORMULA)
+  membersRemaining:           "yYgqq", // members_remaining (FORMULA)
+  totalVideos:                "LEsiQ", // total_videos (LOOKUP)
+  totalWorkspaces:            "XeuO9", // total_workspaces (LOOKUP)
+  totalUsers:                 "6J1sE", // total_members (LOOKUP)
 });
 
 function useWorkspaceRecordId() {

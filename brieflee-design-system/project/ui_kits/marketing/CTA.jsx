@@ -21,7 +21,7 @@ function CTA() {
           Stop watching every video
         </h2>
         <p style={{ fontSize: 18, color: "#001364", opacity: .8, margin: "0 0 28px", lineHeight: 1.5 }}>
-          Try Brieflee free for 14 days. No credit card. Score 50 videos on us.
+          Try Brieflee today for free. Start your 7-day trial!
         </p>
         <button style={{
           background: "#000f4d", color: "#fff", border: "none",

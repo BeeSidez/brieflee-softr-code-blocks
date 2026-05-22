@@ -40,8 +40,10 @@ const ADD_WORKSPACE_PATH = "/account/add";
 const ADD_WORKSPACE_MODAL_SIZE = "lg"; // 'sm' | 'md' | 'lg' | 'xl'
 
 const select = q.select({
-  name: "aAKkT",
-  logo: "q1B5K",
+  name:    "aAKkT",
+  logo:    "q1B5K", // legacy ATTACHMENT field (fallback)
+  logoUrl: "nPI65", // FORMULA: Google favicon from website, or Brieflee
+                   // approval-stamp default when website is empty
 });
 
 export default function Block() {
@@ -211,6 +213,13 @@ function extractName(account) {
 }
 
 function extractLogoUrl(account) {
+  // Prefer the FORMULA-derived logo_url (Google favicon, or Brieflee
+  // approval-stamp default when website is empty). Falls back to the
+  // legacy `logo` ATTACHMENT for older rows that have a manually
+  // uploaded image.
+  const formula = unwrap(account?.fields?.logoUrl);
+  if (formula && /^https?:\/\//i.test(formula)) return formula;
+
   const raw = account?.fields?.logo;
   if (!raw) return null;
   if (typeof raw === "string") return raw;

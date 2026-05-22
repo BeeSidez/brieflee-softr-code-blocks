@@ -125,7 +125,7 @@ export default function Block() {
         <div className="text-center mb-6">
           <div className="trial-banner">
             <span className="trial-dot"></span>
-            {TRIAL_DAYS} days free · No credit card needed to look around
+            {TRIAL_DAYS}-day free trial · Cancel any time
           </div>
           <h1 className="gs-headline">Simple plans, scaled to your team</h1>
           <p className="gs-sub">All plans include the full Brieflee toolkit. Cancel any time during your trial with one click.</p>
@@ -207,7 +207,7 @@ export default function Block() {
                 <strong>{selectedPlan.tier}</strong> · ${selectedPlan.interval === "Yearly" ? Math.round(selectedPlan.price / 12) : selectedPlan.price}/mo · {TRIAL_DAYS} days free
               </div>
             ) : (
-              <div style={{ fontSize: 13, color: "#555" }}>Pick a plan to continue · No credit card today</div>
+              <div style={{ fontSize: 13, color: "#555" }}>Pick a plan to continue</div>
             )}
           </div>
           <button className={"bl-btn bl-btn-primary" + (canContinue ? " pulse" : "")}

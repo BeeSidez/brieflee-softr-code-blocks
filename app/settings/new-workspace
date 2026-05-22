@@ -1,39 +1,65 @@
 // /settings · "+ New workspace" button (separate Vibe Code block).
 //
 // Shows a single button. Click → in-block form expands. Submit →
-// creates a new ACCOUNTS record. The Softr workflow watching the
-// accounts table picks it up and triggers the AI content-blueprint
-// build automatically; this block doesn't need to know about that.
+// fires the BL | New Workspace v2 Softr workflow webhook with
+// is_additional_workspace: true. The workflow does everything:
+// Gemini brand research → create the accounts row → copy
+// billing/usage/subscriptions LINKED_RECORDs from the user.
 //
 // Place this block above (or beside) the workspace switcher. Set
 // VISIBILITY in Softr to user groups whose plan allows multiple
 // workspaces — single-workspace plans never see the button.
 //
 // SOFTR CONFIG REQUIRED:
-//   Source tab: bind to ACCOUNTS table. The Source filter doesn't
-//   matter for the create — what matters is that the Actions tab
-//   below picks up the q.select() aliases.
-//
-//   Actions tab: should auto-populate from createFields. If Softr
-//   doesn't auto-link the new account to the logged-in user, you'll
-//   need to add the `users` field ID below (uncomment the line in
-//   createFields and set the real field ID).
+//   No source binding needed — this block doesn't read from or
+//   write to a Softr table directly. It just calls the workflow.
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus } from "lucide-react";
-import { useRecordCreate, q } from "@/lib/datasource";
 import { useCurrentUser } from "@/lib/user";
 import { toast } from "sonner";
 
-const createFields = q.select({
-  name:        "aAKkT",
-  website:     "RaK4B",
-  description: "RQcNB",
-  // users:    "REPLACE_WITH_FIELD_ID",  // uncomment if Softr doesn't auto-link
-});
+// BL | New Workspace v2 — Softr workflow webhook URL.
+// Shared with /onboarding/new/set-up; same body shape from both callers
+// (this block sets is_additional_workspace: true; /set-up sends false).
+const WORKSPACE_WORKFLOW_URL = "https://workflows-api.softr.io/v1/workflows/45e0663d-3163-4183-b055-d21b2449eb5a/executions/3a18e3de-2702-4dc1-8ce7-97bb40ae5b37";
+
+// People keep pasting their TikTok/Reel/Shorts/Tweet links here. Block
+// them outright. Mirrors the list in /set-up so the rules match.
+const SOCIAL_VIDEO_HOSTS = new Set([
+  "youtube.com", "m.youtube.com", "youtube-nocookie.com", "youtu.be",
+  "tiktok.com", "m.tiktok.com", "vm.tiktok.com", "vt.tiktok.com",
+  "instagram.com", "instagr.am",
+  "facebook.com", "m.facebook.com", "fb.com", "fb.watch",
+  "twitter.com", "x.com", "t.co",
+  "threads.net",
+  "linkedin.com", "lnkd.in",
+  "pinterest.com", "pin.it",
+  "snapchat.com",
+  "reddit.com", "redd.it",
+  "vimeo.com",
+  "twitch.tv",
+]);
+function getWebsiteError(value) {
+  const v = (value || "").trim();
+  if (!v) return "";
+  try {
+    const u = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`);
+    const host = u.hostname.replace(/^www\./, "").toLowerCase();
+    if (!host || !host.includes(".") || host.length < 4) {
+      return "That doesn't look like a website. Try yourbrand.com.";
+    }
+    if (SOCIAL_VIDEO_HOSTS.has(host)) {
+      return "Enter your brand's own website, not a social or video link.";
+    }
+  } catch {
+    return "That doesn't look like a website. Try yourbrand.com.";
+  }
+  return "";
+}
 
 export default function Block() {
   const [open, setOpen] = useState(false);
@@ -44,7 +70,6 @@ export default function Block() {
   const [submitting, setSubmitting] = useState(false);
 
   const user = useCurrentUser();
-  const createRecord = useRecordCreate({ fields: createFields });
 
   const reset = () => {
     setName("");
@@ -58,6 +83,8 @@ export default function Block() {
     setOpen(false);
   };
 
+  const websiteError = hasWebsite ? getWebsiteError(website) : "";
+
   const handleSubmit = async () => {
     if (!name.trim()) {
       toast.error("Workspace name is required");
@@ -65,6 +92,10 @@ export default function Block() {
     }
     if (hasWebsite && !website.trim()) {
       toast.error("Website is required (or switch to description)");
+      return;
+    }
+    if (hasWebsite && websiteError) {
+      toast.error(websiteError);
       return;
     }
     if (!hasWebsite && !description.trim()) {
@@ -75,27 +106,28 @@ export default function Block() {
       toast.error("Please log in to create a workspace");
       return;
     }
-    if (!createRecord.enabled) {
-      toast.error("Cannot create records right now");
-      return;
-    }
 
     setSubmitting(true);
     try {
-      const fields = { name: name.trim() };
-      if (hasWebsite) {
-        fields.website = website.trim();
-      } else {
-        fields.description = description.trim();
+      const res = await fetch(WORKSPACE_WORKFLOW_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: user.id,
+          workspace_name: name.trim(),
+          website: hasWebsite ? website.trim() : "",
+          description: hasWebsite ? "" : description.trim(),
+          is_additional_workspace: true,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error(`Workflow returned HTTP ${res.status}`);
       }
-      // If Softr doesn't auto-link, uncomment:
-      // fields.users = [{ id: user.id }];
-
-      await createRecord.mutateAsync(fields);
       toast.success("Workspace created — Brieflee is building your content blueprint.");
       reset();
       setOpen(false);
     } catch (e) {
+      console.error("Workspace workflow failed:", e);
       toast.error("Couldn't create workspace", {
         description: e?.message || "Try again.",
       });
@@ -216,6 +248,11 @@ export default function Block() {
                     placeholder="https://example.com"
                     disabled={submitting}
                   />
+                  {website.trim() && websiteError && (
+                    <p style={{ color: "#d92626", fontSize: 12, marginTop: 6 }}>
+                      {websiteError}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div>
@@ -242,7 +279,12 @@ export default function Block() {
               </button>
               <Button
                 onClick={handleSubmit}
-                disabled={submitting || !name.trim() || !createRecord.enabled}
+                disabled={
+                  submitting ||
+                  !name.trim() ||
+                  (hasWebsite && (!website.trim() || !!websiteError)) ||
+                  (!hasWebsite && !description.trim())
+                }
               >
                 {submitting ? "Creating…" : "Create workspace"}
               </Button>

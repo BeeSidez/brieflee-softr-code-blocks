@@ -246,6 +246,63 @@ const FINISH_URL = "/new";
 // Softr-hosted explainer video. No YouTube UI -> no distractions, can't click out.
 const HOW_VIDEO_URL = "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/c84a1dcc-34aa-4dd0-8871-a72c7d64bd92.mp4";
 
+// BL | New Workspace v2 — Softr workflow webhook URL.
+// Fires from Step 1 the FIRST time a user submits (when they have no
+// account yet). Workflow does Gemini brand analysis + Create Record on
+// accounts + copies billing/usage/subscriptions LINKED_RECORDs from
+// the user. After the workflow returns, /set-up refetches and the
+// remaining steps update the new row via useRecordUpdate as before.
+// See: Brieflee/new-workspace/workflow-spec.md
+const WORKSPACE_WORKFLOW_URL = "https://workflows-api.softr.io/v1/workflows/45e0663d-3163-4183-b055-d21b2449eb5a/executions/3a18e3de-2702-4dc1-8ce7-97bb40ae5b37";
+
+// ---------------------------------------------------------------------
+// Brand-website validation
+// ---------------------------------------------------------------------
+// People keep pasting TikTok / Reel / Shorts / Tweet links here instead
+// of their own brand homepage. Reject these hostnames outright and
+// surface a clear error so they re-enter their actual website.
+const SOCIAL_VIDEO_HOSTS = new Set([
+  "youtube.com", "m.youtube.com", "youtube-nocookie.com", "youtu.be",
+  "tiktok.com", "m.tiktok.com", "vm.tiktok.com", "vt.tiktok.com",
+  "instagram.com", "instagr.am",
+  "facebook.com", "m.facebook.com", "fb.com", "fb.watch",
+  "twitter.com", "x.com", "t.co",
+  "threads.net",
+  "linkedin.com", "lnkd.in",
+  "pinterest.com", "pin.it",
+  "snapchat.com",
+  "reddit.com", "redd.it",
+  "vimeo.com",
+  "twitch.tv",
+]);
+function getWebsiteHost(value) {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return "";
+  try {
+    const u = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    return u.hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+function getWebsiteError(value) {
+  const v = (value || "").trim();
+  if (!v) return "";  // empty is "incomplete", not "invalid" — handled by disable
+  const host = getWebsiteHost(v);
+  if (!host || !host.includes(".") || host.length < 4) {
+    return "That doesn't look like a website. Try yourbrand.com.";
+  }
+  if (SOCIAL_VIDEO_HOSTS.has(host)) {
+    return "Enter your brand's own website, not a social or video link.";
+  }
+  return "";
+}
+function isValidBrandWebsite(value) {
+  const v = (value || "").trim();
+  if (!v) return false;
+  return !getWebsiteError(v);
+}
+
 // =====================================================================
 // Block — orchestrator
 // =====================================================================
@@ -289,6 +346,14 @@ export default function Block() {
   // Step 6
   const [editingField, setEditingField] = useState(null);
   const [editedValues, setEditedValues] = useState({});
+
+  // First-time workspace creation state. When a user lands here without
+  // an existing accounts row, Step 1 submit fires the workspace workflow
+  // (which creates the row). While the workflow is running we show a
+  // saving state; once refetch returns the new record we save useCase
+  // on top of it from pendingUseCaseRef.
+  const [creatingAccount, setCreatingAccount] = useState(false);
+  const pendingUseCaseRef = useRef(null);
 
   const updateRecord = useRecordUpdate({
     fields: updateFields,
@@ -337,20 +402,68 @@ export default function Block() {
   };
 
   // ---- Save handlers per step ------------------------------------
-  const handleStep1 = () => {
+  const handleStep1 = async () => {
     if (useCases.length === 0) { toast.error("Please select at least one use case"); return; }
     const useCasePayload = USE_CASE_OPTIONS
       .filter((o) => useCases.includes(o.id))
       .map((o) => ({ id: o.id, label: o.label }));
-    save(
-      {
-        website: hasWebsite ? website.trim() : "",
-        description: !hasWebsite ? description.trim() : (record?.description || ""),
-        useCase: useCasePayload,
-      },
-      () => markSavedAndAdvance(1),
-    );
+
+    // Path A — user already has an account row: update directly.
+    if (record?.id) {
+      save(
+        {
+          website: hasWebsite ? website.trim() : "",
+          description: !hasWebsite ? description.trim() : (record?.description || ""),
+          useCase: useCasePayload,
+        },
+        () => markSavedAndAdvance(1),
+      );
+      return;
+    }
+
+    // Path B — first-time onboarding, no account yet: fire the workspace
+    // workflow. It creates the accounts row, runs Gemini brand analysis,
+    // and copies billing / usage / subscriptions linked records from the
+    // user. We then refetch and persist useCase via Path A's update
+    // pattern (handled by the effect below this function once `record`
+    // becomes non-null).
+    if (!user?.id) { toast.error("Please log in to continue"); return; }
+    setCreatingAccount(true);
+    try {
+      const res = await fetch(WORKSPACE_WORKFLOW_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: user.id,
+          workspace_name: "",
+          website: hasWebsite ? website.trim() : "",
+          description: !hasWebsite ? description.trim() : "",
+          is_additional_workspace: false,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Stash useCase so the effect below saves it once record loads.
+      pendingUseCaseRef.current = useCasePayload;
+      await refetch();
+    } catch (e) {
+      console.error("Workspace creation failed:", e);
+      toast.error("Couldn't create your workspace", { description: e?.message || "Try again." });
+      setCreatingAccount(false);
+    }
   };
+
+  // Once the newly-created account row is hydrated by refetch (Path B
+  // above), persist useCase + advance to Step 2.
+  useEffect(() => {
+    if (!pendingUseCaseRef.current) return;
+    if (!record?.id) return;
+    const payload = pendingUseCaseRef.current;
+    pendingUseCaseRef.current = null;
+    save({ useCase: payload }, () => {
+      setCreatingAccount(false);
+      markSavedAndAdvance(1);
+    });
+  }, [record?.id]); // eslint-disable-line
   const handleStep2 = () => {
     if (!aiModeId) return;
     const m = AI_MODE_OPTIONS.find((x) => x.id === aiModeId);
@@ -416,7 +529,7 @@ export default function Block() {
                 showOtherInput={showOtherInput} setShowOtherInput={setShowOtherInput}
                 otherUseCase={otherUseCase} setOtherUseCase={setOtherUseCase}
                 onSave={handleStep1}
-                saving={updateRecord.status === "pending" && currentStep === 1}
+                saving={creatingAccount || (updateRecord.status === "pending" && currentStep === 1)}
               />
             </section>
           )}
@@ -636,10 +749,12 @@ function Step1({ active, done, hasWebsite, setHasWebsite, website, setWebsite, d
   const strengthColor = description.length < 100 ? "#d92626" : "#20956f";
   const strengthLabel = description.length < 100 ? "Too short" : "Strong";
 
-  const isValidUrl = (u) => u && u.trim().length > 2; // permissive: any non-empty text counts
+  const isValidUrl = isValidBrandWebsite;
+  const websiteError = getWebsiteError(website);
 
   const handleWebsiteSubmit = () => {
     if (hasWebsite && !website.trim()) { toast.error("Please enter your website"); return; }
+    if (hasWebsite && websiteError) { toast.error(websiteError); return; }
     if (!hasWebsite && description.length < 100) { toast.error("Please write at least 100 characters about your brand"); return; }
     setWebsiteSubmitted(true);
     setShowTyping3(true);
@@ -698,11 +813,20 @@ function Step1({ active, done, hasWebsite, setHasWebsite, website, setWebsite, d
                     onChange={(e) => setWebsite(e.target.value)}
                     placeholder="yourbrand.com"
                     className="w-full pl-10 pr-4 py-3 rounded-xl text-sm bg-white outline-none transition-all duration-200"
-                    style={{ border: "1px solid rgba(217, 224, 255, 0.4)", color: "#000F4D", fontWeight: 300 }}
-                    onFocus={(e) => (e.target.style.borderColor = "#7A93FF")}
-                    onBlur={(e) => (e.target.style.borderColor = "rgba(217, 224, 255, 0.4)")}
+                    style={{
+                      border: `1px solid ${website.trim() && websiteError ? "#d92626" : "rgba(217, 224, 255, 0.4)"}`,
+                      color: "#000F4D",
+                      fontWeight: 300,
+                    }}
+                    onFocus={(e) => { if (!(website.trim() && websiteError)) e.target.style.borderColor = "#7A93FF"; }}
+                    onBlur={(e) => { if (!(website.trim() && websiteError)) e.target.style.borderColor = "rgba(217, 224, 255, 0.4)"; }}
                   />
                 </div>
+                {website.trim() && websiteError && (
+                  <p className="text-xs" style={{ color: "#d92626", marginTop: -4 }}>
+                    {websiteError}
+                  </p>
+                )}
                 <Button
                   onClick={handleWebsiteSubmit}
                   disabled={!isValidUrl(website)}

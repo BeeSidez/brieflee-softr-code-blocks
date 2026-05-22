@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<!--
+  Standalone preview of website/new/book-a-demo.
+  Open this file directly in a browser (double-click in Finder, or
+  drag into a Chrome tab) to see what the page is meant to look like
+  outside Softr. If the calendar renders here but not in Softr,
+  the issue is Softr-specific — usually preview sandbox vs. live URL.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Book a Demo — Brieflee (preview)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap"
+    />
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: 'League Spartan', sans-serif;
+      }
+
+      body {
+        background: #FAFBFF;
+        min-height: 100vh;
+        padding: 72px 20px 96px;
+      }
+
+      .bl-demo-inner {
+        max-width: 1140px;
+        margin: 0 auto;
+      }
+
+      /* Hero */
+      .bl-demo-hero {
+        max-width: 680px;
+        margin: 0 auto 48px;
+        text-align: center;
+      }
+      .bl-demo-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        background: rgba(135, 156, 247, 0.10);
+        border: 1px solid rgba(135, 156, 247, 0.25);
+        border-radius: 999px;
+        color: #879CF7;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 20px;
+      }
+      .bl-demo-pill-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #879CF7;
+      }
+      .bl-demo-title {
+        font-size: 48px;
+        font-weight: 700;
+        color: #000F4D;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+        margin: 0 0 18px;
+      }
+      .bl-demo-sub {
+        font-size: 16px;
+        color: #6B7A99;
+        line-height: 1.6;
+        margin: 0 auto;
+        max-width: 540px;
+      }
+      @media (max-width: 720px) {
+        body {
+          padding: 48px 16px 64px;
+        }
+        .bl-demo-title {
+          font-size: 32px;
+        }
+        .bl-demo-hero {
+          margin-bottom: 32px;
+        }
+      }
+
+      /* Embed wrapper */
+      .bl-demo-embed {
+        max-width: 1080px;
+        margin: 0 auto;
+        background: #FFFFFF;
+        border: 1px solid rgba(217, 224, 255, 0.6);
+        border-radius: 18px;
+        overflow: hidden;
+        box-shadow: 0 8px 32px rgba(0, 15, 77, 0.06);
+      }
+      .bl-demo-embed .tidycal-embed,
+      .bl-demo-embed .tidycal-embed iframe {
+        width: 100% !important;
+        display: block;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bl-demo-inner">
+      <div class="bl-demo-hero">
+        <div class="bl-demo-pill">
+          <span class="bl-demo-pill-dot"></span>
+          Book a Demo
+        </div>
+        <h1 class="bl-demo-title">See Brieflee in action</h1>
+        <p class="bl-demo-sub">
+          30 minutes with the Brieflee team. We'll walk through your
+          content workflow, answer your questions, and help you pick
+          the right plan.
+        </p>
+      </div>
+
+      <div class="bl-demo-embed">
+        <div class="tidycal-embed" data-path="bevbanahene/brieflee-demo"></div>
+      </div>
+    </div>
+
+    <script src="https://asset-tidycal.b-cdn.net/js/embed.js" async></script>
+  </body>
+</html>

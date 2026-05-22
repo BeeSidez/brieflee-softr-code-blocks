@@ -4,20 +4,44 @@
 // successful payment. We show a brief celebration + a single CTA into
 // the onboarding setup flow at /set-up.
 //
+// On landing we persist the trial window to the user row in the
+// brieflee beta users table (idempotent — only on first visit):
+//   - trial_start (J06K2): now
+//   - trial_end   (5cUNI): now + 7 days
+//
+// A computed FORMULA field `trialing` (YtEyS) on the same row evaluates
+// AND(trial_start != BLANK, trial_end != BLANK, trial_start <= NOW, NOW <= trial_end)
+// so the rest of the app can branch on a single boolean.
+//
 // IMPORTANT — Google Ads conversion tag:
 //   The Google Tag for conversion tracking lives in Softr's Page
 //   Settings → Custom Code → Header for /payment-success. It is NOT
 //   in this block. Updating the block does not touch the tag; it
 //   will keep firing on page load as before.
+//
+// SOFTR UI SETUP:
+//   Source tab → Database: brieflee beta → Table: users.
+//   The block scopes itself in code via useCurrentUser; the source
+//   binding is still required so the data layer knows the table.
 
+import { useEffect, useRef, useState } from "react";
+import { useRecord, useRecordUpdate, q } from "@/lib/datasource";
+import { useCurrentUser } from "@/lib/user";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 
+// brieflee beta users table — field aliases for the per-user write.
+// Source: Tables API GET /tables/brpbVf8sL2xqxV.
+const userFields = q.select({
+  trialStart: "J06K2",  // DATETIME
+  trialEnd:   "5cUNI",  // DATETIME
+});
+
+const TRIAL_DAYS = 7;
+const NEXT_PATH = "/set-up";
+
 const SMILE_LOGO =
   "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_brand_isometric-smiley-face-tilted-disc-blue-outline-cream-mark_2026-03.png";
-
-const NEXT_PATH = "/set-up";
-const TRIAL_DAYS = 7;
 
 const BL_NAVY       = "#001364";
 const BL_DEEP       = "#000F4D";
@@ -25,9 +49,57 @@ const BL_PERIWINKLE = "#879CF7";
 const BL_MUTED      = "#6B7A99";
 
 export default function Block() {
-  const trialEnd = new Date();
-  trialEnd.setDate(trialEnd.getDate() + TRIAL_DAYS);
-  const formattedDate = trialEnd.toLocaleDateString("en-GB", {
+  const user = useCurrentUser();
+  const { data, status } = useRecord({ recordId: user?.id, select: userFields });
+  const updateRecord = useRecordUpdate({ fields: userFields });
+  const hasInitialisedRef = useRef(false);
+
+  // Local trial-end used for display. Hydrated from the record if it
+  // already has trial_end; otherwise computed locally on first render so
+  // the page never blanks while we wait for the write to complete.
+  const [trialEndDate, setTrialEndDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + TRIAL_DAYS);
+    return d;
+  });
+
+  // ----- Idempotent trial-date persistence on landing -----
+  useEffect(() => {
+    if (status !== "success") return;
+    if (!user?.id) return;
+    if (hasInitialisedRef.current) return;
+    hasInitialisedRef.current = true;
+
+    const existingStart = data?.fields?.trialStart;
+    const existingEnd   = data?.fields?.trialEnd;
+
+    if (existingStart) {
+      // Trial already started on a previous visit — display the
+      // persisted end date and skip the write.
+      if (existingEnd) setTrialEndDate(new Date(existingEnd));
+      return;
+    }
+
+    // First visit: write trial_start = now, trial_end = now + 7 days.
+    const now = new Date();
+    const end = new Date(now);
+    end.setDate(end.getDate() + TRIAL_DAYS);
+    setTrialEndDate(end);
+
+    updateRecord
+      .mutateAsync({
+        recordId: user.id,
+        fields: {
+          trialStart: now.toISOString(),
+          trialEnd:   end.toISOString(),
+        },
+      })
+      .catch((err) => {
+        console.error("Failed to persist trial dates:", err);
+      });
+  }, [status, user?.id, data?.fields?.trialStart, data?.fields?.trialEnd, updateRecord]);
+
+  const formattedDate = trialEndDate.toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
     year: "numeric",

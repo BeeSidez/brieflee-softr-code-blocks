@@ -138,7 +138,7 @@ export default function Block() {
       <Style />
       <div
         className="bl-notif content mx-auto py-4 space-y-4"
-        style={{ maxWidth: 1140 }}
+        style={{ maxWidth: 720 }}
       >
         {/* Section pill */}
         <div className="bl-notif-pill">

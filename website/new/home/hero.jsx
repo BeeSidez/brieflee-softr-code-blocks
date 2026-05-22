@@ -38,6 +38,10 @@ const videoFormatsSelect = q.select({
 });
 
 const SIGNUP_URL = "https://www.brieflee.co/sign-up";
+// Shared lead-capture workflow — fires on hero submit so we log the
+// touch (which URL pasted or file uploaded) before redirecting to
+// /sign-up where the email is captured. Best-effort, never blocks UX.
+const EMAIL_WORKFLOW_URL = "https://workflows-api.softr.io/v1/workflows/1e28685f-1a24-4042-80ac-cadfedef7336/executions/22b90d5d-a73b-43b5-ac1b-f24843b781bd";
 
 // Hero background. Base = nav colour (#FAFBFF) so the seam between nav
 // and hero disappears. On top of that, a soft periwinkle "cloud"
@@ -743,6 +747,24 @@ function CtaFlow() {
       return;
     }
     setStep("loading");
+
+    // Best-effort lead-touch capture via shared workflow. Logs the URL or
+    // filename so we know which video the visitor pasted before they
+    // signed up. Email is captured at /sign-up.
+    fetch(EMAIL_WORKFLOW_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "",
+        website: "",
+        source: "home-hero",
+        video_url: tab === "url" ? url.trim() : "",
+        file_name: tab === "file" && file ? file.name : "",
+        page_url: typeof window !== "undefined" ? window.location.href : "",
+        submitted_at: new Date().toISOString(),
+      }),
+    }).catch((e) => console.error("Lead-touch capture failed (continuing):", e));
+
     setTimeout(() => {
       window.location.href = SIGNUP_URL;
     }, 3500);
@@ -883,7 +905,7 @@ function CtaFlow() {
           <div className="bl-value-props" style={{ marginTop: 18, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px 22px", fontSize: 15, color: NAVY, fontWeight: 600 }}>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: PERI }} />
-              Free, no credit card
+              Free to use
             </div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={PERI} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">

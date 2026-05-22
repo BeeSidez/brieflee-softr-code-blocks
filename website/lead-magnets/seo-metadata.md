@@ -70,7 +70,7 @@ Paste any TikTok, Instagram Reel, or YouTube Short and get a free AI breakdown o
 Free Video Breakdown Tool. See why any short-form video worked, in 60 seconds.
 
 **Social Description**
-Paste a URL or upload a file. Get a frame-by-frame AI breakdown in 60 seconds. Hook, structure, pacing, CTA, all scored. Free, no credit card.
+Paste a URL or upload a file. Get a frame-by-frame AI breakdown in 60 seconds. Hook, structure, pacing, CTA, all scored. Free to use.
 
 ---
 
@@ -83,13 +83,13 @@ Paste a URL or upload a file. Get a frame-by-frame AI breakdown in 60 seconds. H
 Free TikTok Video Analyser | AI Frame-by-Frame | Brieflee
 
 **SEO Description** *(149 chars)*
-Paste any TikTok URL and get a free AI breakdown of the hook, scene structure, audio and CTA in 60 seconds. Frame by frame, no credit card.
+Paste any TikTok URL and get a free AI breakdown of the hook, scene structure, audio and CTA in 60 seconds. Frame by frame, free to use.
 
 **Social Title**
 Free TikTok Video Analyser. See why any TikTok worked, in 60 seconds.
 
 **Social Description**
-Paste a TikTok URL. Get a frame-by-frame AI breakdown in 60 seconds. Hook, structure, pacing, CTA, all scored. Free, no credit card.
+Paste a TikTok URL. Get a frame-by-frame AI breakdown in 60 seconds. Hook, structure, pacing, CTA, all scored. Free to use.
 
 ---
 
@@ -102,13 +102,13 @@ Paste a TikTok URL. Get a frame-by-frame AI breakdown in 60 seconds. Hook, struc
 Free Instagram Reel Analyser | AI Hook + CTA Score | Brieflee
 
 **SEO Description** *(151 chars)*
-Paste any Instagram Reel URL and get a free AI breakdown of the hook, scene structure, audio and CTA in 60 seconds. Frame by frame, no credit card.
+Paste any Instagram Reel URL and get a free AI breakdown of the hook, scene structure, audio and CTA in 60 seconds. Frame by frame, free to use.
 
 **Social Title**
 Free Instagram Reel Analyser. See what makes any Reel work.
 
 **Social Description**
-Paste an Instagram Reel URL. Get a frame-by-frame AI breakdown in 60 seconds. Hook, structure, pacing, CTA, all scored. Free, no credit card.
+Paste an Instagram Reel URL. Get a frame-by-frame AI breakdown in 60 seconds. Hook, structure, pacing, CTA, all scored. Free to use.
 
 ---
 
@@ -121,13 +121,13 @@ Paste an Instagram Reel URL. Get a frame-by-frame AI breakdown in 60 seconds. Ho
 Free YouTube Shorts Analyser | AI Hook + CTA Score | Brieflee
 
 **SEO Description** *(149 chars)*
-Paste any YouTube Short URL and get a free AI breakdown of the hook, scene structure, audio and CTA in 60 seconds. Frame by frame, no credit card.
+Paste any YouTube Short URL and get a free AI breakdown of the hook, scene structure, audio and CTA in 60 seconds. Frame by frame, free to use.
 
 **Social Title**
 Free YouTube Shorts Analyser. See why any Short worked.
 
 **Social Description**
-Paste a YouTube Short URL. Get a frame-by-frame AI breakdown in 60 seconds. Hook, structure, pacing, CTA, all scored. Free, no credit card.
+Paste a YouTube Short URL. Get a frame-by-frame AI breakdown in 60 seconds. Hook, structure, pacing, CTA, all scored. Free to use.
 
 ---
 
@@ -140,13 +140,13 @@ Paste a YouTube Short URL. Get a frame-by-frame AI breakdown in 60 seconds. Hook
 Free Facebook Ad Video Checker | AI Score in 60s | Brieflee
 
 **SEO Description** *(151 chars)*
-Paste any Facebook ad video URL and get a free AI check of the hook, scene structure, audio and CTA in 60 seconds. Frame by frame, no credit card.
+Paste any Facebook ad video URL and get a free AI check of the hook, scene structure, audio and CTA in 60 seconds. Frame by frame, free to use.
 
 **Social Title**
 Free Facebook Ad Video Checker. Score any FB ad in 60 seconds.
 
 **Social Description**
-Paste a Facebook video URL. Get a frame-by-frame AI check in 60 seconds. Hook, structure, pacing, CTA, all scored. Free, no credit card.
+Paste a Facebook video URL. Get a frame-by-frame AI check in 60 seconds. Hook, structure, pacing, CTA, all scored. Free to use.
 
 ---
 
@@ -165,4 +165,4 @@ Generate a complete creator brief in 60 seconds. Hook, scenes, voiceover, CTA, a
 Free AI Brief Generator. Skip the blank-page anxiety.
 
 **Social Description**
-Tell us your product, audience and goal. AI writes a remix-ready creator brief in 60 seconds. Hook, scenes, voiceover, CTA. Free, no credit card.
+Tell us your product, audience and goal. AI writes a remix-ready creator brief in 60 seconds. Hook, scenes, voiceover, CTA. Free to use.

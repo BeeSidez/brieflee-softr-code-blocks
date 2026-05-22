@@ -89,7 +89,7 @@ function TeamStep({ teamName, setTeamName, teamEmails, setTeamEmails, onNext, on
       </div>
 
       <p className="text-center mt-6" style={{ fontSize: 12, color: "var(--bl-fg-quiet)" }}>
-        Teammates get a free seat under your trial. No card needed for them.
+        Teammates get a free seat under your trial.
       </p>
     </div>
   );

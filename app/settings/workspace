@@ -24,7 +24,9 @@ import { toast } from "sonner";
 // ---- Field map (ACCOUNTS) -----------------------------------------
 const select = q.select({
   name:               "aAKkT",
-  logo:               "q1B5K",
+  logo:               "q1B5K", // legacy ATTACHMENT (manual upload override)
+  logoUrl:            "nPI65", // FORMULA — favicon/default fallback when
+                              // no manual upload exists
   niche:              "vOp4b",
   brandBio:           "iVPat",
   brandVoice:         "ybmp8",
@@ -255,7 +257,12 @@ export default function Block() {
     if (logoPending) {
       return URL.createObjectURL(logoPending);
     }
-    return extractAttachmentUrl(logoSaved);
+    // Prefer the user's uploaded ATTACHMENT; fall back to the formula
+    // (Google favicon or Brieflee approval-stamp default).
+    const attachment = extractAttachmentUrl(logoSaved);
+    if (attachment) return attachment;
+    const formula = (record?.fields?.logoUrl || "").trim();
+    return formula && /^https?:\/\//i.test(formula) ? formula : null;
   })();
 
   const saveBrand = () => {

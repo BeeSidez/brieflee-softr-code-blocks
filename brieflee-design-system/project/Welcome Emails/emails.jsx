@@ -307,7 +307,7 @@ function E2Sticker() {
       fromName="Anna at Brieflee"
       fromEmail="anna@brieflee.co"
       time="9:42 AM"
-      preheader="3 steps and you'll see your first score. No credit card, no setup call."
+      preheader="3 steps and you'll see your first score. No setup call needed."
     >
       {/* Hero with rocket sticker — slimmer, matched to E3's height */}
       <div style={{

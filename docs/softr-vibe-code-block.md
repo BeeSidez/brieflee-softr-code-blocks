@@ -491,6 +491,63 @@ The `/10`, `/20`, `/30` modifiers add transparency (e.g. `bg-primary/10` is prim
 
 Use Tailwind responsive prefixes (`sm:`, `md:`, `lg:`). Vibe blocks must work on mobile — always test layout with `flex-col md:flex-row` patterns.
 
+### Typography rules (locked)
+
+For any **section heading h2** outside the hero, default to the lead-magnet pattern from `lead-magnets/brief-generator/faq.jsx`:
+
+```jsx
+<h2 className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight leading-[1.1] text-foreground">
+```
+
+- **Sizes**: `text-3xl md:text-4xl lg:text-5xl` (30 / 36 / 48 px)
+- **Weight**: `font-bold` (Tailwind 700). **Never use `font-extrabold` (800) outside the hero.** Even in the hero, prefer 700 unless there's a specific reason for 800.
+- **Tracking**: `tracking-tight`
+- **Leading**: `leading-[1.1]`
+- **Colour**: `text-foreground` (or hardcoded NAVY `#001364` if matching the hero canvas)
+
+Card titles, sub-headers, and any other large body text: **`font-bold` (700) max.** Body copy: `font-medium` (500) or `font-semibold` (600).
+
+The Eyebrow pill is the same in every block — copy the function from `website/new/home/hero.jsx` verbatim:
+
+```jsx
+function Eyebrow({ children }) {
+  return (
+    <div style={{
+      display: "inline-flex", alignItems: "center", gap: 10,
+      padding: "10px 18px", background: "rgba(135,156,247,0.16)", color: NAVY,
+      fontSize: 14, fontWeight: 700, letterSpacing: "0.06em",
+      textTransform: "uppercase", borderRadius: 999, width: "fit-content",
+    }}>
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: PERI, boxShadow: `0 0 0 3px ${PERI}33` }} />
+      {children}
+    </div>
+  );
+}
+```
+
+Don't reimplement it in Tailwind — copy the inline-style version so the eyebrows are pixel-identical across every block.
+
+### Section background (locked)
+
+Every marketing section on the homepage uses the same background as the hero so there's no visible seam between blocks:
+
+```js
+const HERO_BG =
+  "radial-gradient(ellipse 65% 50% at 50% 50%, rgba(135,156,247,0.28) 0%, rgba(180,192,245,0.14) 40%, rgba(180,192,245,0) 75%), #FAFBFF";
+```
+
+Apply via inline style on the section root, not Tailwind `bg-white`.
+
+### Font-family (locked)
+
+Set explicitly on the section root so Softr's default font doesn't bleed in:
+
+```jsx
+<section style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+```
+
+The hero sets it on the canvas wrapper; every other block must set it on the section.
+
 ---
 
 ## Adapting design-canvas mockups (1920×1080 fixed-pixel JSX) to Softr blocks
