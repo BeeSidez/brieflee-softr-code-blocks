@@ -29,7 +29,7 @@
 //   3. Actions tab → enable Update Record (aliases: userSwipes, boards)
 // =====================================================================
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   useRecords,
   useRecordUpdate,
@@ -39,7 +39,6 @@ import {
 import { useCurrentUser } from "@/lib/user";
 import {
   ChevronDown,
-  Check,
   Search,
   X,
   Building2,
@@ -117,97 +116,58 @@ function selectLabel(raw) {
   return String(raw);
 }
 
-// ─── Filter pill: multi-select dropdown ──────────────────────
-// Options may be plain strings OR { label, emoji } objects — the
-// Format pill uses the object form so its dropdown can show the
-// format's emoji next to each name (e.g. "🤫 ASMR").
+// ─── Filter pill: native <select> single-pick dropdown ───────
+// We previously tried a custom dropdown but the popup was getting
+// clipped / hidden by Softr's preview chrome. Switching to a native
+// HTML <select> means the browser owns the popup — escapes every
+// stacking-context / overflow trap automatically.
+//
+// One value per pill; multi-select can come back once we've fixed
+// whatever was hiding the custom dropdown. Options may be plain
+// strings OR { label, emoji } objects — the Format pill uses the
+// object form so each <option> can show "🤫 ASMR".
 function FilterPill({ label, icon: Icon, options, selected, onChange }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    function onClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    }
-    if (open) document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [open]);
-
   const active = selected.length > 0;
-
-  function toggle(value) {
-    console.log("[FilterPill toggle]", { label, value, prevSelected: selected });
-    const next = selected.includes(value)
-      ? selected.filter((v) => v !== value)
-      : [...selected, value];
-    onChange(next);
-  }
+  const value = selected[0] || "";
 
   return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => {
-          console.log("[FilterPill click]", { label, willOpen: !open, optionsCount: options.length });
-          setOpen((o) => !o);
+    <label
+      className={`inline-flex items-center gap-2 pl-3.5 pr-1 py-0 rounded-xl border-2 text-sm font-semibold transition-colors cursor-pointer ${
+        active
+          ? "bg-primary/10 border-primary text-primary"
+          : "bg-card border-border text-foreground hover:border-primary/40"
+      }`}
+    >
+      {Icon && <Icon className="w-4 h-4 shrink-0" />}
+      <span className="shrink-0">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => {
+          const v = e.target.value;
+          console.log("[FilterPill change]", { label, value: v });
+          onChange(v ? [v] : []);
         }}
-        className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border-2 text-sm font-semibold transition-colors ${
-          active
-            ? "bg-primary/10 border-primary text-primary"
-            : "bg-card border-border text-foreground hover:border-primary/40"
-        }`}
+        className="bg-transparent border-0 outline-none cursor-pointer py-2 pl-1 pr-2 text-sm font-semibold text-current appearance-none"
+        style={{
+          // Reset native select styles enough that the pill label drives
+          // the look; the actual option list is the browser's default.
+          minWidth: 0,
+          maxWidth: 140,
+        }}
       >
-        {Icon && <Icon className="w-4 h-4" />}
-        <span>{label}</span>
-        {active && (
-          <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-bold">
-            {selected.length}
-          </span>
-        )}
-        <ChevronDown className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-
-      {open && (
-        <div className="absolute top-full left-0 mt-2 w-72 max-h-[380px] overflow-y-auto bg-card border border-border rounded-2xl shadow-xl z-50 p-2">
-          {options.length === 0 ? (
-            <div className="px-3 py-4 text-sm text-muted-foreground">No options yet</div>
-          ) : (
-            options.map((opt) => {
-              const optLabel = typeof opt === "string" ? opt : opt.label;
-              const optEmoji = typeof opt === "string" ? "" : opt.emoji;
-              const isSelected = selected.includes(optLabel);
-              return (
-                <button
-                  key={optLabel}
-                  type="button"
-                  onClick={() => toggle(optLabel)}
-                  className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm text-left hover:bg-muted ${
-                    isSelected ? "bg-primary/5" : ""
-                  }`}
-                >
-                  <span className="flex items-center gap-2 text-foreground truncate pr-2">
-                    {optEmoji && <span className="shrink-0">{optEmoji}</span>}
-                    <span className="truncate">{optLabel}</span>
-                  </span>
-                  {isSelected && <Check className="w-4 h-4 text-primary shrink-0" />}
-                </button>
-              );
-            })
-          )}
-          {active && (
-            <div className="border-t border-border mt-2 pt-2">
-              <button
-                type="button"
-                onClick={() => onChange([])}
-                className="w-full text-sm text-muted-foreground hover:text-foreground py-1.5"
-              >
-                Clear
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+        <option value="">Any</option>
+        {options.map((opt) => {
+          const optLabel = typeof opt === "string" ? opt : opt.label;
+          const optEmoji = typeof opt === "string" ? "" : opt.emoji;
+          return (
+            <option key={optLabel} value={optLabel}>
+              {optEmoji ? `${optEmoji} ${optLabel}` : optLabel}
+            </option>
+          );
+        })}
+      </select>
+      <ChevronDown className="w-4 h-4 shrink-0 -ml-1 pointer-events-none" />
+    </label>
   );
 }
 
