@@ -11,13 +11,13 @@
 //     the video's User Swipes link (WJO6I). Mid-mutation shows a
 //     spinner; saved state is gray (Motion-style); success / removal
 //     fires a sonner toast.
-//   • Bookmark menu (bottom-right of brand strip) — toggles which of
-//     the user's boards the video belongs to via the boards link
-//     (IniNB → boards table XiLxhAkyOL9yrX). Board creation lives in
-//     the Discover sidebar nav, not here.
-//   • Card click → /videos-details/r/<videoId> opened in an XL Softr
-//     modal (window.openSwModal). Cmd/ctrl/middle-click falls back to
-//     a normal new-tab navigation.
+//   • Bookmark button (bottom-right of brand strip) — opens
+//     /assign-board?recordId=<videoId> as a "sm" Softr modal. The
+//     /assign-board page owns the add/remove board logic; this block
+//     only reads `boards` to render the filled-vs-outline indicator.
+//   • Card click → /videos-details?recordId=<videoId> opened in an
+//     XL Softr modal (window.openSwModal). Cmd/ctrl/middle-click falls
+//     back to a normal new-tab navigation.
 //
 // If used on a format detail page, useCurrentRecordId auto-scopes the
 // grid to that format. On Discover (no current record), it shows the
@@ -25,14 +25,12 @@
 //
 // SOFTR UI SETUP:
 //   1. Source tab → Database: brieflee beta → Table: videos
-//   2. Add a second data source → Table: boards
-//   3. Visibility tab → as required (logged-in app users)
-//   4. Actions tab → enable Update Record (aliases: userSwipes, boards)
+//   2. Visibility tab → as required (logged-in app users)
+//   3. Actions tab → enable Update Record (aliases: userSwipes, boards)
 // =====================================================================
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  useRecord,
   useRecords,
   useRecordUpdate,
   useCurrentRecordId,
@@ -79,13 +77,6 @@ const createFields = q.select({
 const updateFields = q.select({
   userSwipes: "WJO6I",
   boards:     "IniNB",
-});
-
-// ─── boards table (XiLxhAkyOL9yrX) aliases ───────────────────
-const boardsSelect = q.select({
-  name:  "dsjPO",  // primary
-  emoji: "695Lf",  // SELECT
-  user:  "enk5I",  // LINKED_RECORD → users (board owner)
 });
 
 const NAVY = "#001364";
@@ -203,89 +194,46 @@ function FilterPill({ label, icon: Icon, options, selected, onChange }) {
   );
 }
 
-// ─── Boards menu (per-card) ──────────────────────────────────
-// Click bookmark icon → popover lists the user's boards. Each is a
-// toggle (checked = video is on that board). Empty state nudges
-// the user toward the sidebar where new boards get created.
-function BoardsMenu({ video, boards, currentBoardIds, onToggleBoard }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+// ─── Boards button (per-card) ────────────────────────────────
+// Click → opens /assign-board?recordId=<videoId> as a "sm" Softr
+// modal. The /assign-board page handles the actual add/remove board
+// logic; this card just shows whether the video is currently on any
+// board (filled bookmark) or not (outline).
+function BoardsButton({ video, isOnAnyBoard }) {
   const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
 
-  useEffect(() => {
-    function onDown(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+  const onClick = (e) => {
+    stop(e);
+    if (typeof window === "undefined") return;
+    const url = `/assign-board?recordId=${encodeURIComponent(video.id)}`;
+    if (typeof window.openSwModal === "function") {
+      window.openSwModal(url, "sm");
+    } else {
+      window.location.href = url;
     }
-    if (open) document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
-
-  const isOnAnyBoard = currentBoardIds.length > 0;
+  };
 
   return (
-    <div
-      className="relative"
-      ref={ref}
+    <button
+      type="button"
       data-card-action="boards"
       onMouseDown={stop}
-      onClick={stop}
+      onClick={onClick}
+      className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
+        isOnAnyBoard
+          ? "text-primary bg-primary/10 hover:bg-primary/15"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+      }`}
+      aria-label={isOnAnyBoard ? "Manage boards" : "Add to board"}
+      title={isOnAnyBoard ? "On a board — manage" : "Add to board"}
     >
-      <button
-        type="button"
-        onClick={(e) => { stop(e); setOpen((o) => !o); }}
-        className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
-          isOnAnyBoard
-            ? "text-primary bg-primary/10 hover:bg-primary/15"
-            : "text-muted-foreground hover:text-foreground hover:bg-muted"
-        }`}
-        aria-label={isOnAnyBoard ? "Manage boards" : "Add to board"}
-        title={isOnAnyBoard ? "On a board — manage" : "Add to board"}
-      >
-        <Bookmark className="w-4 h-4" fill={isOnAnyBoard ? "currentColor" : "none"} />
-      </button>
-
-      {open && (
-        <div
-          className="absolute bottom-full right-0 mb-2 w-64 max-h-[320px] overflow-y-auto bg-card border border-border rounded-2xl shadow-xl z-40 p-2"
-        >
-          <div className="px-3 py-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Add to board
-          </div>
-          {boards.length === 0 ? (
-            <div className="px-3 py-4 text-sm text-muted-foreground">
-              No boards yet. Create one from the sidebar to organize your saves.
-            </div>
-          ) : (
-            boards.map((b) => {
-              const isOn = currentBoardIds.includes(b.id);
-              const name = b?.fields?.name || "Untitled board";
-              const emoji = b?.fields?.emoji?.label || "";
-              return (
-                <button
-                  key={b.id}
-                  type="button"
-                  onClick={(e) => { stop(e); onToggleBoard(video, b.id); }}
-                  className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm text-left hover:bg-muted ${
-                    isOn ? "bg-primary/5" : ""
-                  }`}
-                >
-                  <span className="flex items-center gap-2 min-w-0">
-                    {emoji && <span className="shrink-0">{emoji}</span>}
-                    <span className="text-foreground truncate">{name}</span>
-                  </span>
-                  {isOn && <Check className="w-4 h-4 text-primary shrink-0" />}
-                </button>
-              );
-            })
-          )}
-        </div>
-      )}
-    </div>
+      <Bookmark className="w-4 h-4" fill={isOnAnyBoard ? "currentColor" : "none"} />
+    </button>
   );
 }
 
 // ─── Card ────────────────────────────────────────────────────
-function ClipCard({ rec, currentUserId, boards, isSaving, onToggleSave, onToggleBoard }) {
+function ClipCard({ rec, currentUserId, isSaving, onToggleSave }) {
   const f = rec.fields || {};
   const url = f.videoUrl || "";
   const brand = f.brand?.label || "";
@@ -301,10 +249,13 @@ function ClipCard({ rec, currentUserId, boards, isSaving, onToggleSave, onToggle
   const swipeIds = linkIds(f.userSwipes);
   const isSaved = currentUserId ? swipeIds.includes(currentUserId) : false;
 
-  // Boards this video already belongs to.
-  const boardIds = linkIds(f.boards);
+  // Bookmark visual — filled when the video is on at least one board.
+  const isOnAnyBoard = linkIds(f.boards).length > 0;
 
-  const href = `/videos-details/r/${rec.id}`;
+  // /videos-details is the in-app detail page. Uses the same
+  // ?recordId= convention as /projects-invite and /projects/details/
+  // (see app/projects/index).
+  const href = `/videos-details?recordId=${encodeURIComponent(rec.id)}`;
 
   const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
 
@@ -313,7 +264,7 @@ function ClipCard({ rec, currentUserId, boards, isSaving, onToggleSave, onToggle
     // always prevent the native <a> default. So we check here: if
     // the click originated inside an action element, bail before
     // opening the modal. data-card-action is set on the save heart
-    // and the BoardsMenu wrapper.
+    // and the bookmark button.
     if (e.target.closest && e.target.closest("[data-card-action]")) {
       e.preventDefault();
       return;
@@ -322,7 +273,10 @@ function ClipCard({ rec, currentUserId, boards, isSaving, onToggleSave, onToggle
     if (typeof window === "undefined") return;
     if (typeof window.openSwModal === "function") {
       e.preventDefault();
+      console.log("[Card click] openSwModal", { url: href, size: "xl" });
       window.openSwModal(href, "xl");
+    } else {
+      console.warn("[Card click] window.openSwModal not available — falling back to navigation");
     }
   };
 
@@ -383,12 +337,7 @@ function ClipCard({ rec, currentUserId, boards, isSaving, onToggleSave, onToggle
           <span className="font-semibold text-foreground text-sm truncate">{brand || "Brand"}</span>
         </div>
 
-        <BoardsMenu
-          video={rec}
-          boards={boards}
-          currentBoardIds={boardIds}
-          onToggleBoard={onToggleBoard}
-        />
+        <BoardsButton video={rec} isOnAnyBoard={isOnAnyBoard} />
       </div>
     </a>
   );
@@ -405,18 +354,9 @@ export default function Block() {
   const { data, status, refetch } = useRecords({ select: createFields, count: 500 });
   const allRecords = data?.pages?.flatMap((p) => p?.items ?? []) ?? [];
 
-  // Boards owned by the current user — the "Add to board" menu picks from here.
-  const { data: boardsData } = useRecords({ select: boardsSelect, count: 200 });
-  const allBoards = boardsData?.pages?.flatMap((p) => p?.items ?? []) ?? [];
-  const myBoards = useMemo(() => {
-    if (!currentUserId) return [];
-    return allBoards.filter((b) => {
-      const ownerIds = linkIds(b?.fields?.user);
-      return ownerIds.includes(currentUserId);
-    });
-  }, [allBoards, currentUserId]);
-
-  // Single mutation hook for both save + board toggles.
+  // Single mutation hook for the save toggle. The bookmark button on
+  // each card delegates board assignment to the /assign-board Softr
+  // modal page, so this block doesn't need a board write path.
   const updateRecord = useRecordUpdate({ fields: updateFields });
 
   // Per-video pending state so spinners stay scoped to the clicked card.
@@ -515,51 +455,8 @@ export default function Block() {
     }
   };
 
-  const handleToggleBoard = async (video, boardId) => {
-    if (updateRecord.enabled === false) {
-      toast.error("Update isn't enabled", {
-        description: "Turn on Actions → Update Record in Softr Studio.",
-      });
-      return;
-    }
-    const current = linkObjects(video?.fields?.boards);
-    const ids = current.map((b) => b.id);
-    const isOn = ids.includes(boardId);
-    const board = myBoards.find((b) => b.id === boardId);
-    const nextObjs = isOn
-      ? current.filter((b) => b.id !== boardId)
-      : [...current, { id: boardId, label: board?.fields?.name || "" }];
-
-    console.log("[Board toggle]", {
-      videoId: video.id,
-      boardId,
-      wasOn: isOn,
-      nextCount: nextObjs.length,
-    });
-
-    setOptimistic((prev) => {
-      const n = new Map(prev);
-      const entry = n.get(video.id) || {};
-      n.set(video.id, { ...entry, boards: nextObjs });
-      return n;
-    });
-    try {
-      const result = await updateRecord.mutateAsync({
-        recordId: video.id,
-        fields: { boards: nextObjs.map((b) => ({ id: b.id })) },
-      });
-      console.log("[Board toggle] success", result);
-      toast.success(isOn
-        ? `Removed from ${board?.fields?.name || "board"}`
-        : `Added to ${board?.fields?.name || "board"}`);
-      await refetch?.();
-    } catch (err) {
-      console.error("[Board toggle] failed:", err);
-      toast.error("Couldn't update board", { description: err?.message || "Try again." });
-    } finally {
-      clearOptimisticKey(video.id, "boards");
-    }
-  };
+  // Board assignment lives in the /assign-board modal page now —
+  // no handler needed here.
 
   // Filter state
   const [search, setSearch] = useState("");
@@ -794,10 +691,8 @@ export default function Block() {
                   key={rec.id}
                   rec={mergeOptimistic(rec)}
                   currentUserId={currentUserId}
-                  boards={myBoards}
                   isSaving={savingIds.has(rec.id)}
                   onToggleSave={handleToggleSave}
-                  onToggleBoard={handleToggleBoard}
                 />
               ))}
             </div>
