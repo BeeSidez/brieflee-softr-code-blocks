@@ -144,7 +144,6 @@ function FilterPill({ label, icon: Icon, options, selected, onChange }) {
         value={value}
         onChange={(e) => {
           const v = e.target.value;
-          console.log("[FilterPill change]", { label, value: v });
           onChange(v ? [v] : []);
         }}
         className="bg-transparent border-0 outline-none cursor-pointer py-2 pl-1 pr-2 text-sm font-semibold text-current appearance-none"
@@ -250,10 +249,7 @@ function ClipCard({ rec, currentUserId, isSaving, onToggleSave }) {
     if (typeof window === "undefined") return;
     if (typeof window.openSwModal === "function") {
       e.preventDefault();
-      console.log("[Card click] openSwModal", { url: href, size: "xl" });
       window.openSwModal(href, "xl");
-    } else {
-      console.warn("[Card click] window.openSwModal not available — falling back to navigation");
     }
   };
 
@@ -393,13 +389,6 @@ export default function Block() {
       ? current.filter((u) => u.id !== currentUserId)
       : [...current, { id: currentUserId, label: "" }];
 
-    console.log("[Save toggle]", {
-      videoId: video.id,
-      currentUserId,
-      wasSaved: isSaved,
-      nextCount: nextObjs.length,
-    });
-
     setOptimistic((prev) => {
       const n = new Map(prev);
       const entry = n.get(video.id) || {};
@@ -412,11 +401,10 @@ export default function Block() {
       return n;
     });
     try {
-      const result = await updateRecord.mutateAsync({
+      await updateRecord.mutateAsync({
         recordId: video.id,
         fields: { userSwipes: nextObjs.map((u) => ({ id: u.id })) },
       });
-      console.log("[Save toggle] success", result);
       toast.success(isSaved ? "Removed from saved" : "Video saved");
       await refetch?.();
     } catch (err) {
@@ -540,12 +528,6 @@ export default function Block() {
       }
       return true;
     });
-    console.log("[Filter]", {
-      filters,
-      search,
-      total: formatScoped.length,
-      shown: result.length,
-    });
     return result;
   }, [formatScoped, filters, search]);
 
@@ -638,50 +620,6 @@ export default function Block() {
               )}
             </div>
           </div>
-
-          {/* Debug panel — temporary. Expand and screenshot if filters
-              still don't behave; the field shapes + counts here pin
-              down where the chain breaks. Delete once filters confirmed. */}
-          <details className="mb-4 text-xs bg-muted/40 rounded-lg p-3 border border-border">
-            <summary className="cursor-pointer font-bold text-foreground select-none">
-              Debug · filter state (tap to expand)
-            </summary>
-            <div className="mt-2 space-y-2 font-mono text-[11px] text-foreground whitespace-pre-wrap break-all">
-              <div>
-                currentFormatId: {String(currentFormatId)} · allRecords:{" "}
-                {allRecords.length} · formatScoped: {formatScoped.length} ·
-                shown: {filtered.length}
-              </div>
-              <div>filters: {JSON.stringify(filters)}</div>
-              <div>
-                options counts: industry={options.industry.length} · brand=
-                {options.brand.length} · format={options.format.length} ·
-                funnelStage={options.funnelStage.length} · hookType=
-                {options.hookType.length} · hookTactic={options.hookTactic.length}
-              </div>
-              {formatScoped[0] && (
-                <div>
-                  first record raw fields:{" "}
-                  {JSON.stringify({
-                    industry: formatScoped[0].fields?.industry,
-                    brand: formatScoped[0].fields?.brand,
-                    format: formatScoped[0].fields?.format,
-                    funnelStage: formatScoped[0].fields?.funnelStage,
-                    hookType: formatScoped[0].fields?.hookType,
-                    hookTactic: formatScoped[0].fields?.hookTactic,
-                  })}
-                </div>
-              )}
-              {formatScoped[0] && (
-                <div>
-                  first record selectLabel: industry=
-                  {String(selectLabel(formatScoped[0].fields?.industry))} ·
-                  brand=
-                  {String(selectLabel(formatScoped[0].fields?.brand))}
-                </div>
-              )}
-            </div>
-          </details>
 
           {/* Result count */}
           <div className="text-sm text-muted-foreground mb-4">
