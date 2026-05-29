@@ -12,7 +12,7 @@
 //     spinner; saved state is gray (Motion-style); success / removal
 //     fires a sonner toast.
 //   • Bookmark button (bottom-right of brand strip) — opens
-//     /assign-board?recordId=<videoId> as a "sm" Softr modal. The
+//     /assign-board?recordId=<videoId> as a "md" Softr modal. The
 //     /assign-board page owns the add/remove board logic; this block
 //     only reads `boards` to render the filled-vs-outline indicator.
 //   • Card click → /videos-details?recordId=<videoId> opened in an
@@ -195,7 +195,7 @@ function FilterPill({ label, icon: Icon, options, selected, onChange }) {
 }
 
 // ─── Boards button (per-card) ────────────────────────────────
-// Click → opens /assign-board?recordId=<videoId> as a "sm" Softr
+// Click → opens /assign-board?recordId=<videoId> as a "md" Softr
 // modal. The /assign-board page handles the actual add/remove board
 // logic; this card just shows whether the video is currently on any
 // board (filled bookmark) or not (outline).
@@ -207,7 +207,7 @@ function BoardsButton({ video, isOnAnyBoard }) {
     if (typeof window === "undefined") return;
     const url = `/assign-board?recordId=${encodeURIComponent(video.id)}`;
     if (typeof window.openSwModal === "function") {
-      window.openSwModal(url, "sm");
+      window.openSwModal(url, "md");
     } else {
       window.location.href = url;
     }
