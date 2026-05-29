@@ -679,6 +679,50 @@ export default function Block() {
             </div>
           </div>
 
+          {/* Debug panel — temporary. Expand and screenshot if filters
+              still don't behave; the field shapes + counts here pin
+              down where the chain breaks. Delete once filters confirmed. */}
+          <details className="mb-4 text-xs bg-muted/40 rounded-lg p-3 border border-border">
+            <summary className="cursor-pointer font-bold text-foreground select-none">
+              Debug · filter state (tap to expand)
+            </summary>
+            <div className="mt-2 space-y-2 font-mono text-[11px] text-foreground whitespace-pre-wrap break-all">
+              <div>
+                currentFormatId: {String(currentFormatId)} · allRecords:{" "}
+                {allRecords.length} · formatScoped: {formatScoped.length} ·
+                shown: {filtered.length}
+              </div>
+              <div>filters: {JSON.stringify(filters)}</div>
+              <div>
+                options counts: industry={options.industry.length} · brand=
+                {options.brand.length} · format={options.format.length} ·
+                funnelStage={options.funnelStage.length} · hookType=
+                {options.hookType.length} · hookTactic={options.hookTactic.length}
+              </div>
+              {formatScoped[0] && (
+                <div>
+                  first record raw fields:{" "}
+                  {JSON.stringify({
+                    industry: formatScoped[0].fields?.industry,
+                    brand: formatScoped[0].fields?.brand,
+                    format: formatScoped[0].fields?.format,
+                    funnelStage: formatScoped[0].fields?.funnelStage,
+                    hookType: formatScoped[0].fields?.hookType,
+                    hookTactic: formatScoped[0].fields?.hookTactic,
+                  })}
+                </div>
+              )}
+              {formatScoped[0] && (
+                <div>
+                  first record selectLabel: industry=
+                  {String(selectLabel(formatScoped[0].fields?.industry))} ·
+                  brand=
+                  {String(selectLabel(formatScoped[0].fields?.brand))}
+                </div>
+              )}
+            </div>
+          </details>
+
           {/* Result count */}
           <div className="text-sm text-muted-foreground mb-4">
             {status === "loading" || status === "pending"
