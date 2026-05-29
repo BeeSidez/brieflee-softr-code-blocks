@@ -61,9 +61,23 @@ function FormatCard({ rec, urls }) {
     ? `/${PAGE_SLUG}/${slug}/r/${rec.id}`
     : `/${PAGE_SLUG}/r/${rec.id}`;
 
+  // Open in an XL Softr modal. Keep the href so middle-click /
+  // cmd-click still works for "open in new tab", and so screen
+  // readers see this as a link. Fall back to a normal navigation
+  // when openSwModal isn't available (e.g. previewing outside Softr).
+  const onClick = (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+    if (typeof window === "undefined") return;
+    if (typeof window.openSwModal === "function") {
+      e.preventDefault();
+      window.openSwModal(href, "xl");
+    }
+  };
+
   return (
     <a
       href={href}
+      onClick={onClick}
       className="group shrink-0 w-[180px] md:w-[200px] snap-start outline-none rounded-2xl"
     >
       <div className="aspect-square rounded-2xl bg-muted/60 relative overflow-hidden transition-colors group-hover:bg-muted">
@@ -174,13 +188,20 @@ export default function Block() {
 
   return (
     <div className="relative w-full">
-      <div className="container pt-14 md:pt-20 pb-8 md:pb-10">
+      <div className="container pt-6 md:pt-8 pb-6 md:pb-8">
         <div className="content max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6 md:mb-8">
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-5 md:mb-6">
             <div className="max-w-2xl">
+              {/* App-scale heading — matches app/projects/index .bl-projects-title. */}
               <h1
-                className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight leading-[1.1] text-foreground"
-                style={{ color: NAVY }}
+                style={{
+                  fontSize: 24,
+                  fontWeight: 600,
+                  color: NAVY,
+                  letterSpacing: "-0.015em",
+                  lineHeight: 1.2,
+                  margin: 0,
+                }}
               >
                 Discover
               </h1>
