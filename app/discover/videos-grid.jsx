@@ -116,23 +116,22 @@ function selectLabel(raw) {
   return String(raw);
 }
 
-// ─── Filter pill: native <select> single-pick dropdown ───────
-// We previously tried a custom dropdown but the popup was getting
-// clipped / hidden by Softr's preview chrome. Switching to a native
-// HTML <select> means the browser owns the popup — escapes every
-// stacking-context / overflow trap automatically.
+// ─── Filter pill: chip wrapping an invisible native <select> ────
+// The chip drives the look — icon + label (and the selected value
+// when active). A native <select> is layered transparently on top so
+// the browser owns the dropdown popup (escapes every stacking-context
+// / overflow trap that broke the custom v1 popover) without any
+// "Any"-style placeholder text leaking into the chip.
 //
-// One value per pill; multi-select can come back once we've fixed
-// whatever was hiding the custom dropdown. Options may be plain
-// strings OR { label, emoji } objects — the Format pill uses the
-// object form so each <option> can show "🤫 ASMR".
+// Options may be plain strings OR { label, emoji } objects — the
+// Format pill uses the object form so each <option> can show "🤫 ASMR".
 function FilterPill({ label, icon: Icon, options, selected, onChange }) {
   const active = selected.length > 0;
   const value = selected[0] || "";
 
   return (
     <label
-      className={`inline-flex items-center gap-2 pl-3.5 pr-1 py-0 rounded-xl border-2 text-sm font-semibold transition-colors cursor-pointer ${
+      className={`relative inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border-2 text-sm font-semibold transition-colors cursor-pointer ${
         active
           ? "bg-primary/10 border-primary text-primary"
           : "bg-card border-border text-foreground hover:border-primary/40"
@@ -140,21 +139,24 @@ function FilterPill({ label, icon: Icon, options, selected, onChange }) {
     >
       {Icon && <Icon className="w-4 h-4 shrink-0" />}
       <span className="shrink-0">{label}</span>
+      {active && (
+        <span className="truncate max-w-[140px] font-bold opacity-90">
+          · {value}
+        </span>
+      )}
+      <ChevronDown className="w-4 h-4 shrink-0 opacity-70" />
+      {/* Invisible native select on top — captures clicks across the
+          full chip area, browser handles the popup positioning. */}
       <select
         value={value}
         onChange={(e) => {
           const v = e.target.value;
           onChange(v ? [v] : []);
         }}
-        className="bg-transparent border-0 outline-none cursor-pointer py-2 pl-1 pr-2 text-sm font-semibold text-current appearance-none"
-        style={{
-          // Reset native select styles enough that the pill label drives
-          // the look; the actual option list is the browser's default.
-          minWidth: 0,
-          maxWidth: 140,
-        }}
+        aria-label={label}
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
       >
-        <option value="">Any</option>
+        <option value="">All {label.toLowerCase()}</option>
         {options.map((opt) => {
           const optLabel = typeof opt === "string" ? opt : opt.label;
           const optEmoji = typeof opt === "string" ? "" : opt.emoji;
@@ -165,7 +167,6 @@ function FilterPill({ label, icon: Icon, options, selected, onChange }) {
           );
         })}
       </select>
-      <ChevronDown className="w-4 h-4 shrink-0 -ml-1 pointer-events-none" />
     </label>
   );
 }
