@@ -5,10 +5,12 @@
 // video cards pulled from the beta videos table (JCveYdlP8zW4AP), with:
 //
 //   • Search across brand / industry / visual format / influencer
-//   • Filter pills: Industry, Brand, Format Tags, Funnel stage,
-//     Hook type, Hook tactic
+//   • Filter pills: Industry, Brand, Format (with format emoji per
+//     option), Funnel stage, Hook type, Hook tactic
 //   • Save heart (top-right of video) — toggles current user's id on
-//     the video's User Swipes link (WJO6I)
+//     the video's User Swipes link (WJO6I). Mid-mutation shows a
+//     spinner; saved state is gray (Motion-style); success / removal
+//     fires a sonner toast.
 //   • Bookmark menu (bottom-right of brand strip) — toggles which of
 //     the user's boards the video belongs to via the boards link
 //     (IniNB → boards table XiLxhAkyOL9yrX). Board creation lives in
@@ -43,14 +45,16 @@ import {
   Search,
   X,
   Building2,
+  BadgeCheck,
   Sparkles,
   Heart,
   Bookmark,
-  Tag,
   Target,
   Zap,
   Layers,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 
 // ─── videos table (JCveYdlP8zW4AP) aliases ───────────────────
 const createFields = q.select({
@@ -60,8 +64,8 @@ const createFields = q.select({
   industry:        "8zXEg",  // SELECT
   influencerCeleb: "tNY4n",  // SINGLE_LINE_TEXT
   visualFormat:    "VuAGy",  // SELECT
-  format:          "tnMBF",  // LINKED_RECORD → formats (per-format scope)
-  formatTags:      "nSNCc",  // SELECT (multi)
+  format:          "tnMBF",  // LINKED_RECORD → formats (drives the Format filter pill)
+  emoji:           "ZAgA5",  // LOOKUP → emoji string[] (parallel-array to `format`)
   funnelStage:     "EzI2F",  // LOOKUP → SELECT[] (from linked format)
   hookType:        "rsP5n",  // LOOKUP → SELECT[]
   hookTactic:      "MC9qB",  // LOOKUP → SELECT[]
@@ -110,6 +114,9 @@ function lookupLabels(raw) {
 }
 
 // ─── Filter pill: multi-select dropdown ──────────────────────
+// Options may be plain strings OR { label, emoji } objects — the
+// Format pill uses the object form so its dropdown can show the
+// format's emoji next to each name (e.g. "🤫 ASMR").
 function FilterPill({ label, icon: Icon, options, selected, onChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -158,17 +165,22 @@ function FilterPill({ label, icon: Icon, options, selected, onChange }) {
             <div className="px-3 py-4 text-sm text-muted-foreground">No options yet</div>
           ) : (
             options.map((opt) => {
-              const isSelected = selected.includes(opt);
+              const optLabel = typeof opt === "string" ? opt : opt.label;
+              const optEmoji = typeof opt === "string" ? "" : opt.emoji;
+              const isSelected = selected.includes(optLabel);
               return (
                 <button
-                  key={opt}
+                  key={optLabel}
                   type="button"
-                  onClick={() => toggle(opt)}
+                  onClick={() => toggle(optLabel)}
                   className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm text-left hover:bg-muted ${
                     isSelected ? "bg-primary/5" : ""
                   }`}
                 >
-                  <span className="text-foreground truncate pr-2">{opt}</span>
+                  <span className="flex items-center gap-2 text-foreground truncate pr-2">
+                    {optEmoji && <span className="shrink-0">{optEmoji}</span>}
+                    <span className="truncate">{optLabel}</span>
+                  </span>
                   {isSelected && <Check className="w-4 h-4 text-primary shrink-0" />}
                 </button>
               );
@@ -267,12 +279,15 @@ function BoardsMenu({ video, boards, currentBoardIds, onToggleBoard }) {
 }
 
 // ─── Card ────────────────────────────────────────────────────
-function ClipCard({ rec, currentUserId, boards, onToggleSave, onToggleBoard }) {
+function ClipCard({ rec, currentUserId, boards, isSaving, onToggleSave, onToggleBoard }) {
   const f = rec.fields || {};
   const url = f.videoUrl || "";
   const brand = f.brand?.label || "";
   const logo = f.logoUrl || "";
-  const formatTag = Array.isArray(f.formatTags) && f.formatTags[0]?.label;
+
+  // Format chip — first linked format's label (e.g. "ASMR").
+  const formats = linkObjects(f.format);
+  const formatLabel = formats[0]?.label || "";
 
   if (!url) return null;
 
@@ -311,27 +326,34 @@ function ClipCard({ rec, currentUserId, boards, onToggleSave, onToggleBoard }) {
           className="w-full h-auto object-cover bg-muted"
         />
 
-        {formatTag && (
+        {formatLabel && (
           <span className="absolute top-2 left-2 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-card/90 backdrop-blur text-[10px] font-semibold uppercase tracking-wider text-foreground">
-            {formatTag}
+            {formatLabel}
           </span>
         )}
 
-        {/* Save heart — disabled when user not logged in. */}
+        {/* Save heart — gray when saved (Motion-style), spinner during
+            the mutation, disabled when user not logged in. */}
         <button
           type="button"
           onMouseDown={stop}
-          onClick={(e) => { stop(e); if (currentUserId) onToggleSave(rec); }}
-          disabled={!currentUserId}
-          className={`absolute top-2 right-2 inline-flex items-center justify-center w-8 h-8 rounded-full bg-card/90 backdrop-blur shadow-sm transition-colors ${
-            isSaved
-              ? "text-rose-500 hover:text-rose-600"
-              : "text-foreground hover:text-rose-500"
-          } ${currentUserId ? "" : "opacity-50 cursor-not-allowed"}`}
+          onClick={(e) => { stop(e); if (currentUserId && !isSaving) onToggleSave(rec); }}
+          disabled={!currentUserId || isSaving}
+          className={`absolute top-2 right-2 inline-flex items-center justify-center w-8 h-8 rounded-full backdrop-blur shadow-sm transition-colors ${
+            isSaving
+              ? "bg-card/90 text-muted-foreground"
+              : isSaved
+              ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              : "bg-card/90 text-foreground hover:bg-card"
+          } ${!currentUserId ? "opacity-50 cursor-not-allowed" : ""}`}
           aria-label={isSaved ? "Remove from saved" : "Save"}
-          title={isSaved ? "Saved" : "Save"}
+          title={isSaved ? "Saved — click to remove" : "Save"}
         >
-          <Heart className="w-4 h-4" fill={isSaved ? "currentColor" : "none"} />
+          {isSaving ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Heart className="w-4 h-4" fill={isSaved ? "currentColor" : "none"} />
+          )}
         </button>
       </div>
 
@@ -381,7 +403,11 @@ export default function Block() {
   // Single mutation hook for both save + board toggles.
   const updateRecord = useRecordUpdate({ fields: updateFields });
 
-  const handleToggleSave = (video) => {
+  // Per-video pending state so spinners stay scoped to the clicked card.
+  // A shared `updateRecord.isPending` would spin every card at once.
+  const [savingIds, setSavingIds] = useState(() => new Set());
+
+  const handleToggleSave = async (video) => {
     if (!currentUserId) return;
     const current = linkObjects(video?.fields?.userSwipes);
     const ids = current.map((u) => u.id);
@@ -389,9 +415,29 @@ export default function Block() {
     const next = isSaved
       ? current.filter((u) => u.id !== currentUserId).map((u) => ({ id: u.id }))
       : [...current.map((u) => ({ id: u.id })), { id: currentUserId }];
-    updateRecord.mutateAsync({ recordId: video.id, fields: { userSwipes: next } })
-      .then(() => refetch?.())
-      .catch((err) => console.error("Save toggle failed:", err));
+
+    setSavingIds((prev) => {
+      const n = new Set(prev);
+      n.add(video.id);
+      return n;
+    });
+    try {
+      await updateRecord.mutateAsync({
+        recordId: video.id,
+        fields: { userSwipes: next },
+      });
+      toast.success(isSaved ? "Removed from saved" : "Video saved");
+      await refetch?.();
+    } catch (err) {
+      console.error("Save toggle failed:", err);
+      toast.error("Couldn't update", { description: err?.message || "Try again." });
+    } finally {
+      setSavingIds((prev) => {
+        const n = new Set(prev);
+        n.delete(video.id);
+        return n;
+      });
+    }
   };
 
   const handleToggleBoard = (video, boardId) => {
@@ -411,7 +457,7 @@ export default function Block() {
   const [filters, setFilters] = useState({
     industry:    [],
     brand:       [],
-    formatTags:  [],
+    format:      [],  // selected format labels (e.g. "ASMR")
     funnelStage: [],
     hookType:    [],
     hookTactic:  [],
@@ -448,10 +494,28 @@ export default function Block() {
       }
       return Array.from(set).sort();
     };
+    // Format options pair each linked-format label with its emoji.
+    // `emoji` (ZAgA5) is a LOOKUP that returns emojis in the same order
+    // as `format` (tnMBF) on each video, so we zip the two arrays.
+    const collectFormatWithEmoji = () => {
+      const map = new Map(); // label -> emoji
+      for (const r of formatScoped) {
+        const fmts = linkObjects(r?.fields?.format);
+        const emojis = Array.isArray(r?.fields?.emoji) ? r.fields.emoji : [];
+        fmts.forEach((fmt, i) => {
+          if (!fmt.label || map.has(fmt.label)) return;
+          const em = emojis[i];
+          map.set(fmt.label, typeof em === "string" ? em : "");
+        });
+      }
+      return Array.from(map.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([label, emoji]) => ({ label, emoji }));
+    };
     return {
       industry:    collectSelect("industry"),
       brand:       collectSelect("brand"),
-      formatTags:  collectMultiOrLookup("formatTags"),
+      format:      collectFormatWithEmoji(),
       funnelStage: collectMultiOrLookup("funnelStage"),
       hookType:    collectMultiOrLookup("hookType"),
       hookTactic:  collectMultiOrLookup("hookTactic"),
@@ -466,9 +530,9 @@ export default function Block() {
       if (filters.industry.length && !filters.industry.includes(f.industry?.label)) return false;
       if (filters.brand.length && !filters.brand.includes(f.brand?.label)) return false;
 
-      if (filters.formatTags.length) {
-        const labels = lookupLabels(f.formatTags);
-        if (!filters.formatTags.some((sel) => labels.includes(sel))) return false;
+      if (filters.format.length) {
+        const labels = linkObjects(f.format).map((x) => x.label).filter(Boolean);
+        if (!filters.format.some((sel) => labels.includes(sel))) return false;
       }
       if (filters.funnelStage.length) {
         const labels = lookupLabels(f.funnelStage);
@@ -495,7 +559,7 @@ export default function Block() {
   const anyFilterActive =
     filters.industry.length ||
     filters.brand.length ||
-    filters.formatTags.length ||
+    filters.format.length ||
     filters.funnelStage.length ||
     filters.hookType.length ||
     filters.hookTactic.length ||
@@ -503,7 +567,7 @@ export default function Block() {
 
   function clearAll() {
     setFilters({
-      industry: [], brand: [], formatTags: [],
+      industry: [], brand: [], format: [],
       funnelStage: [], hookType: [], hookTactic: [],
     });
     setSearch("");
@@ -537,17 +601,17 @@ export default function Block() {
               />
               <FilterPill
                 label="Brand"
-                icon={Building2}
+                icon={BadgeCheck}
                 options={options.brand}
                 selected={filters.brand}
                 onChange={(v) => setFilters((p) => ({ ...p, brand: v }))}
               />
               <FilterPill
-                label="Format tags"
-                icon={Tag}
-                options={options.formatTags}
-                selected={filters.formatTags}
-                onChange={(v) => setFilters((p) => ({ ...p, formatTags: v }))}
+                label="Format"
+                icon={Sparkles}
+                options={options.format}
+                selected={filters.format}
+                onChange={(v) => setFilters((p) => ({ ...p, format: v }))}
               />
               <FilterPill
                 label="Funnel stage"
@@ -622,6 +686,7 @@ export default function Block() {
                   rec={rec}
                   currentUserId={currentUserId}
                   boards={myBoards}
+                  isSaving={savingIds.has(rec.id)}
                   onToggleSave={handleToggleSave}
                   onToggleBoard={handleToggleBoard}
                 />
