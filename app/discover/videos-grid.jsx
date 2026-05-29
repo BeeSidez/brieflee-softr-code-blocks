@@ -223,7 +223,13 @@ function BoardsMenu({ video, boards, currentBoardIds, onToggleBoard }) {
   const isOnAnyBoard = currentBoardIds.length > 0;
 
   return (
-    <div className="relative" ref={ref} onMouseDown={stop} onClick={stop}>
+    <div
+      className="relative"
+      ref={ref}
+      data-card-action="boards"
+      onMouseDown={stop}
+      onClick={stop}
+    >
       <button
         type="button"
         onClick={(e) => { stop(e); setOpen((o) => !o); }}
@@ -303,6 +309,15 @@ function ClipCard({ rec, currentUserId, boards, isSaving, onToggleSave, onToggle
   const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
 
   const onCardClick = (e) => {
+    // React's synthetic stopPropagation on a nested button doesn't
+    // always prevent the native <a> default. So we check here: if
+    // the click originated inside an action element, bail before
+    // opening the modal. data-card-action is set on the save heart
+    // and the BoardsMenu wrapper.
+    if (e.target.closest && e.target.closest("[data-card-action]")) {
+      e.preventDefault();
+      return;
+    }
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
     if (typeof window === "undefined") return;
     if (typeof window.openSwModal === "function") {
@@ -336,6 +351,7 @@ function ClipCard({ rec, currentUserId, boards, isSaving, onToggleSave, onToggle
             the mutation, disabled when user not logged in. */}
         <button
           type="button"
+          data-card-action="save"
           onMouseDown={stop}
           onClick={(e) => { stop(e); if (currentUserId && !isSaving) onToggleSave(rec); }}
           disabled={!currentUserId || isSaving}
@@ -407,31 +423,90 @@ export default function Block() {
   // A shared `updateRecord.isPending` would spin every card at once.
   const [savingIds, setSavingIds] = useState(() => new Set());
 
+  // Optimistic overlay: { [videoId]: { userSwipes?, boards? } }.
+  // Without this, the heart / bookmark wouldn't visually flip until
+  // the mutation round-trip + refetch completed — felt like nothing
+  // was happening. We set the override immediately on click, then
+  // clear it once refetch returns (or on error so the UI reverts).
+  const [optimistic, setOptimistic] = useState(() => new Map());
+
+  // Apply any pending optimistic override on top of rec.fields so the
+  // card reads the intended state instantly.
+  const mergeOptimistic = (rec) => {
+    const o = optimistic.get(rec.id);
+    if (!o) return rec;
+    return {
+      ...rec,
+      fields: {
+        ...rec.fields,
+        ...(o.userSwipes !== undefined ? { userSwipes: o.userSwipes } : {}),
+        ...(o.boards !== undefined ? { boards: o.boards } : {}),
+      },
+    };
+  };
+
+  const clearOptimisticKey = (videoId, key) => {
+    setOptimistic((prev) => {
+      const n = new Map(prev);
+      const entry = n.get(videoId);
+      if (!entry) return prev;
+      const { [key]: _drop, ...rest } = entry;
+      if (Object.keys(rest).length === 0) n.delete(videoId);
+      else n.set(videoId, rest);
+      return n;
+    });
+  };
+
   const handleToggleSave = async (video) => {
-    if (!currentUserId) return;
+    if (!currentUserId) {
+      toast.error("Sign in to save videos");
+      return;
+    }
+    if (updateRecord.enabled === false) {
+      toast.error("Update isn't enabled", {
+        description: "Turn on Actions → Update Record in Softr Studio.",
+      });
+      return;
+    }
+    // Apply optimistic state IMMEDIATELY so the heart flips on click.
     const current = linkObjects(video?.fields?.userSwipes);
     const ids = current.map((u) => u.id);
     const isSaved = ids.includes(currentUserId);
-    const next = isSaved
-      ? current.filter((u) => u.id !== currentUserId).map((u) => ({ id: u.id }))
-      : [...current.map((u) => ({ id: u.id })), { id: currentUserId }];
+    const nextObjs = isSaved
+      ? current.filter((u) => u.id !== currentUserId)
+      : [...current, { id: currentUserId, label: "" }];
 
+    console.log("[Save toggle]", {
+      videoId: video.id,
+      currentUserId,
+      wasSaved: isSaved,
+      nextCount: nextObjs.length,
+    });
+
+    setOptimistic((prev) => {
+      const n = new Map(prev);
+      const entry = n.get(video.id) || {};
+      n.set(video.id, { ...entry, userSwipes: nextObjs });
+      return n;
+    });
     setSavingIds((prev) => {
       const n = new Set(prev);
       n.add(video.id);
       return n;
     });
     try {
-      await updateRecord.mutateAsync({
+      const result = await updateRecord.mutateAsync({
         recordId: video.id,
-        fields: { userSwipes: next },
+        fields: { userSwipes: nextObjs.map((u) => ({ id: u.id })) },
       });
+      console.log("[Save toggle] success", result);
       toast.success(isSaved ? "Removed from saved" : "Video saved");
       await refetch?.();
     } catch (err) {
-      console.error("Save toggle failed:", err);
+      console.error("[Save toggle] failed:", err);
       toast.error("Couldn't update", { description: err?.message || "Try again." });
     } finally {
+      clearOptimisticKey(video.id, "userSwipes");
       setSavingIds((prev) => {
         const n = new Set(prev);
         n.delete(video.id);
@@ -440,16 +515,50 @@ export default function Block() {
     }
   };
 
-  const handleToggleBoard = (video, boardId) => {
+  const handleToggleBoard = async (video, boardId) => {
+    if (updateRecord.enabled === false) {
+      toast.error("Update isn't enabled", {
+        description: "Turn on Actions → Update Record in Softr Studio.",
+      });
+      return;
+    }
     const current = linkObjects(video?.fields?.boards);
     const ids = current.map((b) => b.id);
     const isOn = ids.includes(boardId);
-    const next = isOn
-      ? current.filter((b) => b.id !== boardId).map((b) => ({ id: b.id }))
-      : [...current.map((b) => ({ id: b.id })), { id: boardId }];
-    updateRecord.mutateAsync({ recordId: video.id, fields: { boards: next } })
-      .then(() => refetch?.())
-      .catch((err) => console.error("Board toggle failed:", err));
+    const board = myBoards.find((b) => b.id === boardId);
+    const nextObjs = isOn
+      ? current.filter((b) => b.id !== boardId)
+      : [...current, { id: boardId, label: board?.fields?.name || "" }];
+
+    console.log("[Board toggle]", {
+      videoId: video.id,
+      boardId,
+      wasOn: isOn,
+      nextCount: nextObjs.length,
+    });
+
+    setOptimistic((prev) => {
+      const n = new Map(prev);
+      const entry = n.get(video.id) || {};
+      n.set(video.id, { ...entry, boards: nextObjs });
+      return n;
+    });
+    try {
+      const result = await updateRecord.mutateAsync({
+        recordId: video.id,
+        fields: { boards: nextObjs.map((b) => ({ id: b.id })) },
+      });
+      console.log("[Board toggle] success", result);
+      toast.success(isOn
+        ? `Removed from ${board?.fields?.name || "board"}`
+        : `Added to ${board?.fields?.name || "board"}`);
+      await refetch?.();
+    } catch (err) {
+      console.error("[Board toggle] failed:", err);
+      toast.error("Couldn't update board", { description: err?.message || "Try again." });
+    } finally {
+      clearOptimisticKey(video.id, "boards");
+    }
   };
 
   // Filter state
@@ -683,7 +792,7 @@ export default function Block() {
               {filtered.map((rec) => (
                 <ClipCard
                   key={rec.id}
-                  rec={rec}
+                  rec={mergeOptimistic(rec)}
                   currentUserId={currentUserId}
                   boards={myBoards}
                   isSaving={savingIds.has(rec.id)}
