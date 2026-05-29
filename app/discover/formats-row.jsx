@@ -188,6 +188,9 @@ export default function Block() {
 
   return (
     <div className="relative w-full">
+      {/* Hide the horizontal scrollbar — navigation lives in the
+          chevron buttons at the top of the row. */}
+      <style>{`.bl-formats-scroller::-webkit-scrollbar { display: none; }`}</style>
       <div className="container pt-6 md:pt-8 pb-6 md:pb-8">
         <div className="content max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-5 md:mb-6">
@@ -244,8 +247,8 @@ export default function Block() {
           ) : (
             <div
               ref={scrollerRef}
-              className="flex gap-3 md:gap-4 overflow-x-auto snap-x snap-mandatory pb-3 -mx-4 px-4 scroll-smooth"
-              style={{ scrollbarWidth: "thin" }}
+              className="bl-formats-scroller flex gap-3 md:gap-4 overflow-x-auto snap-x snap-mandatory pb-3 -mx-4 px-4 scroll-smooth"
+              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
               {sorted.map((rec) => (
                 <FormatCard key={rec.id} rec={rec} urls={urlsFor(rec)} />
