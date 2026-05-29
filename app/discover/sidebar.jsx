@@ -1,55 +1,31 @@
 // =====================================================================
-// Vibe Coding block: Discover · Vertical sidebar with Boards
+// Vibe Coding block: Discover · Boards strip
 // =====================================================================
-// Full vertical nav for the /discover page. Matches the existing app
-// nav (Brieflee mark + "lee" wordmark, collapsible left rail, the
-// five main items: Home / Discover / Projects / Videos / Notifications)
-// and adds a Boards section below — Motion-style — so users can
-// create boards from the sidebar without leaving the feed.
+// Thin vertical strip that sits NEXT TO the existing app nav on the
+// /discover page (NOT a replacement for it). Contains exactly two
+// things: a "Discover" link at the top and a Boards section below
+// where the user can create boards and jump into one.
 //
-// Boards data
-//   • Reads boards table (XiLxhAkyOL9yrX) scoped to the current user
-//     via the User link (enk5I) and renders each as emoji + name.
-//   • "+ Create board" in the section header opens a modal that writes
-//     a new board with the current user linked. The emoji field is a
-//     SELECT with allowToAddNewChoice, so we pass {label} and Softr
-//     creates the option on the fly.
-//   • The Discover videos-grid block on the same page reads the same
-//     boards table — newly created boards show up in the per-card
-//     "Add to board" menu immediately after refetch.
-//
-// Collapse behaviour persists to localStorage so it survives reloads.
-// Active item is highlighted by matching the current pathname.
+// Boards visibility (current user only) is handled in Softr's Source
+// tab — this block renders whatever the Source returns, no client-side
+// user filter.
 //
 // SOFTR UI SETUP:
-//   1. Place this block in a narrow LEFT column on the Discover page
-//      (~240px expanded / 64px collapsed). The block uses sticky top:0
+//   1. Place this block in a thin left column (~180px) NEXT TO your
+//      existing nav on the Discover page. Block is sticky top:0 h-screen
 //      so it stays visible while the content column scrolls.
 //   2. Source tab → Database: brieflee beta → Table: boards
+//      → Source filter: User = Logged-in user (this is where the
+//      "only my boards" rule lives)
 //   3. Actions tab → enable Add Record on boards (aliases auto-populate
-//      from createBoardFields below).
+//      from createBoardFields).
 //   4. Visibility tab → logged-in app users.
 // =====================================================================
 
-import { useEffect, useMemo, useState } from "react";
-import {
-  useRecords,
-  useRecordCreate,
-  q,
-} from "@/lib/datasource";
+import { useState } from "react";
+import { useRecords, useRecordCreate, q } from "@/lib/datasource";
 import { useCurrentUser } from "@/lib/user";
-import {
-  Home,
-  Search,
-  PlusSquare,
-  UploadCloud,
-  Bell,
-  ChevronsLeft,
-  ChevronsRight,
-  Plus,
-  X,
-  Bookmark,
-} from "lucide-react";
+import { Plus, X, Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -57,38 +33,21 @@ import { toast } from "sonner";
 // ─── Brand tokens ────────────────────────────────────────────
 const NAVY = "#001364";
 const PERIWINKLE = "#879CF7";
-
-// ─── Main app items (mirror the existing top-level nav) ───────
-// hrefs match the routes already in the Brieflee Softr app:
-// /home, /discover, /projects, /videos, /notifications.
-const MAIN_ITEMS = [
-  { key: "home",          label: "Home",          href: "/home",          icon: Home },
-  { key: "discover",      label: "Discover",      href: "/discover",      icon: Search },
-  { key: "projects",      label: "Projects",      href: "/projects",      icon: PlusSquare },
-  { key: "videos",        label: "Videos",        href: "/videos",        icon: UploadCloud },
-  { key: "notifications", label: "Notifications", href: "/notifications", icon: Bell },
-];
+const PERIWINKLE_TINT = "rgba(135, 156, 247, 0.16)";
 
 // ─── boards table (XiLxhAkyOL9yrX) ───────────────────────────
 const boardsSelect = q.select({
   name:  "dsjPO",  // primary
   emoji: "695Lf",  // SELECT (allowToAddNewChoice = true)
-  user:  "enk5I",  // LINKED_RECORD → users
 });
 
+// `user` is included on writes so new boards get linked to the
+// creator — Softr's Source filter is what scopes the READ, not this.
 const createBoardFields = q.select({
   name:  "dsjPO",
   emoji: "695Lf",
-  user:  "enk5I",
+  user:  "enk5I",  // LINKED_RECORD → users
 });
-
-// LINKED_RECORD / LOOKUP rows surface as either [{id,label}] or [id].
-function linkIds(raw) {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((item) => (typeof item === "string" ? item : item?.id || null))
-    .filter(Boolean);
-}
 
 // =====================================================================
 // MAIN BLOCK
@@ -97,49 +56,19 @@ export default function Block() {
   const user = useCurrentUser();
   const userId = user?.id || null;
 
-  // Collapse state — persisted across reloads so the user's preference sticks.
-  const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem("brieflee_discover_nav_collapsed") === "1";
-  });
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(
-      "brieflee_discover_nav_collapsed",
-      collapsed ? "1" : "0",
-    );
-  }, [collapsed]);
+  const { data, refetch } = useRecords({ select: boardsSelect, count: 500 });
+  const boards = data?.pages?.flatMap((p) => p?.items ?? []) ?? [];
 
-  // Active item — match pathname against each item's href. Tolerates
-  // sub-paths (e.g. /projects/details/... still highlights Projects).
-  const activeKey = useMemo(() => {
-    if (typeof window === "undefined") return "discover";
-    const path = window.location.pathname;
-    for (const item of MAIN_ITEMS) {
-      if (path === item.href || path.startsWith(item.href + "/")) return item.key;
-    }
-    return null;
-  }, []);
-
-  // Boards owned by the current user.
-  const { data: boardsData, refetch } = useRecords({
-    select: boardsSelect,
-    count: 200,
-  });
-  const allBoards = boardsData?.pages?.flatMap((p) => p?.items ?? []) ?? [];
-  const myBoards = useMemo(() => {
-    if (!userId) return [];
-    return allBoards.filter((b) => linkIds(b?.fields?.user).includes(userId));
-  }, [allBoards, userId]);
-
-  // Create-board modal state.
+  // ─── Create-board modal ──────────────────────────────────────
   const createBoard = useRecordCreate({ fields: createBoardFields });
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const resetForm = () => {
+  const closeModal = () => {
+    if (submitting) return;
+    setModalOpen(false);
     setName("");
     setEmoji("");
   };
@@ -164,7 +93,8 @@ export default function Block() {
       await createBoard.mutateAsync(fields);
       toast.success("Board created");
       setModalOpen(false);
-      resetForm();
+      setName("");
+      setEmoji("");
       await refetch?.();
     } catch (err) {
       console.error("Create board failed:", err);
@@ -176,177 +106,72 @@ export default function Block() {
     }
   };
 
-  const widthClass = collapsed ? "w-[64px]" : "w-[240px]";
-
   return (
     <>
       <aside
-        className={`sticky top-0 h-screen flex flex-col bg-card border-r border-border transition-[width] duration-200 ${widthClass}`}
+        className="sticky top-0 h-screen w-[180px] flex flex-col bg-card border-r border-border"
       >
-        {/* ─── Header: logo + collapse toggle ───────────────────────── */}
-        <div
-          className={`flex items-center ${collapsed ? "justify-center" : "justify-between"} px-3 h-14 border-b border-border`}
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <div
-              className="w-7 h-7 rounded-md shrink-0"
-              style={{ background: NAVY }}
-              aria-hidden
-            />
-            {!collapsed && (
-              <span
-                className="text-base font-bold tracking-tight truncate"
-                style={{ color: PERIWINKLE }}
-              >
-                lee
-              </span>
-            )}
-          </div>
-          {!collapsed && (
-            <button
-              type="button"
-              onClick={() => setCollapsed(true)}
-              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
-              aria-label="Collapse sidebar"
-              title="Collapse"
-            >
-              <ChevronsLeft className="w-4 h-4" />
-            </button>
-          )}
+        {/* Discover */}
+        <div className="px-2 pt-3 pb-2 border-b border-border">
+          <a
+            href="/discover"
+            className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm font-semibold text-foreground"
+            style={{ background: PERIWINKLE_TINT }}
+          >
+            <span style={{ color: NAVY }}>Discover</span>
+          </a>
         </div>
 
-        {collapsed && (
-          <button
-            type="button"
-            onClick={() => setCollapsed(false)}
-            className="mt-2 mx-auto p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
-            aria-label="Expand sidebar"
-            title="Expand"
-          >
-            <ChevronsRight className="w-4 h-4" />
-          </button>
-        )}
+        {/* Boards */}
+        <div className="flex-1 overflow-y-auto py-3 px-2">
+          <div className="flex items-center justify-between px-2.5 mb-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              Boards
+            </span>
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
+              disabled={!userId}
+              className={`p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors ${
+                !userId ? "opacity-40 cursor-not-allowed" : ""
+              }`}
+              aria-label="Create board"
+              title="Create board"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          </div>
 
-        {/* ─── Scrollable nav body ──────────────────────────────────── */}
-        <nav className="flex-1 overflow-y-auto py-2">
-          {/* Main items */}
-          <ul className="space-y-0.5 px-2">
-            {MAIN_ITEMS.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeKey === item.key;
-              return (
-                <li key={item.key}>
-                  <a
-                    href={item.href}
-                    title={collapsed ? item.label : undefined}
-                    className={`flex items-center gap-3 px-2.5 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                      isActive
-                        ? "text-foreground"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    } ${collapsed ? "justify-center" : ""}`}
-                    style={isActive ? { background: "rgba(135, 156, 247, 0.16)" } : undefined}
-                  >
-                    <Icon
-                      className="w-4 h-4 shrink-0"
-                      style={isActive ? { color: PERIWINKLE } : undefined}
-                    />
-                    {!collapsed && <span className="truncate">{item.label}</span>}
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-
-          {/* Boards section — expanded view */}
-          {!collapsed && (
-            <div className="mt-5 px-2">
-              <div className="flex items-center justify-between px-2.5 mb-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  Boards
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setModalOpen(true)}
-                  disabled={!userId}
-                  className={`p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors ${
-                    !userId ? "opacity-40 cursor-not-allowed" : ""
-                  }`}
-                  aria-label="Create board"
-                  title="Create board"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {myBoards.length === 0 ? (
-                <div className="px-2.5 py-2 text-xs text-muted-foreground leading-relaxed">
-                  No boards yet. Tap + to create your first.
-                </div>
-              ) : (
-                <ul className="space-y-0.5">
-                  {myBoards.map((b) => {
-                    const f = b?.fields || {};
-                    const boardName = f.name || "Untitled board";
-                    const boardEmoji = f.emoji?.label || "";
-                    const href = `/boards/r/${b.id}`;
-                    return (
-                      <li key={b.id}>
-                        <a
-                          href={href}
-                          className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm text-foreground hover:bg-muted transition-colors"
-                        >
-                          <span className="w-4 h-4 flex items-center justify-center shrink-0 text-sm">
-                            {boardEmoji || (
-                              <Bookmark className="w-3.5 h-3.5 text-muted-foreground" />
-                            )}
-                          </span>
-                          <span className="truncate">{boardName}</span>
-                        </a>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
+          {boards.length === 0 ? (
+            <div className="px-2.5 py-2 text-xs text-muted-foreground leading-relaxed">
+              No boards yet. Tap + to create your first.
             </div>
-          )}
-
-          {/* Boards section — collapsed view (emoji-only rail) */}
-          {collapsed && (
-            <div className="mt-5 px-2 space-y-1 flex flex-col items-center">
-              {/* Create button stays visible in collapsed mode too. */}
-              <button
-                type="button"
-                onClick={() => setModalOpen(true)}
-                disabled={!userId}
-                className={`flex items-center justify-center w-10 h-10 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors ${
-                  !userId ? "opacity-40 cursor-not-allowed" : ""
-                }`}
-                aria-label="Create board"
-                title="Create board"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-              {myBoards.map((b) => {
+          ) : (
+            <ul className="space-y-0.5">
+              {boards.map((b) => {
                 const f = b?.fields || {};
                 const boardName = f.name || "Untitled board";
                 const boardEmoji = f.emoji?.label || "";
                 const href = `/boards/r/${b.id}`;
                 return (
-                  <a
-                    key={b.id}
-                    href={href}
-                    className="flex items-center justify-center w-10 h-10 rounded-lg hover:bg-muted text-base transition-colors"
-                    title={boardName}
-                  >
-                    {boardEmoji || (
-                      <Bookmark className="w-4 h-4 text-muted-foreground" />
-                    )}
-                  </a>
+                  <li key={b.id}>
+                    <a
+                      href={href}
+                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm text-foreground hover:bg-muted transition-colors"
+                    >
+                      <span className="w-4 h-4 flex items-center justify-center shrink-0 text-sm">
+                        {boardEmoji || (
+                          <Bookmark className="w-3.5 h-3.5 text-muted-foreground" />
+                        )}
+                      </span>
+                      <span className="truncate">{boardName}</span>
+                    </a>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           )}
-        </nav>
+        </div>
       </aside>
 
       {/* ─── Create board modal ────────────────────────────────────── */}
@@ -354,7 +179,7 @@ export default function Block() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: "rgba(0, 19, 100, 0.32)" }}
-          onClick={() => !submitting && setModalOpen(false)}
+          onClick={closeModal}
         >
           <div
             className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-md p-6"
@@ -378,7 +203,7 @@ export default function Block() {
               </div>
               <button
                 type="button"
-                onClick={() => !submitting && setModalOpen(false)}
+                onClick={closeModal}
                 className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
                 aria-label="Close"
               >
@@ -419,7 +244,7 @@ export default function Block() {
             <div className="flex justify-end gap-2 mt-6">
               <button
                 type="button"
-                onClick={() => setModalOpen(false)}
+                onClick={closeModal}
                 disabled={submitting}
                 className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground rounded-lg"
               >
