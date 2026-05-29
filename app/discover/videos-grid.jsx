@@ -104,6 +104,19 @@ function lookupLabels(raw) {
   return linkObjects(raw).map((o) => o.label).filter(Boolean);
 }
 
+// SELECT fields normally surface as { id, label } via the Vibe Code
+// data layer, but the underlying store sometimes wraps them in an
+// array (see app/projects/index statusFor) or hands back a bare
+// string. selectLabel collapses all three shapes to a single label,
+// so the filter logic and options builder don't silently miss values.
+function selectLabel(raw) {
+  if (raw == null) return null;
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw)) return selectLabel(raw[0]);
+  if (typeof raw === "object") return raw.label ?? null;
+  return String(raw);
+}
+
 // ─── Filter pill: multi-select dropdown ──────────────────────
 // Options may be plain strings OR { label, emoji } objects — the
 // Format pill uses the object form so its dropdown can show the
@@ -123,6 +136,7 @@ function FilterPill({ label, icon: Icon, options, selected, onChange }) {
   const active = selected.length > 0;
 
   function toggle(value) {
+    console.log("[FilterPill toggle]", { label, value, prevSelected: selected });
     const next = selected.includes(value)
       ? selected.filter((v) => v !== value)
       : [...selected, value];
@@ -133,7 +147,10 @@ function FilterPill({ label, icon: Icon, options, selected, onChange }) {
     <div className="relative" ref={ref}>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          console.log("[FilterPill click]", { label, willOpen: !open, optionsCount: options.length });
+          setOpen((o) => !o);
+        }}
         className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border-2 text-sm font-semibold transition-colors ${
           active
             ? "bg-primary/10 border-primary text-primary"
@@ -151,7 +168,7 @@ function FilterPill({ label, icon: Icon, options, selected, onChange }) {
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-2 w-72 max-h-[380px] overflow-y-auto bg-card border border-border rounded-2xl shadow-xl z-30 p-2">
+        <div className="absolute top-full left-0 mt-2 w-72 max-h-[380px] overflow-y-auto bg-card border border-border rounded-2xl shadow-xl z-50 p-2">
           {options.length === 0 ? (
             <div className="px-3 py-4 text-sm text-muted-foreground">No options yet</div>
           ) : (
@@ -487,8 +504,7 @@ export default function Block() {
     const collectSelect = (key) => {
       const set = new Set();
       for (const r of formatScoped) {
-        const v = r?.fields?.[key];
-        const label = v?.label;
+        const label = selectLabel(r?.fields?.[key]);
         if (label) set.add(label);
       }
       return Array.from(set).sort();
@@ -531,10 +547,14 @@ export default function Block() {
   // Apply user filters + search on top of the format-scoped set.
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return formatScoped.filter((r) => {
+    const result = formatScoped.filter((r) => {
       const f = r?.fields || {};
-      if (filters.industry.length && !filters.industry.includes(f.industry?.label)) return false;
-      if (filters.brand.length && !filters.brand.includes(f.brand?.label)) return false;
+      const industryLabel = selectLabel(f.industry);
+      const brandLabel = selectLabel(f.brand);
+      const visualFormatLabel = selectLabel(f.visualFormat);
+
+      if (filters.industry.length && !filters.industry.includes(industryLabel)) return false;
+      if (filters.brand.length && !filters.brand.includes(brandLabel)) return false;
 
       if (filters.format.length) {
         const labels = linkObjects(f.format).map((x) => x.label).filter(Boolean);
@@ -554,12 +574,19 @@ export default function Block() {
       }
 
       if (q) {
-        const hay = [f.name, f.brand?.label, f.industry?.label, f.visualFormat?.label, f.influencerCeleb]
+        const hay = [f.name, brandLabel, industryLabel, visualFormatLabel, f.influencerCeleb]
           .filter(Boolean).join(" ").toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
+    console.log("[Filter]", {
+      filters,
+      search,
+      total: formatScoped.length,
+      shown: result.length,
+    });
+    return result;
   }, [formatScoped, filters, search]);
 
   const anyFilterActive =
