@@ -16,11 +16,24 @@
 // own placeholder for the first sign-up flow.
 //
 // SOFTR UI SETUP:
-//   1. Static page (no Source binding needed — purely client-side).
-//   2. Visibility: public.
+//   1. Source tab → Database: brieflee leads → Table: Leads
+//   2. Actions tab → enable "Add Record" (aliases auto-populate from
+//      leadsCreateFields below: email / source / pageUrl / submittedAtIso)
+//   3. Visibility tab → public.
 // =====================================================================
 
 import { useState } from "react";
+import { useRecordCreate, q } from "@/lib/datasource";
+
+// ─── Leads table (brieflee leads · mEEeNCnnfbMPtB) ──────────
+const leadsCreateFields = q.select({
+  email:          "hKZCA",  // EMAIL (primary)
+  source:         "lXGkS",  // SELECT (allowToAddNewChoice = true)
+  pageUrl:        "QDXvh",  // URL
+  submittedAtIso: "IfrhS",  // SINGLE_LINE_TEXT (ISO timestamp)
+});
+
+const GATE_SOURCE_LABEL = "signup-gate-2";
 
 const LOGO_URL = "https://res.cloudinary.com/dchroynzv/image/upload/v1777623022/brieflee_logo_logo-mixed-blue-variations-set_2025-06.png";
 
@@ -79,12 +92,14 @@ export default function Block() {
   const [submitting, setSubmitting] = useState(false);
   const [focused, setFocused] = useState(false);
 
+  const createRecord = useRecordCreate({ fields: leadsCreateFields });
+
   const handleChange = (e) => {
     setEmail(e.target.value);
     if (error) setError("");
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const trimmed = email.trim();
     if (!trimmed) {
@@ -102,6 +117,25 @@ export default function Block() {
       return;
     }
     setSubmitting(true);
+
+    // Best-effort lead capture. If the write fails we still redirect
+    // so the user reaches the real signup; we'd rather lose a lead
+    // row than lose a conversion.
+    try {
+      if (createRecord.enabled !== false) {
+        await createRecord.mutateAsync({
+          email: trimmed,
+          source: { label: GATE_SOURCE_LABEL },
+          pageUrl: typeof window !== "undefined" ? window.location.href : "",
+          submittedAtIso: new Date().toISOString(),
+        });
+      } else {
+        console.warn("[signup-gate-2] useRecordCreate not enabled — skipping lead write");
+      }
+    } catch (err) {
+      console.error("[signup-gate-2] lead capture failed (continuing to redirect):", err);
+    }
+
     if (typeof window !== "undefined") {
       window.location.href = `${REAL_SIGNUP_URL}?email=${encodeURIComponent(trimmed)}`;
     }
