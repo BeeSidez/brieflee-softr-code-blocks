@@ -38,17 +38,11 @@ import {
 } from "@/lib/datasource";
 import { useCurrentUser } from "@/lib/user";
 import {
-  ChevronDown,
   Search,
   X,
-  Building2,
-  BadgeCheck,
   Sparkles,
   Heart,
   Bookmark,
-  Target,
-  Zap,
-  Layers,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -116,58 +110,54 @@ function selectLabel(raw) {
   return String(raw);
 }
 
-// ─── Filter pill: chip wrapping an invisible native <select> ────
-// The chip drives the look — icon + label (and the selected value
-// when active). A native <select> is layered transparently on top so
-// the browser owns the dropdown popup (escapes every stacking-context
-// / overflow trap that broke the custom v1 popover) without any
-// "Any"-style placeholder text leaking into the chip.
-//
-// Options may be plain strings OR { label, emoji } objects — the
-// Format pill uses the object form so each <option> can show "🤫 ASMR".
-function FilterPill({ label, icon: Icon, options, selected, onChange }) {
-  const active = selected.length > 0;
-  const value = selected[0] || "";
+// ─── Filter pill: plain styled <select> ──────────────────────
+// Matches the app/briefs/index-unassigned look — single 38px-tall
+// white pill, no icon, label doubles as the placeholder option so
+// the empty state reads e.g. "Industry" and the active state reads
+// the selected value. Options may be plain strings OR { label, emoji }
+// objects — the Format pill uses the object form so options render as
+// "🤫 ASMR" in the dropdown.
+const SELECT_CHEVRON =
+  "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7A99' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>\")";
+const BL_BORDER = "rgba(217, 224, 255, 0.55)";
+const BL_NAVY_DEEP = "#000F4D";
+const BL_PERIWINKLE = "#879CF7";
 
+function FilterPill({ label, options, selected, onChange }) {
+  const value = selected[0] || "";
   return (
-    <label
-      className={`relative inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border-2 text-sm font-semibold transition-colors cursor-pointer ${
-        active
-          ? "bg-primary/10 border-primary text-primary"
-          : "bg-card border-border text-foreground hover:border-primary/40"
-      }`}
+    <select
+      value={value}
+      onChange={(e) => {
+        const v = e.target.value;
+        onChange(v ? [v] : []);
+      }}
+      aria-label={label}
+      className="appearance-none cursor-pointer outline-none transition-colors"
+      style={{
+        height: 38,
+        paddingLeft: 12,
+        paddingRight: 32,
+        fontSize: 13,
+        background: `#FFFFFF ${SELECT_CHEVRON} no-repeat right 10px center / 14px`,
+        border: `1px solid ${BL_BORDER}`,
+        borderRadius: 10,
+        color: BL_NAVY_DEEP,
+      }}
+      onFocus={(e) => { e.currentTarget.style.borderColor = BL_PERIWINKLE; }}
+      onBlur={(e) => { e.currentTarget.style.borderColor = BL_BORDER; }}
     >
-      {Icon && <Icon className="w-4 h-4 shrink-0" />}
-      <span className="shrink-0">{label}</span>
-      {active && (
-        <span className="truncate max-w-[140px] font-bold opacity-90">
-          · {value}
-        </span>
-      )}
-      <ChevronDown className="w-4 h-4 shrink-0 opacity-70" />
-      {/* Invisible native select on top — captures clicks across the
-          full chip area, browser handles the popup positioning. */}
-      <select
-        value={value}
-        onChange={(e) => {
-          const v = e.target.value;
-          onChange(v ? [v] : []);
-        }}
-        aria-label={label}
-        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-      >
-        <option value="">All {label.toLowerCase()}</option>
-        {options.map((opt) => {
-          const optLabel = typeof opt === "string" ? opt : opt.label;
-          const optEmoji = typeof opt === "string" ? "" : opt.emoji;
-          return (
-            <option key={optLabel} value={optLabel}>
-              {optEmoji ? `${optEmoji} ${optLabel}` : optLabel}
-            </option>
-          );
-        })}
-      </select>
-    </label>
+      <option value="">{label}</option>
+      {options.map((opt) => {
+        const optLabel = typeof opt === "string" ? opt : opt.label;
+        const optEmoji = typeof opt === "string" ? "" : opt.emoji;
+        return (
+          <option key={optLabel} value={optLabel}>
+            {optEmoji ? `${optEmoji} ${optLabel}` : optLabel}
+          </option>
+        );
+      })}
+    </select>
   );
 }
 
@@ -554,72 +544,98 @@ export default function Block() {
       <div className="container py-6 md:py-8">
         <div className="content max-w-7xl mx-auto">
 
-          {/* Filter row */}
-          <div className="flex flex-col gap-3 mb-6 md:mb-8">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          {/* Controls row — matches app/briefs/index-unassigned:
+              search auto-fills, filters sit inline next to it. */}
+          <div className="flex items-center gap-2.5 flex-wrap mb-5 md:mb-6">
+            <div className="relative" style={{ flex: "1 1 280px", minWidth: 200 }}>
+              <Search
+                className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                size={16}
+                color="#6B7A99"
+              />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by brand, industry…"
-                className="w-full h-11 pl-10 pr-3 rounded-xl border-2 border-border bg-card text-sm text-foreground focus:outline-none focus:border-primary"
+                className="w-full outline-none transition-colors"
+                style={{
+                  height: 38,
+                  padding: "0 36px",
+                  fontSize: 13,
+                  background: "#FFFFFF",
+                  border: `1px solid ${BL_BORDER}`,
+                  borderRadius: 10,
+                  color: BL_NAVY_DEEP,
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = BL_PERIWINKLE; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = BL_BORDER; }}
               />
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <FilterPill
-                label="Industry"
-                icon={Building2}
-                options={options.industry}
-                selected={filters.industry}
-                onChange={(v) => setFilters((p) => ({ ...p, industry: v }))}
-              />
-              <FilterPill
-                label="Brand"
-                icon={BadgeCheck}
-                options={options.brand}
-                selected={filters.brand}
-                onChange={(v) => setFilters((p) => ({ ...p, brand: v }))}
-              />
-              <FilterPill
-                label="Format"
-                icon={Sparkles}
-                options={options.format}
-                selected={filters.format}
-                onChange={(v) => setFilters((p) => ({ ...p, format: v }))}
-              />
-              <FilterPill
-                label="Funnel stage"
-                icon={Layers}
-                options={options.funnelStage}
-                selected={filters.funnelStage}
-                onChange={(v) => setFilters((p) => ({ ...p, funnelStage: v }))}
-              />
-              <FilterPill
-                label="Hook type"
-                icon={Zap}
-                options={options.hookType}
-                selected={filters.hookType}
-                onChange={(v) => setFilters((p) => ({ ...p, hookType: v }))}
-              />
-              <FilterPill
-                label="Hook tactic"
-                icon={Target}
-                options={options.hookTactic}
-                selected={filters.hookTactic}
-                onChange={(v) => setFilters((p) => ({ ...p, hookTactic: v }))}
-              />
-              {anyFilterActive && (
+              {search && (
                 <button
                   type="button"
-                  onClick={clearAll}
-                  className="inline-flex items-center gap-1 px-3 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center rounded-full"
+                  style={{
+                    width: 22,
+                    height: 22,
+                    background: "rgba(217, 224, 255, 0.6)",
+                    color: "#6B7A99",
+                    border: "none",
+                  }}
                 >
-                  <X className="w-3.5 h-3.5" /> Clear
+                  <X size={14} />
                 </button>
               )}
             </div>
+
+            <FilterPill
+              label="Industry"
+              options={options.industry}
+              selected={filters.industry}
+              onChange={(v) => setFilters((p) => ({ ...p, industry: v }))}
+            />
+            <FilterPill
+              label="Brand"
+              options={options.brand}
+              selected={filters.brand}
+              onChange={(v) => setFilters((p) => ({ ...p, brand: v }))}
+            />
+            <FilterPill
+              label="Format"
+              options={options.format}
+              selected={filters.format}
+              onChange={(v) => setFilters((p) => ({ ...p, format: v }))}
+            />
+            <FilterPill
+              label="Funnel stage"
+              options={options.funnelStage}
+              selected={filters.funnelStage}
+              onChange={(v) => setFilters((p) => ({ ...p, funnelStage: v }))}
+            />
+            <FilterPill
+              label="Hook type"
+              options={options.hookType}
+              selected={filters.hookType}
+              onChange={(v) => setFilters((p) => ({ ...p, hookType: v }))}
+            />
+            <FilterPill
+              label="Hook tactic"
+              options={options.hookTactic}
+              selected={filters.hookTactic}
+              onChange={(v) => setFilters((p) => ({ ...p, hookTactic: v }))}
+            />
+            {anyFilterActive && (
+              <button
+                type="button"
+                onClick={clearAll}
+                className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#6B7A99] hover:text-[#000F4D]"
+                style={{ height: 38, padding: "0 8px" }}
+              >
+                <X size={14} /> Clear
+              </button>
+            )}
           </div>
 
           {/* Result count */}
