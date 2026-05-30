@@ -37,8 +37,7 @@ const ERROR_RED = "#d92626";
 // behind the centered card.
 const BG_IMAGE_URL = "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/6c6511c6-f721-499d-b74a-ebb281d16cb4.gif";
 
-// TODO(Bev): swap to the real sign-up URL for variant 2.
-const REAL_SIGNUP_URL = "/signup-real-2";
+const REAL_SIGNUP_URL = "/sign-up1";
 
 // ─── Canonical free-email block list (copied from
 // website/lead-magnets/tiktok-video-analyser/hero.jsx — same set we
