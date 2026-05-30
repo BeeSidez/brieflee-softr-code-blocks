@@ -246,7 +246,7 @@ export default function Block() {
         >
           Already have an account?{" "}
           <a
-            href="/log-in"
+            href="/login"
             className="hover:underline font-semibold"
             style={{ color: PERIWINKLE }}
           >
