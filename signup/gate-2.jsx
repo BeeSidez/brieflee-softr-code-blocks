@@ -32,6 +32,11 @@ const MUTED = "#6B7A99";
 const BORDER = "rgba(217, 224, 255, 0.55)";
 const ERROR_RED = "#d92626";
 
+// Full-bleed animated background — the Brieflee "analysing" dashboard GIF
+// that sits behind the existing signup card. Image covers the viewport
+// behind the centered card.
+const BG_IMAGE_URL = "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/6c6511c6-f721-499d-b74a-ebb281d16cb4.gif";
+
 // TODO(Bev): swap to the real sign-up URL for variant 2.
 const REAL_SIGNUP_URL = "/signup-real-2";
 
@@ -107,11 +112,20 @@ export default function Block() {
 
   return (
     <div
-      className="min-h-screen w-full flex items-center justify-center px-4 py-10"
-      style={{ background: "#FAFBFF" }}
+      className="relative min-h-screen w-full flex items-center justify-center px-4 py-10"
+      style={{
+        background: `#FAFBFF url("${BG_IMAGE_URL}") center / cover no-repeat`,
+      }}
     >
+      {/* Soft white wash so the card stays legible against the
+          animated dashboard back. */}
       <div
-        className="w-full max-w-md rounded-2xl bg-white shadow-lg p-8"
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: "rgba(250, 251, 255, 0.55)" }}
+        aria-hidden
+      />
+      <div
+        className="relative w-full max-w-md rounded-2xl bg-white shadow-xl p-8"
         style={{ border: `1px solid ${BORDER}` }}
       >
         <div className="flex justify-center mb-6">
