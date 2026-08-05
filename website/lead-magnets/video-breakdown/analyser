@@ -1,0 +1,2398 @@
+// =====================================================================
+// Vibe Coding block: Video Breakdown v3 — the WHOLE page (umbrella)
+// /free-tool-video-breakdown
+// =====================================================================
+// One block, six states: input (full landing) → gate (work email,
+// BEFORE any spend) → processing (real analysis) → score → breakdown
+// → failure. Replaces the five v2 blocks (hero, what-you-get,
+// how-it-works, faq, final-cta) once swapped in Softr.
+//
+// PIPELINE (all real, no fake loading):
+//   1. Paste any short-form URL or upload file (validated, no email yet)
+//   2. Work-email gate — nothing runs and nothing is spent until this
+//      passes. Free domains rejected. 3 runs per browser session.
+//   3. Create record in "Score Your Video" table (Lead Magnets DB) +
+//      fire the shared EmailIt/Sheet workflow (same URL as v2 blocks)
+//   4. Link → RapidAPI scrape → mp4 + handle/duration/thumbnail.
+//      Upload → useUpload to Softr storage.
+//   5. Video → Cloudinary (unsigned preset) so Gemini can read it and
+//      so per-check frames exist via so_<seconds> transforms
+//   6. ONE Gemini call (Google REST source) with the 24-agent prompt
+//      ported from the n8n no-brief flow → JSON
+//   7. Results written back to the record; score renders; full
+//      breakdown follows with no further gate (email already given)
+//
+// SOFTR UI SETUP (one-time):
+//   1. Source tab → connect THREE sources, then have the block AI swap
+//      the REPLACE_* ids below (one surgical chat line per id — never
+//      "Remap data with AI"):
+//        - Database: Lead Magnets → Table: Score Your Video
+//        - REST API: the RapidAPI video scraper (Auto Download All In One)
+//        - REST API: the Google (Vertex/Gemini) endpoint
+//   2. Actions tab → enable Add Record AND Update Record on the
+//      Score Your Video source.
+//   3. Visibility → public.
+//   4. Fill CLOUDINARY_CLOUD + CLOUDINARY_PRESET (unsigned upload
+//      preset for video) and the two REST paths below.
+//
+// COPY: verbatim from COPY-v3.md. Do not improve while implementing.
+// No emojis in rendered UI. No em dashes. "Review Agents" throughout.
+// =====================================================================
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  datasource, useRecord, useRecordCreate, useUpload, useProxyFetch, q,
+} from "@/lib/datasource";
+import { toast } from "sonner";
+import { Timer, Eye, Mic2, VolumeX, Frame, ShieldCheck, Cpu, FileText, Link2, Check, X, Minus } from "lucide-react";
+
+// ─── Datasources (ids from THIS block's Source tab) ────────────
+const ds = datasource.define({
+  // Connection ids are APP-LEVEL (shared across the analyser blocks).
+  // These are the live ids — but the sources must ALSO be connected
+  // in THIS block's Source tab or the REST proxy calls fail.
+  scores: "39985457-8b8a-487e-b869-92171fcc8eda",
+  rapid:  "733abb1b-e941-4c10-bce4-e67a73b451b2",
+  // EmailIt REST source (app-level id, same in every block).
+  emailit: "a7c28ec0-a746-472b-9053-a0968be52f6b",
+  // Native Gemini integration ids are PER BLOCK — ask this block's
+  // Softr chat for "the Gemini integration connection id" and paste it
+  // here (or ask the chat to fill it in directly).
+  google: "89756608-6d90-4741-9300-3701089b2220",
+});
+
+// ─── Score Your Video table (Lead Magnets DB, a9LAGoMnNsksk4) ──
+// CREATE-ONLY by design: Softr only allows record EDITS for logged-in
+// users, and this page is anonymous. The pipeline runs in memory and
+// writes ONE complete record at the end (Scored, or Failed with the
+// error). Never add useRecordUpdate to a public block.
+const createFields = q.select({
+  name:          "vy0dv",
+  email:         "AI7gT",
+  optIn:         "SBUcK",
+  scoredBy:      "rKjw5",
+  page:          "DI3A1",
+  sourceType:    "59c9J",
+  videoUrl:      "BovOr",
+  platform:      "Rd7HW",
+  videoFile:     "0AogW",
+  status:        "oaA0J",
+  clientUuid:    "yDo55",
+  pageUrl:       "SqOVi",
+  referredBy:    "2Fkpc",
+  downloadUrl:   "cogzU",
+  thumbnailUrl:  "DwsAr",
+  creatorHandle: "hV4Ih",
+  videoDuration: "B1nwI",
+  transcript:    "HmGOD",
+  overallScore:  "PZcCF",
+  overallComment:"vwFH3",
+  scoreReport:   "j8m2g",
+  errorMessage:  "O9ugE",
+  gatePassed:    "W2plq",
+  website:       "j7Dx3",
+});
+const readFields = q.select({
+  name:          "vy0dv",
+  videoUrl:      "BovOr",
+  downloadUrl:   "cogzU",
+  thumbnailUrl:  "DwsAr",
+  creatorHandle: "hV4Ih",
+  videoDuration: "B1nwI",
+  overallScore:  "PZcCF",
+  scoreReport:   "j8m2g",
+});
+
+const OPT = {
+  scoredByBrand: { id: "756a0195-845a-4c6a-9bfe-2f8e6d27c7dc", label: "Brand" },
+  pageBreakdown: { id: "87b3befe-9302-4215-b3ae-b4a739c55c82", label: "Video Breakdown" },
+  srcLink:       { id: "ca8597c8-1055-411f-91e7-a9dc9a36237a", label: "Link" },
+  srcUpload:     { id: "e1968bcd-a844-4b61-8936-0885a6a7190c", label: "Upload" },
+  platTikTok:    { id: "221d948b-e575-46c4-9bc3-27c500aee885", label: "TikTok" },
+  platInstagram: { id: "d8d79e32-cecf-483f-9841-f80b9c4f4cba", label: "Instagram" },
+  platYouTube:   { id: "d5a39464-9905-4367-8b92-01cfaaaac667", label: "YouTube" },
+  platOther:     { id: "e725688c-3372-48cf-91ec-2b7c1416ae10", label: "Other" },
+  stScraping:    { id: "bd0ee463-658a-4015-a6f4-d213603c7c19", label: "Scraping" },
+  stScoring:     { id: "7a35d01f-71b0-494e-83e3-9dc30b939731", label: "Scoring" },
+  stScored:      { id: "3754f8c3-709b-43ae-9edf-09bf6ba47cc5", label: "Scored" },
+  stFailed:      { id: "a7fc6734-3893-492f-b3bd-31b76d7248a2", label: "Failed" },
+};
+
+// ─── Integration endpoints ─────────────────────────────────────
+// Full wiring reference: Brieflee/Softr Vibe Code Blocks/integrations-setup.md
+// RapidAPI "Auto Download All In One": POST { url } → { medias: [...] }.
+// URL matches the Softr rapid source's base URL exactly; the source
+// attaches the x-rapidapi-key header.
+const SCRAPE_URL = "https://download-all-in-one-budget.p.rapidapi.com/v1/social/autolink";
+// Google source = Gemini Developer API, Bearer API key. Gemini can't
+// fetch external video URLs on this surface, so the block sends BYTES:
+// inline base64 under 14MB, the Files API resumable flow above it.
+const GEMINI_BASE = "https://generativelanguage.googleapis.com";
+const GEMINI_MODEL = "gemini-3.6-flash";
+// Cloudinary: frame screenshots (so_<sec>) + a CORS-safe copy of
+// scraped videos. Plain fetch, unsigned preset, NO Softr source.
+const CLOUDINARY_CLOUD = "dspv9nm1n";
+const CLOUDINARY_PRESET = "screen_shots";                  // unsigned preset (confirmed 2026-08-03)
+const CLOUDINARY_FOLDER = "free-tools";
+// Shared lead-capture workflow (same as v2 blocks): EmailIt + Sheet.
+const EMAILIT_AUDIENCE = "aud_4DSA1XCCy85CAbxnaGHSm2e1CVm"; // BL | Leads . video-analyser
+const LEAD_SOURCE = "video-breakdown";
+const EMAIL_WORKFLOW_URL = "https://workflows-api.softr.io/v1/workflows/1e28685f-1a24-4042-80ac-cadfedef7336/executions/22b90d5d-a73b-43b5-ac1b-f24843b781bd";
+
+// No sign-up links anywhere on this page (Bev's rule) — the only
+// conversion route off the page is Book a demo.
+const DEMO_URL = "/book-a-demo";
+const MAX_RUNS_PER_SESSION = 3;
+const MAX_RUNS_PER_EMAIL = 3;
+
+// ─── Assets ────────────────────────────────────────────────────
+const EYES = "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png";
+const EYES_STICKER = "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_sticker-blue-cartoon-eyes-looking-side-navy_2026-03.png";
+const BRIEFLEE_LOGO = "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_logo_brieflee-wordmark-deep-blue-with-periwinkle-lee-and-smile_2025-03.png";
+const TIKTOK_LOGO = "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_tiktok-logo-3d-transparent_2026-05.png";
+const IG_LOGO = "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_instagram-logo-3d-transparent_2026-05.png";
+const YT_LOGO = "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_youtube-shorts-logo-3d-transparent_2026-05.png";
+const FB_LOGO = "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_facebook-logo-3d-transparent_2026-05.png";
+const UPLOAD_LOGO = "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_upload-cloud-3d-transparent_2026-05.png";
+// Placeholder UGC for the hero disc — swap for licensed footage before launch.
+const DEMO_MP4 = "https://res.cloudinary.com/dchroynzv/video/upload/demo/veloure/example-1.mp4";
+const DEMO_POSTER = "https://res.cloudinary.com/dchroynzv/video/upload/so_1/demo/veloure/example-1.jpg";
+
+// ─── The 24 Review Agents ──────────────────────────────────────
+const AGENT_GROUPS = [
+  { name: "Hook and attention", agents: ["Hook quality", "Visual hook", "Scene pacing", "Video length", "Watchable on mute"] },
+  { name: "Creator and delivery", agents: ["Creator visibility", "Energy and authenticity", "Wardrobe and appearance", "Audio delivery", "Pronunciation"] },
+  { name: "Production quality", agents: ["Audio clarity", "Music and sound balance", "Lighting and camera", "Setting and background", "Text legibility", "Closed captions", "Safe zones", "Distracting elements"] },
+  { name: "Brand and conversion", agents: ["Product visibility", "Product usage", "Brand name mentioned", "Brand alignment", "CTA present", "Copyright check"] },
+];
+
+// Default best-practice thresholds (no brief on this surface).
+// Tune with Bev — these are the generic bar every video is scored against.
+const AGENT_SPEC = `
+Hook quality: the spoken or narrative hook must land within the first 3 seconds. Score in seconds.
+Visual hook: movement or a compelling first frame in the first second. Score as a percentage, threshold 70%.
+Scene pacing: a cut or meaningful visual change at least every 4 seconds. Score in seconds between changes.
+Video length: short-form sweet spot 15 to 60 seconds. Score in seconds, flag under 8 or over 180.
+Watchable on mute: the core message must survive with sound off (captions, on-screen text, visual storytelling). PASS or FLAG.
+Creator visibility: a person on camera for at least 30% of the video. Score as a percentage.
+Energy and authenticity: conversational, believable delivery. Score as a percentage, threshold 70%.
+Wardrobe and appearance: nothing competing with or contradicting the product. PASS or FLAG.
+Audio delivery: steady pace, clear emphasis. Score as a percentage, threshold 70%.
+Pronunciation: product and brand names said correctly. PASS or FLAG.
+Audio clarity: voice clean and above the room. Score as a percentage, threshold 80%.
+Music and sound balance: any track stays under the voice. Score as a percentage, threshold 70%.
+Lighting and camera: subject lit, focus holds. Score as a percentage, threshold 70%.
+Setting and background: reads as real, not distracting. PASS or FLAG.
+Text legibility: on-screen text readable against its background. Score as a percentage, threshold 80%.
+Closed captions: captions present and matching the audio. PASS or FLAG.
+Safe zones: no critical text or product under the platform interface (caption block, action rail, progress bar). PASS or FLAG.
+Distracting elements: background clutter, watermarks, glitches. Count them, flag at 2 or more.
+Product visibility: product clearly on screen for at least 40% of the video. Score as a percentage.
+Product usage: the product used on camera, not just held. Score as a percentage, threshold 50%.
+Brand name mentioned: said aloud or shown at least once, ideally inside the first 5 seconds. Count mentions, note the first timestamp.
+Brand alignment: tone and claims fit what the video presents the brand to be. PASS or FLAG.
+CTA present: a clear ask, ideally in the last 5 seconds. PASS or FLAG, note the timestamp.
+Copyright check: music and clips safe for commercial use. PASS or FLAG.
+`.trim();
+
+function buildPrompt(screenshotBase) {
+  return `You are a professional short-form video reviewer. You review short-form videos (TikTok, Instagram Reels, YouTube Shorts and Facebook Reels) for the brand marketers and agencies who manage the creators that made them.
+
+TWO-PASS ANALYSIS:
+Pass 1 - Visual: watch the entire video. Identify all scenes, objects, actions, text overlays and visual transitions.
+Pass 2 - Audio: listen to the entire audio track. Cross-reference with visual observations. When visual and audio conflict, trust the audio for intent and the visual for presence.
+
+There is no brand brief. Score against general best practice for high-performing short-form video using these 24 checks, exactly as named:
+
+${AGENT_SPEC}
+
+TIMESTAMP RULES:
+- Plain integer seconds only. 3 seconds = 3. 1 minute 7 seconds = 67.
+- Never zero-pad: not 0003, not 00:03.
+- screenshot_url uses the so_{integer} format.
+
+Your task: watch this video and return ONLY valid JSON, no text before or after, in EXACTLY this structure:
+
+{
+  "overall": {
+    "score": [integer 0-100, an honest weighted judgement across all 24 checks],
+    "checks_passed": [integer, how many of the 24 checks have status PASS],
+    "handle": "[creator handle if visible or spoken, else empty string]",
+    "verdict": "[one sentence, maximum 25 words, the single most useful thing to know: what works plus the most costly flag with its timestamp]",
+    "comment": "[two short paragraphs: what works, then what to fix first]"
+  },
+  "agents": [
+    {
+      "name": "[exact name from the 24 checks above]",
+      "status": "PASS or FLAG",
+      "score": "[number as a string where the check is numeric, else empty string]",
+      "value": "[the number with its unit, else empty string]",
+      "comment": "[one or two sentences, specific, with the timestamp where relevant. Written so it can be sent to the creator as feedback.]",
+      "timestamp": [integer seconds of the most relevant moment, or null],
+      "screenshot_url": "${screenshotBase}"
+    }
+  ],
+  "headline": [exactly five objects {"label": "...", "status": "PASS or FLAG"} choosing the five most decision-relevant checks for a score card, always including the hook and the brand mention],
+  "transcript": "[Scene-by-scene. Format: [Xs] Visual: [action] | Dialogue: [words or None] | Text: [overlays or None]]",
+  "insights": {
+    "content_overview": "[2-3 sentences: what happens in the video]",
+    "target_audience": "[2 sentences: who this video is for and where they are]",
+    "product_notes": "[2-3 sentences: how the product appears and is used, with timestamps]",
+    "tone": "[one or two words, e.g. Casual]",
+    "on_screen_text": "[all on-screen text verbatim, else empty string]",
+    "spoken_transcript": "[the spoken words only, as clean prose, no timestamps or markers]",
+    "reading_level": "[reading level of the spoken words, e.g. 8th grade]",
+    "quotes": [up to 4 objects {"quote": "[verbatim line from the video]", "insight": "[1-2 sentences on why this line works, or what it costs the video]"}],
+    "hooks": [one object per distinct hook in the video: {"hook": "[the hook verbatim]", "score": [integer 1-10], "why": "[1-2 sentences]"}],
+    "selling_points": [up to 4 objects {"point": "[the selling point in one sentence]", "score": [integer 1-10 for how persuasively it lands], "why": "[1-2 sentences]"}],
+    "remix_brief": {"hook": "[the winning hook rewritten as a one-line instruction for the next creator]", "script": "[a 3-6 beat script outline drawn from what worked, one beat per line]", "action": "[what the creator should do on camera]", "text_overlay": "[the on-screen text plan]"}
+  }
+}
+
+CRITICAL:
+- All 24 agents must appear in the agents array, using the exact names given.
+- status is only PASS or FLAG. A borderline result is a FLAG with a fair comment.
+- Replace {timestamp} in screenshot_url with each agent's integer timestamp; if timestamp is null, use an empty string for screenshot_url.
+- No additional fields. No markdown. JSON only.`;
+}
+
+// Comparison table (v2 block, v3 copy edits + Bev 2026-08-03: Free
+// tier row removed — the trial requires a card; ChatGPT generates a
+// brief = yes; Claude column added). y=yes n=no p=partial.
+const CMP_COLS = ["Brieflee", "Frame.io", "Air", "Dropbox Replay", "ChatGPT", "Claude"];
+const CMP_ROWS = [
+  { label: "Paste TikTok, Reel or Short URL", values: ["y", "n", "n", "n", "n", "n"] },
+  { label: "Upload video file", values: ["y", "y", "y", "y", "n", "n"] },
+  { label: "AI watches the video", values: ["y", "n", "n", "n", "n", "n"] },
+  { label: "Scores it out of 100", values: ["y", "n", "n", "n", "n", "n"] },
+  { label: "Hook timing scoring", values: ["y", "n", "n", "n", "n", "n"] },
+  { label: "CTA placement scoring", values: ["y", "n", "n", "n", "n", "n"] },
+  { label: "Engagement pattern detection", values: ["y", "n", "n", "n", "n", "n"] },
+  { label: "Generates a creator brief", values: ["y", "n", "n", "n", "y", "y"] },
+  { label: "Remix-ready output", values: ["y", "n", "n", "n", "p", "p"] },
+  { label: "Stores video files", values: ["y", "y", "y", "y", "n", "n"] },
+  { label: "Team comments and approvals", values: ["y", "y", "y", "y", "n", "n"] },
+];
+
+// ─── Copy (verbatim from COPY-v3.md) ───────────────────────────
+const TYPING_WORDS = ["TikTok", "Instagram Reels", "YouTube Shorts", "Facebook Reels", "UGC Videos", "Spark Ads"];
+const STATUS_LINES = [
+  "Detecting hook timing and opening frame...",
+  "Measuring how long the product is on screen...",
+  "Listening for the brand mention...",
+  "Watching it on mute...",
+  "Checking claims and safe zones...",
+];
+const BENEFITS = [
+  { icon: Timer, t: "Hook timing to the second", p: "Whether it lands in the first three seconds or drifts to seven, where most of the drop-off happens." },
+  { icon: Eye, t: "Product visibility measured", p: "How long the product is actually on screen, not how long it felt." },
+  { icon: Mic2, t: "Brand mention timing", p: "Whether the brand gets said, and whether it gets said before people leave." },
+  { icon: VolumeX, t: "Watchable on mute", p: "Captions, on-screen text and visual storytelling checked for sound-off viewers, which is most of them." },
+  { icon: Frame, t: "Safe zones and legibility", p: "Where the interface covers the words, and where text falls out of frame." },
+  { icon: ShieldCheck, t: "Claims and copyright flagged", p: "Anything risky in the words or the sound, caught while it is still a draft." },
+];
+// Old v2 feature-card imagery (Bev prefers the v2 design), v3 copy.
+const WG_CARDS = [
+  {
+    title: "The things you always check",
+    body: "Hook timing, product visibility, brand mention, CTA, safe zones. The checks you run in your head on every video, run properly on this one, scored against the patterns from millions of high-performing short-form videos.",
+    img: "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/5d89700f-5e53-41fb-9ee3-7f3e88d2be8c.png",
+    alt: "Brieflee scoring multiple short-form videos with pass and fail flags into a chat report",
+  },
+  {
+    title: "The things you catch on the second watch",
+    body: "Captions covering the text. Audio that drops. A claim that should not be in there. The stuff you only spot when you go back, which on a busy week you do not.",
+    img: "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_feature-card_video-breakdown-analysis-three-frame-skincare-storyboard-mockup_2025-12.png",
+    alt: "Three-frame storyboard breakdown of a skincare creator video showing hook, story, and reveal",
+  },
+  {
+    title: "A remix-ready brief for the next one",
+    body: "Hook, script, action and text overlay pulled out of what worked, ready to hand to the next creator. So the feedback becomes a brief instead of a message they skim.",
+    img: "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_feature-card_video-remix-blueprint-two-clips-with-arrows-skincare-creator-side-by-side_2026-03.png",
+    alt: "Side-by-side video blueprint pulling timestamped feedback from a creator video",
+  },
+];
+// Old v2 how-it-works imagery (alternating rows), v3 copy.
+const STEPS = [
+  {
+    number: "01",
+    icon: Link2,
+    title: "Paste the video URL, or drop the file",
+    body: "The link a creator sent you, a video already live, or the file straight off your desktop. Any TikTok, Instagram Reel, YouTube Short or Facebook Reel.",
+    img: null,
+    alt: "",
+  },
+  {
+    number: "02",
+    icon: Cpu,
+    title: "24 Review Agents watch it",
+    body: "Computer vision walks every frame, speech to text reads the audio. Each agent checks one thing and one thing only, scored against the patterns from millions of high-performing videos.",
+    img: "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/6d59dce5-a4d4-4ea0-86d4-70e51946f576.png",
+    alt: "Brieflee analysing a creator's video and producing a content score",
+  },
+  {
+    number: "03",
+    icon: FileText,
+    title: "Get the score and the flags",
+    body: "A score out of 100 on screen straight away, then every check with its timestamp, plus the remix brief, in your inbox.",
+    img: "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/dec02029-7fab-44f0-95c5-d2fb24be40fc.png",
+    alt: "Brieflee turning a creator video into a scored, timestamped report",
+  },
+];
+const MOMENTS = [
+  { t: "A creator just sent one in", p: "Run it before you watch it, and open it already knowing where the problems are." },
+  { t: "Before you put spend behind it", p: "Know whether it earns the budget before the budget is gone." },
+  { t: "When one of them flopped", p: "You approved it, it went out, it died. Get the reason instead of the mystery, so the next brief fixes it." },
+  { t: "Before you send samples to someone new", p: "Break down a video from their feed and see how they perform on the things you care about, before you commit product to them." },
+];
+const FAQS = [
+  { q: "Is the video breakdown tool really free?", a: "Yes. Paste a URL and the score appears without an account. You give a work email only if you want the full check-by-check breakdown from all 24 Review Agents." },
+  { q: "Can I run a video a creator sent me privately?", a: "Yes. Upload the file instead of pasting a link. Nothing needs to be posted first." },
+  { q: "Which videos can I break down?", a: "Any short-form video: TikTok, Instagram Reel, YouTube Short or Facebook Reel. Paste the URL, or upload the file." },
+  { q: "Can I break down someone else's video?", a: "Yes. Any public short-form video. Most people run a mix: videos their own creators made, and videos from accounts they are thinking of working with." },
+  { q: "How long does it take?", a: "Under 60 seconds for most clips. The 24 agents watch in parallel, so a 15 second video and a 3 minute one finish at roughly the same time." },
+  { q: "What does the AI actually detect?", a: "Computer vision reads every frame for scene changes, on-screen text, product visibility, lighting and framing. Speech to text reads the audio for the brand mention, the CTA and delivery. Each of the 24 Review Agents checks one of those and reports a pass or a flag with the timestamp." },
+  { q: "Can ChatGPT do this from a link?", a: "No. General assistants can discuss a video you describe to them. This watches the file, times the hook, measures how long the product is on screen and reports what it found with timestamps." },
+  { q: "Can I use the flags as feedback for the creator?", a: "That is what most people do with them. Each flag is a timestamp and a one-line reason, so it goes straight into a message without you rewriting it." },
+  { q: "Is there a limit on video length?", a: "Short-form clips up to three minutes." },
+  { q: "Why do you ask for a work email?", a: "Free email addresses are not accepted. The full breakdown is built for people reviewing other people's content, so the gate keeps it to working inboxes." },
+  { q: "What is the difference between this and Brieflee?", a: "This is one video. Brieflee runs the same 24 Review Agents across every video your creators send you, checked against your brief rather than general best practice, so the pile arrives already sorted and you only watch what needs you." },
+];
+
+// ─── Helpers ───────────────────────────────────────────────────
+function isValidVideoUrl(input) {
+  const v = (input || "").trim();
+  return /^https?:\/\/([a-z0-9-]+\.)*(tiktok\.com|vm\.tiktok\.com|instagram\.com|youtube\.com|youtu\.be|facebook\.com|fb\.watch)\//i.test(v);
+}
+function detectPlatform(input) {
+  const v = (input || "").toLowerCase();
+  if (v.includes("tiktok.com")) return OPT.platTikTok;
+  if (v.includes("instagram.com")) return OPT.platInstagram;
+  if (v.includes("youtube.com") || v.includes("youtu.be")) return OPT.platYouTube;
+  return OPT.platOther;
+}
+function isValidEmail(input) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((input || "").trim());
+}
+const FREE_EMAIL_DOMAINS = new Set([
+  "gmail.com", "googlemail.com",
+  "yahoo.com", "yahoo.co.uk", "yahoo.fr", "yahoo.de", "ymail.com",
+  "hotmail.com", "hotmail.co.uk", "hotmail.fr", "live.com", "live.co.uk",
+  "msn.com", "outlook.com", "outlook.co.uk",
+  "aol.com",
+  "icloud.com", "me.com", "mac.com",
+  "proton.me", "protonmail.com", "pm.me",
+  "mail.com", "gmx.com", "gmx.de", "gmx.net",
+  "yandex.com", "yandex.ru",
+  "zoho.com", "hey.com",
+  "fastmail.com", "fastmail.fm",
+  "tutanota.com", "tutanota.de",
+  "mailinator.com", "guerrillamail.com", "10minutemail.com",
+  "tempmail.com", "trashmail.com", "throwawaymail.com", "yopmail.com",
+]);
+function isWorkEmail(value) {
+  const v = (value || "").trim().toLowerCase();
+  const at = v.lastIndexOf("@");
+  if (at === -1) return false;
+  return !FREE_EMAIL_DOMAINS.has(v.slice(at + 1));
+}
+function getClientUuid() {
+  try {
+    let id = localStorage.getItem("bl_tool_uuid");
+    if (!id) {
+      id = "u-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem("bl_tool_uuid", id);
+    }
+    return id;
+  } catch { return "u-anon"; }
+}
+// Two run controls. The session counter catches casual repeat use in
+// one sitting; the per-email counter survives closing the tab, so the
+// same person cannot reset their allowance by reopening the page.
+// Both are browser-side, so neither is proof against a determined
+// visitor clearing storage — a server-side count needs a REST source
+// over the runs table (the Softr key must stay off the browser).
+function getRunCount() {
+  try { return Number(sessionStorage.getItem("bl_tool_runs") || "0"); } catch { return 0; }
+}
+function bumpRunCount() {
+  try { sessionStorage.setItem("bl_tool_runs", String(getRunCount() + 1)); } catch { /* ignore */ }
+}
+function emailKey(email) {
+  return "bl_tool_email_runs_" + String(email || "").trim().toLowerCase();
+}
+function getEmailRunCount(email) {
+  try { return Number(localStorage.getItem(emailKey(email)) || "0"); } catch { return 0; }
+}
+function bumpEmailRunCount(email) {
+  try { localStorage.setItem(emailKey(email), String(getEmailRunCount(email) + 1)); } catch { /* ignore */ }
+}
+// Remembered lead: the gate prefills for anyone who has been here
+// before, so a returning visitor never retypes their details.
+function getSavedLead() {
+  try { return JSON.parse(localStorage.getItem("bl_tool_lead") || "{}"); } catch { return {}; }
+}
+function saveLead(email, website) {
+  try { localStorage.setItem("bl_tool_lead", JSON.stringify({ email, website })); } catch { /* ignore */ }
+}
+function normaliseWebsite(raw) {
+  const v = String(raw || "").trim();
+  if (!v) return "";
+  return /^https?:\/\//i.test(v) ? v : "https://" + v;
+}
+function isValidWebsite(raw) {
+  const v = String(raw || "").trim();
+  return /^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(\/\S*)?$/i.test(v);
+}
+function stripEmDash(text) {
+  return String(text || "").replace(/—|–/g, ", ").replace(/ ,/g, ",");
+}
+function fmtTs(sec) {
+  const s = Math.max(0, Math.round(Number(sec) || 0));
+  return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+}
+function parseGeminiJson(raw) {
+  let text = raw;
+  if (text && typeof text === "object") {
+    text = text?.candidates?.[0]?.content?.parts?.map((p) => p?.text || "").join("") || "";
+  }
+  text = String(text || "").trim().replace(/^```(json)?/i, "").replace(/```$/, "").trim();
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end === -1) throw new Error("The analysis came back in a shape we could not read.");
+  return JSON.parse(text.slice(start, end + 1));
+}
+function cldScreenshot(publicId, sec) {
+  if (!publicId || sec === null || sec === undefined || sec === "") return "";
+  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/video/upload/so_${Math.max(0, Math.round(Number(sec) || 0))}/c_fill,h_1920,w_1080/${publicId}.jpg`;
+}
+function cldThumb(publicId) {
+  if (!publicId) return "";
+  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/video/upload/so_1/c_fill,h_640,w_360/${publicId}.jpg`;
+}
+function ytVideoId(u) {
+  const m = String(u || "").match(/(?:shorts\/|watch\?v=|youtu\.be\/|embed\/)([\w-]{6,20})/);
+  return m ? m[1] : "";
+}
+// YouTube publishes three real frames per video at roughly the quarter,
+// half and three-quarter marks (hq1/hq2/hq3.jpg) — free, unsigned, no
+// CORS issues. Nearest-mark mapping stands in for Cloudinary's so_<sec>
+// frames on YouTube runs, where the video itself can't be re-hosted.
+function ytFrame(videoId, sec, duration) {
+  if (!videoId || sec === null || sec === undefined || sec === "") return "";
+  const d = Number(duration) || 0;
+  const s = Math.max(0, Number(sec) || 0);
+  const n = d > 0 ? (s <= 0.375 * d ? 1 : s <= 0.625 * d ? 2 : 3) : 2;
+  return `https://i.ytimg.com/vi/${videoId}/hq${n}.jpg`;
+}
+
+// Adapter for "Auto Download All In One" (/v1/social/autolink):
+// { url, source, author, title, thumbnail, duration, medias: [{ url,
+//   quality, extension, type }] }. Fallbacks kept for shape drift.
+function adaptScrape(json) {
+  const d = json?.data || json || {};
+  const medias = Array.isArray(d.medias) ? d.medias : [];
+  // Response shapes differ by platform AND by call:
+  // - TikTok/IG: medias [{ url, data_size, type }] — sometimes
+  //   api.tiktokv.com /play streaming endpoints instead of files.
+  // - YouTube: adaptive formats where MOST video entries carry NO
+  //   audio (audioQuality: null); only muxed ones (audioQuality set,
+  //   or is_audio) have sound, and sizes hide in the URL clen= param.
+  // Durations arrive as seconds OR milliseconds.
+  const durRaw = Number(d.duration) || 0;
+  const durSec = Math.round(durRaw > 600 ? durRaw / 1000 : durRaw);
+  const sizeOf = (m) => {
+    if (m.data_size) return Number(m.data_size) || 9e9;
+    const clen = /[?&]clen=(\d+)/.exec(String(m.url || ""));
+    if (clen) return Number(clen[1]);
+    if (m.bitrate && durSec) return (Number(m.bitrate) / 8) * durSec;
+    return 9e9;
+  };
+  const vids = medias.filter((m) => m?.type === "video" && m?.url);
+  // If ANY variant declares muxed audio (YouTube's adaptive lists),
+  // exclude the silent video-only variants — a muted video would gut
+  // the audio half of the review.
+  const withAudio = vids.filter((m) => m.audioQuality || m.is_audio);
+  const audible = withAudio.length ? withAudio : vids;
+  const direct = audible.filter((m) => !/api\.tiktokv\.com/i.test(m.url));
+  const pool = direct.length ? direct : audible;
+  pool.sort((a, b) => sizeOf(a) - sizeOf(b));
+  const vid = pool[0] || medias.find((m) => m?.url) || {};
+  const authorRaw = d.author;
+  const handle = typeof authorRaw === "string"
+    ? authorRaw
+    : (authorRaw?.unique_id || authorRaw?.nickname || d.author_name || "");
+  const st = d.statistics || {};
+  return {
+    mp4: vid.url || d.hdplay || d.play || d.video_url || d.download_url || "",
+    handle: handle ? (String(handle).startsWith("@") ? String(handle) : "@" + handle) : "",
+    duration: durSec || Math.round(Number(vid.duration) || 0),
+    cover: d.thumbnail || d.cover || d.origin_cover || "",
+    stats: {
+      plays: Number(st.play_count) || 0,
+      likes: Number(st.digg_count) || 0,
+      comments: Number(st.comment_count) || 0,
+      shares: Number(st.share_count) || 0,
+      saves: Number(st.collect_count) || 0,
+    },
+  };
+}
+
+function fmtCount(n) {
+  const v = Number(n) || 0;
+  if (v >= 1e6) return (v / 1e6).toFixed(1).replace(/\.0$/, "") + "M";
+  if (v >= 1e3) return (v / 1e3).toFixed(1).replace(/\.0$/, "") + "K";
+  return String(v);
+}
+
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+async function blobToBase64(blob) {
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  let bin = "";
+  const CH = 0x8000;
+  for (let i = 0; i < buf.length; i += CH) bin += String.fromCharCode.apply(null, buf.subarray(i, i + CH));
+  return btoa(bin);
+}
+
+// ─── Typing cycle ──────────────────────────────────────────────
+function useTypingCycle(words) {
+  const [text, setText] = useState("");
+  const [wordIndex, setWordIndex] = useState(0);
+  const [phase, setPhase] = useState("typing");
+  useEffect(() => {
+    const word = words[wordIndex] || "";
+    let t;
+    if (phase === "typing") {
+      if (text.length < word.length) t = setTimeout(() => setText(word.slice(0, text.length + 1)), 70);
+      else t = setTimeout(() => setPhase("holding"), 0);
+    } else if (phase === "holding") {
+      t = setTimeout(() => setPhase("deleting"), 1400);
+    } else if (text.length > 0) {
+      t = setTimeout(() => setText(word.slice(0, text.length - 1)), 35);
+    } else {
+      setWordIndex((wordIndex + 1) % words.length);
+      setPhase("typing");
+    }
+    return () => clearTimeout(t);
+  }, [text, wordIndex, phase, words]);
+  return text;
+}
+
+// ─── Small UI atoms ────────────────────────────────────────────
+function Pill({ kind, children }) {
+  return <span className={`bl-pill bl-pill-${kind}`}>{children}</span>;
+}
+function Ring({ score, size }) {
+  const r = size === "lg" ? 54 : 26;
+  const w = size === "lg" ? 11 : 7;
+  const box = (r + w) * 2 + 4;
+  const c = 2 * Math.PI * r;
+  const off = c * (1 - Math.max(0, Math.min(100, score)) / 100);
+  return (
+    <span className={`bl-ring bl-ring-${size}`} style={{ width: box, height: box }}>
+      <svg width={box} height={box} viewBox={`0 0 ${box} ${box}`} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={box / 2} cy={box / 2} r={r} fill="none" stroke="#eef4fd" strokeWidth={w} />
+        <circle cx={box / 2} cy={box / 2} r={r} fill="none" stroke="url(#blg1)" strokeWidth={w} strokeLinecap="round" strokeDasharray={c} strokeDashoffset={off} />
+        <defs><linearGradient id="blg1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#879cf7" /><stop offset="1" stopColor="#294ff6" /></linearGradient></defs>
+      </svg>
+      <span className="bl-ring-val"><b>{score}</b>{size === "lg" ? <i>/ 100</i> : null}</span>
+    </span>
+  );
+}
+function SecTag({ children }) {
+  return <span className="bl-sectag"><img src={EYES} alt="" draggable={false} />{children}</span>;
+}
+function CheckIcon() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="m4 12.5 5 5L20 6.5" /></svg>;
+}
+function LinkIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12 19" /></svg>;
+}
+function UploadIcon() {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" /><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" /></svg>;
+}
+function ArrowIcon() {
+  return <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h13m-5.5-5.5L19 12l-6.5 5.5" /></svg>;
+}
+function ChevIcon() {
+  return <svg className="bl-chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="m6 9 6 6 6-6" /></svg>;
+}
+function PlusIcon() {
+  return <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>;
+}
+function MinusIcon() {
+  return <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M5 12h14" /></svg>;
+}
+function UpArrowIcon() {
+  return <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V6m-6.5 5.5L12 5l6.5 6.5" /></svg>;
+}
+
+// Mounted only when a ?score= record id is present, so useRecord never
+// queries with an empty id (failed queries retry on a timer and toast).
+function ReturnScoreLoader({ recordId, onFields, onMiss }) {
+  const { data, status } = useRecord({ recordId, select: readFields, from: ds.scores });
+  const done = useRef(false);
+  useEffect(() => {
+    if (done.current) return;
+    if (status === "error") { done.current = true; onMiss(); return; }
+    if (data?.fields) { done.current = true; onFields(data.fields); }
+  }, [data, status, onFields, onMiss]);
+  return null;
+}
+
+// =====================================================================
+// Block
+// =====================================================================
+export default function Block() {
+  // Return path: /free-tool-tiktok-video-analyser?score=<recordId>
+  // (parsed inside the initializer — never at module level)
+  const [returnScoreId] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get("score") || ""; } catch { return ""; }
+  });
+
+  const [page, setPage] = useState(returnScoreId ? "loadingReturn" : "input"); // input | gate | processing | score | breakdown | failure
+  const [tab, setTab] = useState("url");
+  const [url, setUrl] = useState("");
+  const [file, setFile] = useState(null);
+  const [email, setEmail] = useState(() => String(getSavedLead().email || ""));
+  const [website, setWebsite] = useState(() => String(getSavedLead().website || ""));
+  const [optIn, setOptIn] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [analysis, setAnalysis] = useState(null); // { overall, agents, headline, transcript, handle, duration, thumb }
+  const [recordId, setRecordId] = useState("");
+  const [statusIdx, setStatusIdx] = useState(0);
+  const [procSrc, setProcSrc] = useState("");
+  const [procImg, setProcImg] = useState("");
+  const [openFaq, setOpenFaq] = useState(0);
+  const [breakdownTab, setBreakdownTab] = useState("checks");
+  const topRef = useRef(null);
+
+  const typedWord = useTypingCycle(TYPING_WORDS);
+  const createRecord = useRecordCreate({ fields: createFields, from: ds.scores });
+  const { uploadAsync } = useUpload();
+  const proxyRapid = useProxyFetch(ds.rapid);
+  const proxyGoogle = useProxyFetch(ds.google);
+  const proxyEmailit = useProxyFetch(ds.emailit);
+
+  // Return-path hydration. The record query lives in ReturnScoreLoader,
+  // mounted ONLY when a ?score= id exists — an always-mounted useRecord
+  // with an empty id makes the data layer query, fail, and auto-retry
+  // on a timer, toasting an error each round (the "timed" toast bug).
+  const hydrateFromRecord = (f) => {
+    try {
+      const report = JSON.parse(String(f.scoreReport || "{}"));
+      if (report?.overall) {
+        setAnalysis({
+          overall: report.overall,
+          agents: report.agents || [],
+          headline: report.headline || [],
+          insights: report.insights || null,
+          transcript: report.transcript || "",
+          handle: String(f.creatorHandle || report.overall.handle || ""),
+          duration: Number(f.videoDuration) || 0,
+          thumb: String(f.thumbnailUrl || ""),
+          videoEmbed: ytVideoId(String(f.videoUrl || "")) ? `https://www.youtube.com/embed/${ytVideoId(String(f.videoUrl || ""))}` : "",
+          videoSrc: ytVideoId(String(f.videoUrl || "")) ? "" : String(f.downloadUrl || ""),
+        });
+        setRecordId(returnScoreId);
+        setPage("score");
+        return;
+      }
+    } catch { /* fall through */ }
+    setPage("input");
+  };
+
+  // Processing status line cycle
+  useEffect(() => {
+    if (page !== "processing") return;
+    const t = setInterval(() => setStatusIdx((i) => i + 1), 1800);
+    return () => clearInterval(t);
+  }, [page]);
+
+  const scrollTop = () => { try { topRef.current?.scrollIntoView({ behavior: "smooth" }); } catch { /* ignore */ } };
+
+  // ── Step 1: input submit → gate ──────────────────────────────
+  const handleStart = () => {
+    setError("");
+    if (tab === "url" && !isValidVideoUrl(url)) {
+      setError("Paste a TikTok, Instagram Reel, YouTube Short or Facebook Reel URL.");
+      return;
+    }
+    if (tab === "file" && !file) {
+      setError("Choose a video file to upload.");
+      return;
+    }
+    if (tab === "file" && file && file.size > 200 * 1024 * 1024) {
+      setError("That file is over 200MB. Trim or compress it and try again.");
+      return;
+    }
+    if (getRunCount() >= MAX_RUNS_PER_SESSION) {
+      setError("That is three breakdowns this session. For unlimited reviews.");
+      return;
+    }
+    setPage("gate");
+    scrollTop();
+  };
+
+  // ── Step 2: gate submit → run the real pipeline ──────────────
+  // Anonymous visitors can only CREATE records, never edit them, so
+  // the whole run happens in memory and one complete record is written
+  // at the end (inside runPipeline), or a Failed record here.
+  const handleGateSubmit = async () => {
+    setError("");
+    if (!isValidEmail(email)) { setError("Enter a valid email address."); return; }
+    if (!isWorkEmail(email)) { setError("Free email addresses are not accepted, so use the one you use for the business."); return; }
+    if (!isValidWebsite(website)) { setError("Add the company website, like brieflee.co."); return; }
+    if (getEmailRunCount(email) >= MAX_RUNS_PER_EMAIL) { setError("That email has used its three breakdowns. For unlimited reviews."); return; }
+    saveLead(email.trim(), website.trim());
+    if (!createRecord.enabled) { setError("We can't start the breakdown right now. Try again in a moment."); return; }
+
+    setBusy(true);
+
+    // Best-effort lead capture — EmailIt nurture + Sheet, never blocking.
+    fetch(EMAIL_WORKFLOW_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: email.trim(),
+        website: normaliseWebsite(website),
+        source: "video-breakdown",
+        video_url: tab === "url" ? url.trim() : "",
+        page_url: typeof window !== "undefined" ? window.location.href : "",
+        submitted_at: new Date().toISOString(),
+      }),
+    }).catch((e) => console.error("Lead capture failed (continuing):", e));
+
+    // EmailIt audience join — the nurture automation triggers on
+    // contact.added_to_audience. 409 means the address is already in
+    // the audience, which is a success for our purposes. Never blocks.
+    proxyEmailit(`https://api.emailit.com/v2/audiences/${EMAILIT_AUDIENCE}/subscribers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: email.trim(),
+        custom_fields: {
+          website: normaliseWebsite(website),
+          lead_source: LEAD_SOURCE,
+          video_url: tab === "url" ? url.trim() : "",
+        },
+      }),
+    }).then((r) => { if (!r.ok && r.status !== 409) console.error("EmailIt subscribe returned", r.status); })
+      .catch((e) => console.error("EmailIt subscribe failed (continuing):", e));
+
+    const basePayload = {
+      name: email.trim(),
+      email: email.trim(),
+      optIn: !!optIn,
+      scoredBy: OPT.scoredByBrand,
+      page: OPT.pageBreakdown,
+      sourceType: tab === "url" ? OPT.srcLink : OPT.srcUpload,
+      videoUrl: tab === "url" ? url.trim() : "",
+      platform: tab === "url" ? detectPlatform(url) : OPT.platOther,
+      clientUuid: getClientUuid(),
+      pageUrl: typeof window !== "undefined" ? window.location.href.split("?")[0] : "",
+      referredBy: "",
+      gatePassed: true,
+      website: normaliseWebsite(website),
+    };
+    try {
+      if (tab === "file" && file) {
+        const [up] = await uploadAsync(file);
+        if (!up || up.status !== "completed" || !up.url) throw new Error("The video upload didn't complete. Try again.");
+        basePayload.videoFile = [{ filename: up.file?.name || "video.mp4", url: up.url }];
+        basePayload.videoUrl = "";
+        try { setProcSrc(URL.createObjectURL(file)); } catch { /* no preview */ }
+      }
+
+      setBusy(false);
+      setPage("processing");
+      setStatusIdx(0);
+      scrollTop();
+
+      await runPipeline(basePayload, tab === "file" ? file : null);
+    } catch (e) {
+      console.error("=== analyser pipeline failed:", e);
+      setBusy(false);
+      createRecord.mutateAsync({ ...basePayload, status: OPT.stFailed, errorMessage: String(e?.message || e) })
+        .catch((e2) => console.error("Failure record not saved:", e2));
+      setPage("failure");
+      scrollTop();
+    }
+  };
+
+  // ── Gemini video part: inline base64 under 14MB (request cap is
+  // 20MB and base64 inflates by a third), Files API resumable above ──
+  async function makeVideoPart(blob, mime) {
+    const INLINE_LIMIT = 14 * 1024 * 1024;
+    if (blob.size <= INLINE_LIMIT) {
+      return { inline_data: { mime_type: mime, data: await blobToBase64(blob) } };
+    }
+    const startRes = await proxyGoogle(`${GEMINI_BASE}/upload/v1beta/files`, {
+      method: "POST",
+      headers: {
+        "X-Goog-Upload-Protocol": "resumable",
+        "X-Goog-Upload-Command": "start",
+        "X-Goog-Upload-Header-Content-Length": String(blob.size),
+        "X-Goog-Upload-Header-Content-Type": mime,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ file: { display_name: "free-tool-video" } }),
+    });
+    const uploadUrl = startRes.ok ? startRes.headers.get("x-goog-upload-url") : "";
+    if (!uploadUrl) throw new Error(`Gemini upload start failed (HTTP ${startRes.status}, ${Math.round(blob.size / 1048576)}MB, upload URL ${startRes.ok ? "not exposed by proxy" : "n/a"}).`);
+    const upRes = await proxyGoogle(uploadUrl, {
+      method: "POST",
+      headers: { "X-Goog-Upload-Command": "upload, finalize", "X-Goog-Upload-Offset": "0" },
+      body: blob,
+    });
+    if (!upRes.ok) throw new Error(`Gemini upload failed (HTTP ${upRes.status}, ${Math.round(blob.size / 1048576)}MB).`);
+    let f = (await upRes.json())?.file || {};
+    const deadline = Date.now() + 90000;
+    while (f.state === "PROCESSING" && Date.now() < deadline) {
+      await sleep(2000);
+      const pRes = await proxyGoogle(`${GEMINI_BASE}/v1beta/${f.name}`, { method: "GET" });
+      if (pRes.ok) f = await pRes.json();
+    }
+    if (f.state !== "ACTIVE" || !f.uri) throw new Error("The Review Agents couldn't finish preparing the video.");
+    return { file_data: { mime_type: mime, file_uri: f.uri } };
+  }
+
+  // ── Steps 3-6: scrape → Cloudinary → Gemini → ONE record ─────
+  async function runPipeline(basePayload, localFile) {
+    const isYouTube = !localFile && /youtube\.com|youtu\.be/i.test(url.trim());
+    const ytId = isYouTube ? ytVideoId(url.trim()) : "";
+    // 3. Source the mp4
+    let mp4 = "";
+    let handle = "";
+    let duration = 0;
+    let stats = null;
+    let cover = "";
+    if (!localFile) {
+      const res = await proxyRapid(SCRAPE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        throw new Error(`Scrape ${res.status}: ${detail.slice(0, 200)}`);
+      }
+      const scraped = adaptScrape(await res.json());
+      if (!scraped.mp4) throw new Error("We couldn't read that video.");
+      mp4 = scraped.mp4;
+      handle = scraped.handle;
+      duration = scraped.duration;
+      stats = scraped.stats && scraped.stats.plays ? scraped.stats : null;
+      cover = scraped.cover || "";
+      // Playback is allowed where download is not, so always try the
+      // video first; onError drops to the thumbnail, then the halo.
+      setProcSrc(scraped.mp4);
+      if (isYouTube) setProcImg(cover);
+    }
+
+    // 4. Cloudinary (unsigned, plain fetch): frame screenshots via
+    // so_<sec>, plus a CORS-safe copy of scraped videos the browser
+    // can download for Gemini. Best-effort — a failure only costs
+    // the frames, unless the link path needs it as the relay.
+    // YouTube blocks reposts of its playback URLs: googlevideo 403s
+    // Cloudinary's fetcher and sends no CORS headers, so a browser
+    // block has no download path at all. Gemini reads YouTube natively,
+    // so those links skip the relay and go straight into the model.
+    let publicId = "";
+    let deliveryUrl = "";
+    if (!isYouTube) try {
+      const form = new FormData();
+      form.append("file", localFile || mp4);
+      form.append("upload_preset", CLOUDINARY_PRESET);
+      form.append("folder", CLOUDINARY_FOLDER);
+      const cldRes = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/video/upload`, { method: "POST", body: form });
+      if (cldRes.ok) {
+        const cld = await cldRes.json();
+        publicId = cld.public_id || "";
+        deliveryUrl = cld.secure_url || "";
+        if (!duration) duration = Math.round(Number(cld.duration) || 0);
+      } else {
+        console.error("Cloudinary upload rejected (continuing without frames):", cldRes.status);
+      }
+    } catch (e) {
+      console.error("Cloudinary upload failed (continuing without frames):", e);
+    }
+    const thumb = publicId ? cldThumb(publicId) : (cover || "");
+
+    // 5. Get the bytes (Gemini on this source can't fetch URLs itself).
+    // HARD CONSTRAINT learned from the records: Softr's proxy rejects
+    // request bodies over roughly 4MB with a bare 500 — and base64
+    // inflates by a third — so the blob target is 2.5MB. Gemini samples
+    // video at ~1fps; heavy compression costs the review nothing.
+    const INLINE_SAFE = 2.5 * 1024 * 1024;
+    const rungs = publicId ? [
+      `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/video/upload/q_auto:low,c_limit,h_854/${publicId}.mp4`,
+      `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/video/upload/q_35,c_limit,h_640/${publicId}.mp4`,
+      `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/video/upload/q_25,c_limit,h_480/${publicId}.mp4`,
+      `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/video/upload/q_20,c_limit,h_360/${publicId}.mp4`,
+    ] : [];
+    let blob = localFile;
+    let mime = localFile?.type || "video/mp4";
+    let rungIdx = 0;
+    for (; rungIdx < rungs.length; rungIdx++) {
+      const cRes = await fetch(rungs[rungIdx]);
+      if (!cRes.ok) { console.error(`Cloudinary rung ${rungIdx} returned ${cRes.status}`); continue; }
+      const b = await cRes.blob();
+      if (b.size > 1000) { blob = b; mime = "video/mp4"; }
+      if (blob && blob.size <= INLINE_SAFE) break;
+    }
+    if (!blob && !isYouTube) {
+      const vRes = await fetch(deliveryUrl || mp4);
+      if (!vRes.ok) throw new Error("We couldn't read that video.");
+      blob = await vRes.blob();
+      mime = blob.type || "video/mp4";
+    }
+    let videoPart;
+    if (isYouTube) {
+      videoPart = { file_data: { file_uri: url.trim() } };
+    } else {
+      videoPart = await makeVideoPart(blob, mime);
+    }
+
+    // 6. One Gemini call with the 24-agent prompt
+    const screenshotBase = publicId
+      ? `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/video/upload/so_{timestamp}/c_fill,h_1920,w_1080/${publicId}.jpg`
+      : "";
+    const genUrl = `${GEMINI_BASE}/v1beta/models/${GEMINI_MODEL}:generateContent`;
+    const attempt = (part) => proxyGoogle(genUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: buildPrompt(screenshotBase) }, part] }],
+        generationConfig: { temperature: 0.4, topP: 1, topK: 32, maxOutputTokens: 16384, responseMimeType: "application/json" },
+      }),
+    });
+    // Self-heal ladder. Two error classes are retryable: 5xx (transient
+    // Gemini errors; proxy body limits also masquerade as bare 500s) and
+    // 400 INVALID_ARGUMENT, which Gemini intermittently returns for a
+    // perfectly valid inline-video request (the identical request can
+    // score on the next attempt — verified live 2026-08-04). Retry
+    // twice, then step DOWN the compression rungs.
+    const retryable = (r) => !r.ok && (r.status >= 500 || r.status === 400);
+    let gRes = await attempt(videoPart);
+    for (let tries = 0; retryable(gRes) && tries < 2; tries++) {
+      await sleep(2500);
+      gRes = await attempt(videoPart);
+    }
+    while (retryable(gRes) && rungIdx + 1 < rungs.length) {
+      rungIdx += 1;
+      const rRes = await fetch(rungs[rungIdx]);
+      if (!rRes.ok) { console.error(`Cloudinary rung ${rungIdx} returned ${rRes.status}`); continue; }
+      const b = await rRes.blob();
+      if (b.size < 1000) continue;
+      blob = b;
+      videoPart = await makeVideoPart(blob, "video/mp4");
+      gRes = await attempt(videoPart);
+    }
+    if (!gRes.ok) {
+      // Diagnostic detail lands in error_message on the record; the
+      // visitor only ever sees the friendly failure card.
+      const detail = await gRes.text().catch(() => "");
+      throw new Error(`Gemini ${gRes.status}: ${detail.slice(0, 300)}`);
+    }
+    const parsed = parseGeminiJson(await gRes.json());
+    if (!parsed?.overall || !Array.isArray(parsed?.agents)) throw new Error("The analysis came back incomplete.");
+
+    // 6. Normalise + em dash guard, backfill screenshots from timestamps
+    const agents = parsed.agents.map((a) => ({
+      name: String(a.name || ""),
+      status: String(a.status || "").toUpperCase() === "PASS" ? "PASS" : "FLAG",
+      score: stripEmDash(a.score),
+      value: stripEmDash(a.value),
+      comment: stripEmDash(a.comment),
+      timestamp: a.timestamp === null || a.timestamp === undefined || a.timestamp === "" ? null : Math.max(0, Math.round(Number(a.timestamp) || 0)),
+      // Frame URLs are built here, never taken from the model — Gemini
+      // fills screenshot_url with fragments like "so_0" that render as
+      // broken images. The timestamp is the only model input needed.
+      screenshot: a.timestamp === null || a.timestamp === undefined || a.timestamp === "" ? "" : (ytId ? ytFrame(ytId, a.timestamp, duration) : cldScreenshot(publicId, a.timestamp)),
+    }));
+    const passed = agents.filter((a) => a.status === "PASS").length;
+    const overall = {
+      score: Math.max(0, Math.min(100, Math.round(Number(parsed.overall.score) || 0))),
+      checks_passed: passed,
+      handle: stripEmDash(parsed.overall.handle || handle),
+      verdict: stripEmDash(parsed.overall.verdict),
+      comment: stripEmDash(parsed.overall.comment),
+    };
+    const headline = Array.isArray(parsed.headline)
+      ? parsed.headline.slice(0, 5).map((h) => ({ label: stripEmDash(h.label), status: String(h.status || "").toUpperCase() === "PASS" ? "PASS" : "FLAG" }))
+      : [];
+    const tenScore = (s) => { const n = Math.round(Number(s)); return n >= 1 && n <= 10 ? n : null; };
+    const insRaw = parsed.insights || {};
+    const insights = {
+      content_overview: stripEmDash(insRaw.content_overview),
+      target_audience: stripEmDash(insRaw.target_audience),
+      product_notes: stripEmDash(insRaw.product_notes),
+      tone: stripEmDash(insRaw.tone),
+      on_screen_text: stripEmDash(insRaw.on_screen_text),
+      spoken_transcript: stripEmDash(insRaw.spoken_transcript),
+      reading_level: stripEmDash(insRaw.reading_level),
+      quotes: Array.isArray(insRaw.quotes) ? insRaw.quotes.slice(0, 6).map((x) => ({ quote: stripEmDash(x.quote), insight: stripEmDash(x.insight) })).filter((x) => x.quote) : [],
+      hooks: Array.isArray(insRaw.hooks) ? insRaw.hooks.slice(0, 6).map((x) => ({ hook: stripEmDash(x.hook), score: tenScore(x.score), why: stripEmDash(x.why) })).filter((x) => x.hook) : [],
+      selling_points: Array.isArray(insRaw.selling_points) ? insRaw.selling_points.slice(0, 6).map((x) => ({ point: stripEmDash(x.point), score: tenScore(x.score), why: stripEmDash(x.why) })).filter((x) => x.point) : [],
+      remix_brief: insRaw.remix_brief ? {
+        hook: stripEmDash(insRaw.remix_brief.hook),
+        script: stripEmDash(insRaw.remix_brief.script),
+        action: stripEmDash(insRaw.remix_brief.action),
+        text_overlay: stripEmDash(insRaw.remix_brief.text_overlay),
+      } : null,
+      stats,
+    };
+    const report = { overall, agents, headline, insights, transcript: stripEmDash(parsed.transcript) };
+
+    // 7. The ONE record: everything from the run in a single create.
+    const created = await createRecord.mutateAsync({
+      ...basePayload,
+      status: OPT.stScored,
+      // Softr URL fields reject values over 1024 chars (bisected against
+      // the live table), and YouTube's googlevideo links run ~2000 (and
+      // expire in hours anyway) — the durable link is already in video_url.
+      downloadUrl: mp4 && mp4.length <= 1000 ? mp4 : "",
+      thumbnailUrl: thumb && thumb.length <= 1000 ? thumb : "",
+      creatorHandle: overall.handle,
+      videoDuration: duration,
+      transcript: report.transcript,
+      overallScore: overall.score,
+      overallComment: overall.verdict,
+      scoreReport: JSON.stringify(report),
+    });
+    setRecordId(created?.id || created?.recordId || created?.record?.id || "");
+
+    // Only successful runs count against the session cap, so failed
+    // attempts never lock a visitor out.
+    bumpRunCount();
+    bumpEmailRunCount(basePayload.email);
+    setAnalysis({
+      ...report,
+      handle: overall.handle,
+      duration,
+      thumb,
+      videoEmbed: ytId ? `https://www.youtube.com/embed/${ytId}` : "",
+      videoSrc: ytId ? "" : (deliveryUrl || (localFile ? procSrc : mp4)),
+    });
+    setPage("score");
+    scrollTop();
+  }
+
+  // ── Share actions ────────────────────────────────────────────
+  const shareUrl = () => {
+    const base = typeof window !== "undefined" ? window.location.href.split("?")[0] : "";
+    return recordId ? `${base}?score=${encodeURIComponent(recordId)}` : base;
+  };
+  // Share tracking note: share_count would need a record EDIT, which
+  // anonymous visitors can't do — inbound ?score= visits with referred_by
+  // are the share signal instead.
+  const handleCopyLink = async () => {
+    try { await navigator.clipboard.writeText(shareUrl()); toast.success("Link copied"); }
+    catch { toast.error("Couldn't copy the link"); }
+  };
+  const handleShare = async () => {
+    try {
+      if (navigator.share) { await navigator.share({ title: "Scored by Brieflee", url: shareUrl() }); }
+      else await handleCopyLink();
+    } catch { /* user dismissed */ }
+  };
+  // Download report = the print-styled report view + the browser's
+  // Save as PDF. Fixed and sticky elements (the Book a call chip, the
+  // nav, the pinned download button) get repainted onto every printed
+  // page and slip past CSS-only hiding — so for the duration of the
+  // print, every sibling outside the report's ancestor chain is
+  // display:none'd, then restored.
+  const handleDownloadReport = () => {
+    if (!analysis) return;
+    const printEl = document.querySelector(".bl-printreport");
+    const touched = [];
+    try {
+      if (printEl) {
+        const chain = [];
+        let n = printEl;
+        while (n && n !== document.body) { chain.push(n); n = n.parentElement; }
+        chain.forEach((node) => {
+          const parent = node.parentElement;
+          if (!parent) return;
+          Array.from(parent.children).forEach((sib) => {
+            if (sib !== node && !chain.includes(sib)) {
+              touched.push([sib, sib.style.display]);
+              sib.style.display = "none";
+            }
+          });
+        });
+      }
+      window.print();
+    } catch { /* ignore */ } finally {
+      touched.forEach(([el, d]) => { el.style.display = d; });
+    }
+  };
+
+  const resetForAnother = () => {
+    setUrl(""); setFile(null); setAnalysis(null); setRecordId(""); setError(""); setProcSrc(""); setProcImg("");
+    setBreakdownTab("checks");
+    setPage("input");
+    scrollTop();
+  };
+
+  // ── Derived render bits ──────────────────────────────────────
+  const groups = useMemo(() => {
+    if (!analysis) return [];
+    const byName = new Map((analysis.agents || []).map((a) => [a.name.toLowerCase(), a]));
+    return AGENT_GROUPS.map((g) => {
+      const rows = g.agents.map((n) => byName.get(n.toLowerCase())).filter(Boolean);
+      return { name: g.name, rows, passed: rows.filter((r) => r.status === "PASS").length };
+    });
+  }, [analysis]);
+
+  const nowWatching = tab === "url" ? url.trim() : (file?.name || "");
+
+  // ─────────────────────────────────────────────────────────────
+  return (
+    <div ref={topRef} className="bl-tt">
+      <style>{CSS}</style>
+
+      {page === "loadingReturn" && returnScoreId ? (
+        <ReturnScoreLoader recordId={returnScoreId} onFields={hydrateFromRecord} onMiss={() => setPage("input")} />
+      ) : null}
+
+      {/* ── Nav (the page's own — turn the Softr native nav OFF) ── */}
+      <nav className="bl-nav">
+        <div className="bl-navin">
+          <a href="/" className="bl-nav-logo"><img src={BRIEFLEE_LOGO} alt="Brieflee" draggable={false} /></a>
+          <div className="bl-nav-right">
+            <a href="/" className="bl-nav-link">Learn more</a>
+            <a href={DEMO_URL} className="bl-btn bl-sm">Book a demo</a>
+          </div>
+        </div>
+      </nav>
+
+      {page === "input" && (
+        <>
+          {/* ── 01 Hero ── */}
+          <div className="bl-herowrap">
+            <div className="bl-wash"><span className="bl-g1" /><span className="bl-b1" /><span className="bl-b2" /><span className="bl-grid" /></div>
+            <div className="bl-herogrid">
+              <div className="bl-hcol">
+                <span className="bl-eyebrow"><i />Video Breakdown</span>
+                <div className="bl-h1blk">
+                  <h1>Creator made a video? Break it down in seconds.</h1>
+                  <p className="bl-typing" aria-live="polite">{typedWord}<span className="bl-caret" /></p>
+                </div>
+                <p className="bl-sub">24 Review Agents watch it frame by frame and flag what you would check anyway: the hook, the product, the brand mention, the claims. Under 60 seconds.</p>
+                <div className="bl-tabs" role="tablist">
+                  <button role="tab" aria-selected={tab === "url"} onClick={() => { setTab("url"); setError(""); }}><LinkIcon />Paste URL</button>
+                  <button role="tab" aria-selected={tab === "file"} onClick={() => { setTab("file"); setError(""); }}><UploadIcon />Upload file</button>
+                </div>
+                <div className="bl-card bl-inputcard">
+                  {tab === "url" ? (
+                    <>
+                      <span className="bl-fieldlabel">Paste the video URL</span>
+                      <div className="bl-inputrow">
+                        <label className="bl-input">
+                          <LinkIcon />
+                          <input value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleStart(); }} placeholder="Paste a TikTok, Instagram Reel or YouTube Short URL" />
+                        </label>
+                        <button className="bl-btn" onClick={handleStart}>Break it down<ArrowIcon /></button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <span className="bl-fieldlabel">Or upload the file they sent you</span>
+                      <label className="bl-drop">
+                        <UploadIcon />
+                        <span className="bl-drop-t">{file ? file.name : "Drop the video file, or tap to browse"}</span>
+                        <span className="bl-drop-s">MP4 or MOV, up to 200MB</span>
+                        <input type="file" accept="video/mp4,video/quicktime" hidden onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                      </label>
+                      <button className="bl-btn bl-w100" onClick={handleStart}>Break it down<ArrowIcon /></button>
+                    </>
+                  )}
+                  {error ? <p className="bl-error" role="alert">{error}</p> : null}
+                </div>
+                <div className="bl-truststrip">
+                  <span><i className="bl-pulse" />24 Review Agents watching</span>
+                  <span><CheckIcon />Frame by frame</span>
+                  <span><CheckIcon />Under 60 seconds</span>
+                  <span><CheckIcon />Free</span>
+                </div>
+              </div>
+              <div className="bl-assetwrap">
+                <span className="bl-halo2" />
+                <div className="bl-assetdisc">
+                  <div className="bl-discvid">
+                    <video src={DEMO_MP4} poster={DEMO_POSTER} autoPlay muted loop playsInline />
+                    <span className="bl-scanui"><i className="bl-k bl-k1" /><i className="bl-k bl-k2" /><i className="bl-k bl-k3" /><i className="bl-k bl-k4" /><i className="bl-scanline" /></span>
+                    <span className="bl-tl"><b /></span>
+                  </div>
+                </div>
+                <span className="bl-flo" style={{ "--top": "-10%", "--right": "-8%", "--s": "clamp(64px,9vw,110px)", "--r": "12deg", "--d": "0s" }}><img src={TIKTOK_LOGO} alt="TikTok" draggable={false} /></span>
+                <span className="bl-flo bl-rev" style={{ "--top": "38%", "--right": "-13%", "--s": "clamp(46px,6.5vw,78px)", "--r": "6deg", "--d": ".5s", "--fx": "-1" }}><img src={UPLOAD_LOGO} alt="Upload" draggable={false} /></span>
+                <span className="bl-flo" style={{ "--bot": "-4%", "--right": "0%", "--s": "clamp(54px,7.5vw,92px)", "--r": "-14deg", "--d": "1s", "--fx": "-1" }}><img src={IG_LOGO} alt="Instagram" draggable={false} /></span>
+                <span className="bl-flo bl-rev" style={{ "--bot": "10%", "--left": "-10%", "--s": "clamp(42px,6vw,72px)", "--r": "-8deg", "--d": ".3s" }}><img src={FB_LOGO} alt="Facebook" draggable={false} /></span>
+                <span className="bl-flo" style={{ "--top": "6%", "--left": "-9%", "--s": "clamp(52px,7vw,88px)", "--r": "18deg", "--d": ".8s", "--fx": "-1" }}><img src={YT_LOGO} alt="YouTube Shorts" draggable={false} /></span>
+                <span className="bl-chip2"><span className="bl-ping"><i /><i /></span>Live AI analysis</span>
+                <span className="bl-scorechip"><b>94</b><span><span className="bl-sc-t">Hook score</span><span className="bl-sc-v">First 0.7s</span></span></span>
+              </div>
+            </div>
+          </div>
+
+          {/* ── The pile ── */}
+          <section className="bl-lsec">
+            <div className="bl-lwrap">
+              <div className="bl-sechead">
+                <SecTag>Why things get missed</SecTag>
+                <h2>You are not missing things because you are careless. You are missing them because there are forty of them.</h2>
+                <p>Nobody watches the fortieth video the way they watched the first. The hook slips past at seven seconds instead of three. The product is on screen for four seconds and it felt like ten. The brand name lands after most people have already gone. None of that is visible at 2x with three more waiting. All of it is checkable in under a minute.</p>
+              </div>
+              <div className="bl-flagwrap">
+                <span className="bl-flaglabel">From a real breakdown</span>
+                <div className="bl-flagrows">
+                  <div className="bl-flagrow"><span className="bl-ts">0:07</span><span className="bl-nm">Hook landed late</span><Pill kind="flag">Flag</Pill></div>
+                  <div className="bl-flagrow"><span className="bl-ts">4s</span><span className="bl-nm">Product on screen</span><Pill kind="warn">Thin</Pill></div>
+                  <div className="bl-flagrow"><span className="bl-ts">0:22</span><span className="bl-nm">First brand mention</span><Pill kind="flag">Flag</Pill></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ── What you get (v2 block design, v3 copy) ── */}
+          <section className="bl-lsec bl-alt">
+            <div className="bl-lwrap">
+              <div className="bl-wghead">
+                <span className="bl-pillbadge"><img src={EYES_STICKER} alt="" draggable={false} />What you get</span>
+                <h2>Everything you would check yourself. In 60 seconds.</h2>
+                <p>A score out of 100, then all 24 checks behind it, with a timestamp on every moment that costs you attention, product visibility or a sale.</p>
+              </div>
+              <div className="bl-wgcards">
+                {WG_CARDS.map((c) => (
+                  <div className="bl-wgcard" key={c.title}>
+                    <div className="bl-wgimg"><img src={c.img} alt={c.alt} draggable={false} loading="lazy" /></div>
+                    <div className="bl-wgtxt"><h3>{c.title}</h3><p>{c.body}</p></div>
+                  </div>
+                ))}
+              </div>
+              <div className="bl-benefits">
+                {BENEFITS.map((b) => {
+                  const Icon = b.icon;
+                  return (
+                    <div className="bl-ben" key={b.t}><span className="bl-ben-ic"><Icon size={16} /></span><div><h4>{b.t}</h4><p>{b.p}</p></div></div>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+
+          {/* ── How it works (v2 block design, v3 copy) ── */}
+          <section className="bl-lsec bl-hiwsec">
+            <div className="bl-lwrap">
+              <div className="bl-hiwhead">
+                <span className="bl-pillbadge"><img src={EYES_STICKER} alt="" draggable={false} />How it works</span>
+                <h2>Three steps. Sixty seconds.</h2>
+                <p>No editing, no download, and no account until you have seen your score.</p>
+              </div>
+              <div className="bl-hiwrows">
+                {STEPS.map((step, i) => {
+                  const Icon = step.icon;
+                  return (
+                    <div className={i % 2 === 1 ? "bl-hiwrow bl-rev2" : "bl-hiwrow"} key={step.number}>
+                      <div className="bl-hiwcopy">
+                        <div className="bl-hiwtop">
+                          <span className="bl-hiwno">{step.number}</span>
+                          <span className="bl-hiwic"><Icon size={20} /></span>
+                        </div>
+                        <h3>{step.title}</h3>
+                        <p>{step.body}</p>
+                      </div>
+                      <div>
+                        {step.img ? (
+                          <div className="bl-hiwimgwrap">
+                            <span className="bl-hiwglow" />
+                            <div className="bl-hiwimg"><img src={step.img} alt={step.alt} draggable={false} loading="lazy" /></div>
+                          </div>
+                        ) : (
+                          <div className="bl-hiwdrop">
+                            <img src={TIKTOK_LOGO} alt="TikTok" draggable={false} loading="lazy" style={{ transform: "rotate(-6deg)" }} className="bl-hiwlogo-lg" />
+                            <span className="bl-hiwplus">+</span>
+                            <img src={UPLOAD_LOGO} alt="Upload" draggable={false} loading="lazy" style={{ transform: "rotate(8deg)" }} className="bl-hiwlogo-sm" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+
+          {/* ── What "frame by frame" actually means (v2 block design) ── */}
+          <section className="bl-lsec">
+            <div className="bl-lwrap">
+              <div className="bl-fbfrow">
+                <div className="bl-fbfcopy">
+                  <span className="bl-pillbadge"><img src={EYES_STICKER} alt="" draggable={false} />Frame by frame</span>
+                  <h2>What "frame by frame" actually means.</h2>
+                  <p>Most tools read the caption and the transcript. This watches the picture. Every scene change, every on-screen text card, every second the product is or is not visible, mapped to a timeline you can scrub.</p>
+                  <ul className="bl-fbflist">
+                    {["Scene changes", "On-screen text and when it appears", "Hook timing to the second", "Product visibility across the whole clip", "Captions and safe zones", "Lighting and framing", "Distracting elements", "Copyright risk in sound and footage"].map((item) => (
+                      <li key={item}><CheckIcon /><span>{item}</span></li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="bl-fbfvis">
+                  <span className="bl-fbfglow" />
+                  <div className="bl-fbfgrid">
+                    <div className="bl-fbfshot">
+                      <span className="bl-fbftag">During</span>
+                      <div className="bl-fbfimg"><img src="https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/35bc2415-6e39-415d-80cb-75fc8d753839.png" alt="Brieflee tracking creator movement and product handling on a video frame" draggable={false} loading="lazy" /></div>
+                    </div>
+                    <div className="bl-fbfshot bl-fbfshot-down">
+                      <span className="bl-fbftag bl-fbftag-blue">Result</span>
+                      <div className="bl-fbfimg"><img src="https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/b499fe5b-8ad7-4300-9f00-c2d0ee0a38fb.png" alt="Brieflee output showing product visibility, original content, and reviewed badges on a creator video" draggable={false} loading="lazy" /></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ── Brieflee vs the rest (v2 block design, v3 copy) ── */}
+          <section className="bl-lsec bl-alt">
+            <div className="bl-lwrap">
+              <div className="bl-cmphead">
+                <span className="bl-pillbadge"><img src={EYES_STICKER} alt="" draggable={false} />Comparison</span>
+                <h2>Frame.io organises. Brieflee watches.</h2>
+                <p>Frame.io, Air, and Dropbox Replay help you store, comment, and approve video. ChatGPT and Claude can't process video at all. Brieflee actually breaks down the video and tells you why it works.</p>
+              </div>
+              <div className="bl-cmpcard">
+                <div className="bl-cmpscroll">
+                  <table className="bl-cmptable">
+                    <thead>
+                      <tr>
+                        <th scope="col" className="bl-cmpfeat">Feature</th>
+                        {CMP_COLS.map((name, i) => (
+                          <th scope="col" key={name} className={i === 0 ? "bl-cmpbrand" : ""}>{name}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {CMP_ROWS.map((row) => (
+                        <tr key={row.label}>
+                          <th scope="row">{row.label}</th>
+                          {row.values.map((v, vi) => (
+                            <td key={vi} className={vi === 0 ? "bl-cmpbrand" : ""}>
+                              {v === "y" ? <Check size={18} strokeWidth={3} className="bl-cmp-y" aria-label="Yes" /> : v === "p" ? <Minus size={16} className="bl-cmp-p" aria-label="Partial" /> : <X size={13} strokeWidth={2} className="bl-cmp-n" aria-label="No" />}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="bl-cmplegend">
+                <span><Check size={15} strokeWidth={3} className="bl-cmp-y" />Yes</span>
+                <span><Minus size={15} className="bl-cmp-p" />Partial</span>
+                <span><X size={15} className="bl-cmp-n" />No</span>
+              </div>
+            </div>
+          </section>
+
+          {/* ── Who uses it ── */}
+          <section className="bl-lsec">
+            <div className="bl-lwrap">
+              <div className="bl-sechead">
+                <SecTag>Who uses it</SecTag>
+                <h2>Built for the people who sign off on other people's videos.</h2>
+              </div>
+              <div className="bl-moments">
+                <div className="bl-moment"><span className="bl-ben-ic"><CheckIcon /></span><h3>DTC and e-commerce brands</h3><p>Check what your creators sent before it goes out, and before it goes behind spend.</p></div>
+                <div className="bl-moment"><span className="bl-ben-ic"><CheckIcon /></span><h3>Agencies and TikTok Shop partners</h3><p>Run every submission through the same lens, so the bar does not move depending on who reviewed it that day.</p></div>
+                <div className="bl-moment"><span className="bl-ben-ic"><CheckIcon /></span><h3>Affiliate and influencer managers</h3><p>Break down what your best performers do differently, and turn it into direction the rest of the roster can follow.</p></div>
+                <div className="bl-moment"><span className="bl-ben-ic"><CheckIcon /></span><h3>Founder-led and B2B brands</h3><p>See what actually works in your niche before your founder films another one.</p></div>
+              </div>
+            </div>
+          </section>
+
+          {/* ── Meet the 24 Review Agents ── */}
+          <section className="bl-lsec bl-alt">
+            <div className="bl-lwrap">
+              <div className="bl-sechead">
+                <SecTag>Inside the breakdown</SecTag>
+                <h2>Meet the 24 Review Agents.</h2>
+                <p>One agent, one job. That is why nothing comes back as a vague verdict, and why every flag arrives with a timestamp you can send straight to the creator.</p>
+              </div>
+              <div className="bl-agrid">
+                {AGENT_GROUPS.map((g) => (
+                  <div className="bl-agroup" key={g.name}>
+                    <div className="bl-agroup-h"><h3>{g.name}</h3><Pill kind="blue">{g.agents.length} agents</Pill></div>
+                    <div className="bl-achips">{g.agents.map((a) => <span key={a}>{a}</span>)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* ── When to use it ── */}
+          <section className="bl-lsec">
+            <div className="bl-lwrap">
+              <div className="bl-sechead"><SecTag>When to use it</SecTag><h2>Four moments in a normal week.</h2></div>
+              <div className="bl-moments">
+                {MOMENTS.map((m) => (
+                  <div className="bl-moment" key={m.t}><span className="bl-ben-ic"><CheckIcon /></span><h3>{m.t}</h3><p>{m.p}</p></div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* ── FAQ (v2 block design, v3 copy) ── */}
+          <section className="bl-lsec bl-alt">
+            <div className="bl-faqwrap">
+              <div className="bl-faqhead">
+                <span className="bl-pillbadge"><img src={EYES_STICKER} alt="" draggable={false} />FAQs</span>
+                <h2>Things people ask before they paste.</h2>
+              </div>
+              <div className="bl-faqcard">
+                {FAQS.map((f, i) => (
+                  <div className="bl-faqitem" key={f.q}>
+                    <button type="button" aria-expanded={openFaq === i} onClick={() => setOpenFaq(openFaq === i ? -1 : i)}>
+                      <h3>{f.q}</h3>
+                      <span className={openFaq === i ? "bl-faqtoggle bl-open" : "bl-faqtoggle"}>{openFaq === i ? <MinusIcon /> : <PlusIcon />}</span>
+                    </button>
+                    <div className={openFaq === i ? "bl-faqbody bl-open" : "bl-faqbody"}><div><p>{f.a}</p></div></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* ── Final CTA (v2 block design: light band + glow blobs) ── */}
+          <section className="bl-lsec bl-final">
+            <span className="bl-fblob bl-fblob-a" /><span className="bl-fblob bl-fblob-b" />
+            <div className="bl-finalwrap2">
+              <span className="bl-pillbadge"><img src={EYES_STICKER} alt="" draggable={false} />Free to use</span>
+              <h2>Break down a video. See what you've been missing.</h2>
+              <p>Paste the URL and 24 Review Agents watch it for you. A score out of 100 and a flag on everything you would have caught on a good week. Free, and no account needed to see your score.</p>
+              <div className="bl-logostrip">
+                <img src={TIKTOK_LOGO} alt="" style={{ transform: "rotate(-6deg)" }} />
+                <img src={IG_LOGO} alt="" style={{ transform: "rotate(6deg)" }} />
+                <img src={YT_LOGO} alt="" style={{ transform: "rotate(-6deg)" }} />
+                <img src={FB_LOGO} alt="" style={{ transform: "rotate(6deg)" }} />
+                <img src={UPLOAD_LOGO} alt="" style={{ transform: "rotate(-6deg)" }} />
+              </div>
+              <div className="bl-ctastack">
+                <button className="bl-btn" onClick={scrollTop}><UpArrowIcon />Break down a video</button>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* ── Gate (work email BEFORE anything runs) ── */}
+      {page === "gate" && (
+        <div className="bl-gatewrap">
+          <div className="bl-gatevid">
+            <span className="bl-gvshot"><img src={EYES} alt="" /></span>
+            <div className="bl-gvmeta">
+              <span className="bl-minilabel">Ready to watch</span>
+              <b>{nowWatching || "Your video"}</b>
+              <span className="bl-gvsub">{tab === "url" ? "Pasted just now" : "Uploaded just now"}</span>
+            </div>
+          </div>
+          <div className="bl-card bl-gatecard">
+            <h3>See all 24 checks</h3>
+            <p>Every flag with a timestamp and the frame beside it, so your feedback to the creator names a second instead of a feeling. Plus the remix-ready brief.</p>
+            <span className="bl-fieldlabel">Your work email</span>
+            <label className="bl-input">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><rect x="3" y="5" width="18" height="14" rx="2.5" /><path d="m3.5 7 8.5 6 8.5-6" /></svg>
+              <input type="email" value={email} autoFocus onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !busy) handleGateSubmit(); }} placeholder="you@company.com" />
+            </label>
+            <span className="bl-fieldlabel">Company website</span>
+            <label className="bl-input">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M3.5 9.5h17M3.5 14.5h17M12 3a15 15 0 0 1 0 18A15 15 0 0 1 12 3Z" /></svg>
+              <input type="text" value={website} onChange={(e) => setWebsite(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !busy) handleGateSubmit(); }} placeholder="brieflee.co" />
+            </label>
+            <button className="bl-btn bl-w100" disabled={busy} onClick={handleGateSubmit}>{busy ? "Starting..." : "Send my full breakdown"}</button>
+            <p className="bl-microcopy">Free email addresses are not accepted, so use the one you use for the business.</p>
+            <label className="bl-optin">
+              <input type="checkbox" checked={optIn} onChange={(e) => setOptIn(e.target.checked)} />
+              <span>Send me Brieflee's guides on briefing creators. Unsubscribe anytime.</span>
+            </label>
+            {error ? <p className="bl-error" role="alert">{error}</p> : null}
+          </div>
+          <button className="bl-backlink" onClick={() => { setPage("input"); setError(""); }}>Back</button>
+          <div className="bl-truststrip bl-center"><span><i className="bl-pulse" />24 Review Agents</span><span><CheckIcon />Under 60 seconds</span><span><CheckIcon />Free</span></div>
+        </div>
+      )}
+
+      {/* ── Processing ── */}
+      {(page === "processing" || page === "loadingReturn") && (
+        <div className="bl-proc">
+          {page === "processing" && nowWatching ? (
+            <div className="bl-gatevid bl-procvid">
+              <span className="bl-gvshot"><img src={EYES} alt="" /></span>
+              <div className="bl-gvmeta">
+                <span className="bl-minilabel">Now watching</span>
+                <b>{nowWatching}</b>
+                <span className="bl-gvsub">{tab === "url" ? "Pasted just now" : "Uploaded just now"}</span>
+              </div>
+            </div>
+          ) : null}
+          {procSrc || procImg ? (
+            <div className="bl-procscan">
+              {procSrc
+                ? <video src={procSrc} muted autoPlay loop playsInline onError={() => setProcSrc("")} />
+                : <img src={procImg} alt="" onError={() => setProcImg("")} />}
+              <span className="bl-scanui"><i className="bl-k bl-k1" /><i className="bl-k bl-k2" /><i className="bl-k bl-k3" /><i className="bl-k bl-k4" /><i className="bl-scanline" /></span>
+            </div>
+          ) : (
+            <div className="bl-halo"><img src={EYES} alt="Review Agents" /></div>
+          )}
+          <h2>24 agents watching</h2>
+          <p className="bl-status">{STATUS_LINES[statusIdx % STATUS_LINES.length]}</p>
+          <div className="bl-barind" />
+          <div className="bl-dots">{Array.from({ length: 24 }, (_, j) => <i key={j} className={j <= (statusIdx * 3) % 25 ? "bl-on" : ""} />)}</div>
+          <p className="bl-cnt">Usually takes under a minute. Keep this tab open.</p>
+        </div>
+      )}
+
+      {/* ── Score reveal ── */}
+      {page === "score" && analysis && (
+        <div className="bl-scorepad">
+          <div className="bl-dlbar"><button className="bl-btn bl-sm" onClick={handleDownloadReport}>Download report</button></div>
+          <div className="bl-scoreside">
+            <div>
+              <div className="bl-scard">
+                <div className="bl-scard-top">
+                  <div className="bl-thumb">{analysis.thumb ? <img src={analysis.thumb} alt="Scored video" /> : null}<b>{analysis.duration ? fmtTs(analysis.duration) : ""}</b></div>
+                  <Ring score={analysis.overall.score} size="lg" />
+                </div>
+                <div className="bl-metarow">
+                  <span className="bl-lbl">Video score</span>
+                  <span className="bl-h">{analysis.handle || "Your video"}</span>
+                  <span className="bl-sm">{analysis.overall.checks_passed} of 24 checks passed</span>
+                </div>
+                <p className="bl-verdict">{analysis.overall.verdict}</p>
+                <div className="bl-checks">
+                  {(analysis.headline || []).map((h) => (
+                    <div className="bl-checkrow" key={h.label}><span className="bl-nm">{h.label}</span><Pill kind={h.status === "PASS" ? "pass" : "flag"}>{h.status === "PASS" ? "Pass" : "Flag"}</Pill></div>
+                  ))}
+                </div>
+                <div className="bl-mark">
+                  <span className="bl-mark-l"><img src={EYES} alt="" /><b>Scored by Brieflee</b></span>
+                  <span className="bl-mark-r">brieflee.co/score</span>
+                </div>
+              </div>
+              <div className="bl-cropnote"><span>Shareable crop ends at the watermark edge.</span></div>
+            </div>
+            <div className="bl-aside">
+              <div className="bl-sechead bl-left"><h2>Your full breakdown is ready</h2><p>All 24 checks with timestamps are below, and a copy is on its way to {email || "your inbox"}.</p></div>
+              <button className="bl-btn" onClick={() => { setPage("breakdown"); scrollTop(); }}>See all 24 checks<ArrowIcon /></button>
+              <div className="bl-sharerow">
+                <button className="bl-btn bl-sm bl-ghost" onClick={handleDownloadReport}>Download report</button>
+                <button className="bl-btn bl-sm bl-ghost" onClick={handleCopyLink}>Copy link</button>
+                <button className="bl-btn bl-sm bl-ghost" onClick={handleShare}>Share</button>
+              </div>
+              <div className="bl-truststrip"><span><i className="bl-pulse" />24 Review Agents</span><span><CheckIcon />Under 60 seconds</span><span><CheckIcon />Free</span></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Full breakdown + close ── */}
+      {page === "breakdown" && analysis && (
+        <div className="bl-scorepad">
+          <div className="bl-dlbar"><button className="bl-btn bl-sm" onClick={handleDownloadReport}>Download report</button></div>
+          <div className="bl-band">
+            <span className="bl-band-num">{analysis.overall.score}<sup>/100</sup></span>
+            <span className="bl-band-txt">{analysis.overall.checks_passed} of 24 checks passed</span>
+            <span className="bl-track"><b style={{ width: `${Math.round((analysis.overall.checks_passed / 24) * 100)}%` }} /></span>
+          </div>
+          <div className="bl-repgrid">
+          <aside className="bl-repvideo">
+            {analysis.videoEmbed ? (
+              <iframe src={analysis.videoEmbed} title="Scored video" allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen />
+            ) : analysis.videoSrc ? (
+              <video src={analysis.videoSrc} poster={analysis.thumb || undefined} controls playsInline preload="metadata" />
+            ) : analysis.thumb ? (
+              <img src={analysis.thumb} alt="Scored video" />
+            ) : null}
+            <p className="bl-repvideo-cap">Play it back while you read the checks.</p>
+          </aside>
+          <div className="bl-repmain">
+          {analysis.insights ? (
+            <div className="bl-rtabs" role="tablist">
+              <button role="tab" aria-selected={breakdownTab === "checks"} onClick={() => setBreakdownTab("checks")}>All 24 checks</button>
+              <button role="tab" aria-selected={breakdownTab === "overview"} onClick={() => setBreakdownTab("overview")}>Overview</button>
+              {analysis.insights.quotes.length ? <button role="tab" aria-selected={breakdownTab === "insights"} onClick={() => setBreakdownTab("insights")}>Insights ({analysis.insights.quotes.length})</button> : null}
+              {analysis.insights.hooks.length ? <button role="tab" aria-selected={breakdownTab === "hooks"} onClick={() => setBreakdownTab("hooks")}>Hooks ({analysis.insights.hooks.length})</button> : null}
+              {analysis.insights.selling_points.length ? <button role="tab" aria-selected={breakdownTab === "selling"} onClick={() => setBreakdownTab("selling")}>Selling points ({analysis.insights.selling_points.length})</button> : null}
+              {analysis.insights.remix_brief ? <button role="tab" aria-selected={breakdownTab === "remix"} onClick={() => setBreakdownTab("remix")}>Remix brief</button> : null}
+              {analysis.insights.spoken_transcript ? <button role="tab" aria-selected={breakdownTab === "transcript"} onClick={() => setBreakdownTab("transcript")}>Transcript</button> : null}
+            </div>
+          ) : null}
+
+          {(!analysis.insights || breakdownTab === "checks") && (
+          <div className="bl-groups">
+            {groups.map((g, gi) => (
+              <details className="bl-grp" key={g.name} open={gi === 0}>
+                <summary><span className="bl-gname">{g.name}</span><Pill kind="blue">{g.passed} of {g.rows.length} passed</Pill><ChevIcon /></summary>
+                <div className="bl-agents">
+                  {g.rows.map((a) => (
+                    <div className="bl-agent" key={a.name}>
+                      {a.screenshot ? <span className="bl-shot"><img src={a.screenshot} alt={`${a.name} check frame`} loading="lazy" /></span> : null}
+                      <div className="bl-agent-bd">
+                        <div className="bl-agent-hd">
+                          <span className="bl-an">{a.name}</span>
+                          <Pill kind={a.status === "PASS" ? "pass" : "flag"}>{a.status === "PASS" ? "Pass" : "Flag"}</Pill>
+                          {a.value ? <span className="bl-score">{a.value}</span> : null}
+                          {a.timestamp !== null ? <span className="bl-chip">{fmtTs(a.timestamp)}</span> : null}
+                        </div>
+                        {a.comment ? <p className="bl-cm">{a.comment}</p> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ))}
+          </div>
+          )}
+
+          {analysis.insights && breakdownTab === "overview" && (
+            <div className="bl-ipanel">
+              {analysis.insights.stats ? (
+                <div className="bl-istats">
+                  <div><b>{fmtCount(analysis.insights.stats.plays)}</b><span>Plays</span></div>
+                  <div><b>{fmtCount(analysis.insights.stats.likes)}</b><span>Likes</span></div>
+                  <div><b>{fmtCount(analysis.insights.stats.comments)}</b><span>Comments</span></div>
+                  <div><b>{fmtCount(analysis.insights.stats.shares)}</b><span>Shares</span></div>
+                  <div><b>{fmtCount(analysis.insights.stats.saves)}</b><span>Saves</span></div>
+                </div>
+              ) : null}
+              {analysis.insights.tone || analysis.insights.reading_level ? (
+                <div className="bl-ichips">
+                  {analysis.insights.tone ? <Pill kind="blue">Tone: {analysis.insights.tone}</Pill> : null}
+                  {analysis.insights.reading_level ? <Pill kind="blue">Reading level: {analysis.insights.reading_level}</Pill> : null}
+                </div>
+              ) : null}
+              {analysis.insights.content_overview ? <div className="bl-icard"><h4>Content overview</h4><p>{analysis.insights.content_overview}</p></div> : null}
+              {analysis.insights.target_audience ? <div className="bl-icard"><h4>Target audience</h4><p>{analysis.insights.target_audience}</p></div> : null}
+              {analysis.insights.product_notes ? <div className="bl-icard"><h4>Product notes</h4><p>{analysis.insights.product_notes}</p></div> : null}
+              {analysis.insights.on_screen_text ? (
+                <div className="bl-icard">
+                  <div className="bl-icopyrow"><h4>On-screen text</h4><button className="bl-btn bl-sm bl-ghost" onClick={async () => { try { await navigator.clipboard.writeText(analysis.insights.on_screen_text); toast.success("Copied"); } catch { toast.error("Couldn't copy"); } }}>Copy</button></div>
+                  <p className="bl-iquote">{analysis.insights.on_screen_text}</p>
+                </div>
+              ) : null}
+            </div>
+          )}
+
+          {analysis.insights && breakdownTab === "insights" && (
+            <div className="bl-ipanel">
+              {analysis.insights.quotes.map((q) => (
+                <div className="bl-icard" key={q.quote}>
+                  <p className="bl-iquote">{q.quote}</p>
+                  {q.insight ? <p>{q.insight}</p> : null}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {analysis.insights && breakdownTab === "hooks" && (
+            <div className="bl-ipanel">
+              {analysis.insights.hooks.map((h) => (
+                <div className="bl-icard" key={h.hook}>
+                  <h4>{h.hook}</h4>
+                  {h.score ? <div className="bl-ibarrow"><span className="bl-ibar"><b style={{ width: `${h.score * 10}%` }} /></span><span className="bl-iscore">{h.score}/10</span></div> : null}
+                  {h.why ? <p>{h.why}</p> : null}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {analysis.insights && breakdownTab === "selling" && (
+            <div className="bl-ipanel">
+              {analysis.insights.selling_points.map((s) => (
+                <div className="bl-icard" key={s.point}>
+                  <h4>{s.point}</h4>
+                  {s.score ? <div className="bl-ibarrow"><span className="bl-ibar"><b style={{ width: `${s.score * 10}%` }} /></span><span className="bl-iscore">{s.score}/10</span></div> : null}
+                  {s.why ? <p>{s.why}</p> : null}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {analysis.insights && breakdownTab === "remix" && analysis.insights.remix_brief && (
+            <div className="bl-ipanel">
+              {analysis.insights.remix_brief.hook ? <div className="bl-icard"><h4>Hook</h4><p>{analysis.insights.remix_brief.hook}</p></div> : null}
+              {analysis.insights.remix_brief.script ? <div className="bl-icard"><h4>Script</h4><p style={{ whiteSpace: "pre-line" }}>{analysis.insights.remix_brief.script}</p></div> : null}
+              {analysis.insights.remix_brief.action ? <div className="bl-icard"><h4>Action</h4><p>{analysis.insights.remix_brief.action}</p></div> : null}
+              {analysis.insights.remix_brief.text_overlay ? <div className="bl-icard"><h4>Text overlay</h4><p>{analysis.insights.remix_brief.text_overlay}</p></div> : null}
+            </div>
+          )}
+
+          {analysis.insights && breakdownTab === "transcript" && (
+            <div className="bl-ipanel">
+              <div className="bl-icard">
+                <div className="bl-icopyrow"><h4>Spoken transcript</h4><button className="bl-btn bl-sm bl-ghost" onClick={async () => { try { await navigator.clipboard.writeText(analysis.insights.spoken_transcript); toast.success("Copied"); } catch { toast.error("Couldn't copy"); } }}>Copy</button></div>
+                <p>{analysis.insights.spoken_transcript}</p>
+              </div>
+            </div>
+          )}
+          </div>
+          </div>
+          <div className="bl-closing">
+            <img src={EYES} alt="" style={{ width: 74, height: 74 }} />
+            <h2>That is one video. You have a hundred.</h2>
+            <p className="bl-closing-s">Brieflee runs all 24 Review Agents across every creator video you get sent, and tells you which ones are ready.</p>
+            <div className="bl-sharerow bl-center">
+              <button className="bl-btn bl-sm bl-ghost" onClick={handleDownloadReport}>Download report</button>
+              <button className="bl-btn bl-sm bl-ghost" onClick={handleCopyLink}>Copy link</button>
+              <button className="bl-btn bl-sm bl-ghost" onClick={handleShare}>Share</button>
+            </div>
+            <p className="bl-closing-line">Review all your creator content with Brieflee</p>
+            <div className="bl-ctastack">
+              <a className="bl-btn" href={DEMO_URL}>Book a demo</a>
+              <button className="bl-btn bl-ghost" onClick={resetForAnother}>Score another video</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Failure ── */}
+      {page === "failure" && (
+        <div className="bl-errwrap">
+          <div className="bl-card bl-errcard">
+            <span className="bl-err-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 8.5v4" /><circle cx="12" cy="16" r=".6" fill="currentColor" /><circle cx="12" cy="12" r="9" /></svg></span>
+            <h3>We couldn't read that video</h3>
+            <p>The link may be private, deleted, or region locked. Try uploading the file instead.</p>
+            <button className="bl-btn bl-sm" onClick={() => { setPage("input"); setError(""); }}>Try again</button>
+            <label className="bl-drop bl-w100">
+              <UploadIcon />
+              <span className="bl-drop-t">Upload a video</span>
+              <span className="bl-drop-s">MP4 or MOV, up to 200MB</span>
+              <input type="file" accept="video/mp4,video/quicktime" hidden onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { setFile(f); setTab("file"); setPage("gate"); } }} />
+            </label>
+          </div>
+          <p className="bl-crosslink">Still stuck? <a href="mailto:bev@brieflee.co">Tell us what happened</a></p>
+        </div>
+      )}
+
+      {/* ── Print-only report (Download report → Save as PDF) ── */}
+      {analysis ? (
+        <div className="bl-printreport">
+          <div className="bl-pr-head">
+            <span className="bl-pr-brand"><img src={EYES} alt="" />Scored by <b>Brieflee</b></span>
+            <span className="bl-pr-score">{analysis.overall.score}<i>/100</i></span>
+          </div>
+          {analysis.thumb ? <img className="bl-pr-thumb" src={analysis.thumb} alt="" /> : null}
+          <p className="bl-pr-meta">{analysis.handle || "Video"} · {analysis.overall.checks_passed} of 24 checks passed{analysis.duration ? ` · ${fmtTs(analysis.duration)}` : ""}</p>
+          <p className="bl-pr-verdict">{analysis.overall.verdict}</p>
+          {analysis.overall.comment ? <p className="bl-pr-comment">{analysis.overall.comment}</p> : null}
+          {(analysis.agents || []).some((a) => a.status !== "PASS") ? (
+            <div className="bl-pr-fixfirst">
+              <h3>What to fix first</h3>
+              {(analysis.agents || []).filter((a) => a.status !== "PASS").map((a) => (
+                <div className="bl-pr-fix" key={a.name}>
+                  {a.screenshot ? <img className="bl-pr-frame" src={a.screenshot} alt="" /> : null}
+                  <div>
+                    <p className="bl-pr-ahead"><b>{a.name}</b>{a.timestamp !== null ? <i>{fmtTs(a.timestamp)}</i> : null}{a.value ? <i>{a.value}</i> : null}</p>
+                    {a.comment ? <p className="bl-pr-cm">{a.comment}</p> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {groups.map((g) => (
+            <div className="bl-pr-group" key={g.name}>
+              <h3>{g.name} <span>{g.passed} of {g.rows.length} passed</span></h3>
+              {g.rows.map((a) => (
+                <div className="bl-pr-agent" key={a.name}>
+                  <p className="bl-pr-ahead">
+                    <b>{a.name}</b>
+                    <span className={a.status === "PASS" ? "bl-pr-pass" : "bl-pr-flag"}>{a.status === "PASS" ? "Pass" : "Flag"}</span>
+                    {a.value ? <i>{a.value}</i> : null}
+                    {a.timestamp !== null ? <i>{fmtTs(a.timestamp)}</i> : null}
+                  </p>
+                  {a.comment ? <p className="bl-pr-cm">{a.comment}</p> : null}
+                </div>
+              ))}
+            </div>
+          ))}
+          {analysis.insights ? (
+            <div>
+              {analysis.insights.content_overview ? <div className="bl-pr-group"><h3>Overview</h3>{analysis.insights.stats ? <p className="bl-pr-cm"><b>{fmtCount(analysis.insights.stats.plays)} plays · {fmtCount(analysis.insights.stats.likes)} likes · {fmtCount(analysis.insights.stats.comments)} comments · {fmtCount(analysis.insights.stats.shares)} shares · {fmtCount(analysis.insights.stats.saves)} saves</b></p> : null}<p className="bl-pr-cm">{analysis.insights.content_overview}</p>{analysis.insights.target_audience ? <p className="bl-pr-cm"><b>Audience:</b> {analysis.insights.target_audience}</p> : null}{analysis.insights.product_notes ? <p className="bl-pr-cm"><b>Product:</b> {analysis.insights.product_notes}</p> : null}</div> : null}
+              {analysis.insights.hooks.length ? <div className="bl-pr-group"><h3>Hooks</h3>{analysis.insights.hooks.map((h) => <div className="bl-pr-agent" key={h.hook}><p className="bl-pr-ahead"><b>{h.hook}</b>{h.score ? <i>{h.score}/10</i> : null}</p>{h.why ? <p className="bl-pr-cm">{h.why}</p> : null}</div>)}</div> : null}
+              {analysis.insights.selling_points.length ? <div className="bl-pr-group"><h3>Selling points</h3>{analysis.insights.selling_points.map((s) => <div className="bl-pr-agent" key={s.point}><p className="bl-pr-ahead"><b>{s.point}</b>{s.score ? <i>{s.score}/10</i> : null}</p>{s.why ? <p className="bl-pr-cm">{s.why}</p> : null}</div>)}</div> : null}
+              {analysis.insights.remix_brief ? <div className="bl-pr-group"><h3>Remix brief</h3>{analysis.insights.remix_brief.hook ? <p className="bl-pr-cm"><b>Hook:</b> {analysis.insights.remix_brief.hook}</p> : null}{analysis.insights.remix_brief.script ? <p className="bl-pr-cm" style={{ whiteSpace: "pre-line" }}><b>Script:</b> {analysis.insights.remix_brief.script}</p> : null}{analysis.insights.remix_brief.action ? <p className="bl-pr-cm"><b>Action:</b> {analysis.insights.remix_brief.action}</p> : null}{analysis.insights.remix_brief.text_overlay ? <p className="bl-pr-cm"><b>Text overlay:</b> {analysis.insights.remix_brief.text_overlay}</p> : null}</div> : null}
+              {analysis.insights.quotes.length ? <div className="bl-pr-group"><h3>What works, in the video's own words</h3>{analysis.insights.quotes.map((q) => <div className="bl-pr-agent" key={q.quote}><p className="bl-pr-ahead"><b>"{q.quote}"</b></p>{q.insight ? <p className="bl-pr-cm">{q.insight}</p> : null}</div>)}</div> : null}
+              {analysis.insights.spoken_transcript ? <div className="bl-pr-group"><h3>Transcript{analysis.insights.reading_level ? ` (${analysis.insights.reading_level})` : ""}</h3><p className="bl-pr-cm">{analysis.insights.spoken_transcript}</p></div> : null}
+            </div>
+          ) : null}
+          <div className="bl-pr-foot">
+            <span>Scored by Brieflee · brieflee.co</span>
+            <span>Review all your creator content with Brieflee · brieflee.co{DEMO_URL}</span>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ─── Styles (ported from the v3 design desk, bl- prefixed) ─────
+const CSS = `
+.bl-tt{--blue:#294ff6;--blue3:#5e7bf6;--blue4:#7a93ff;--blue5:#879cf7;--navy:#000f4d;--navy2:#001364;--page:#FAFBFF;--l2:#eef4fd;--peri:#d9e0ff;--lav:#d8d8ff;--border:#eef4fd;--bd2:#d6defc;--body:#565d78;--muted:#838aa3;--quiet:#aeb4c8;--pass:#2daa63;--passbg:rgba(45,170,99,.12);--warn:#a9750a;--warnbg:rgba(248,211,19,.16);--fail:#c8443c;--failbg:rgba(200,68,60,.10);
+  font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--page);color:var(--body);-webkit-font-smoothing:antialiased;width:100%;overflow-x:hidden}
+.bl-tt h1,.bl-tt h2,.bl-tt h3,.bl-tt h4{margin:0;color:var(--navy)}
+.bl-tt h1{font-weight:800;letter-spacing:-.03em}.bl-tt h2{font-weight:700;letter-spacing:-.02em}.bl-tt h3{font-weight:700;letter-spacing:-.01em}.bl-tt h4{font-weight:600}
+.bl-tt p{margin:0}
+.bl-tt button{font-family:inherit}
+.bl-card{background:#fff;border:1px solid var(--border);border-radius:18px;box-shadow:0 10px 30px -18px rgba(0,15,77,.22)}
+.bl-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:52px;padding:0 22px;border:0;border-radius:12px;background:var(--blue5);color:#fff;font-size:15px;font-weight:600;cursor:pointer;letter-spacing:-.01em;text-decoration:none}
+.bl-btn:hover{background:var(--blue3)}
+.bl-btn:disabled{opacity:.6;cursor:default}
+.bl-btn.bl-ghost{background:#fff;color:var(--navy);border:1px solid var(--bd2)}
+.bl-btn.bl-ghost:hover{background:var(--l2)}
+.bl-btn.bl-sm{height:42px;padding:0 16px;font-size:13.5px;border-radius:10px}
+.bl-btn.bl-light{background:#fff;color:var(--navy)}
+.bl-btn.bl-light:hover{background:var(--peri)}
+.bl-btn.bl-outline{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.32)}
+.bl-btn.bl-outline:hover{background:rgba(255,255,255,.1)}
+.bl-w100{width:100%}
+.bl-center{justify-content:center}
+.bl-error{font-size:13px;color:var(--fail);margin-top:8px}
+.bl-microcopy{font-size:11.5px;color:var(--muted);line-height:1.45}
+.bl-fieldlabel{font-size:13px;font-weight:600;color:var(--navy);display:block;margin-bottom:9px}
+.bl-input{display:flex;align-items:center;gap:10px;min-width:0;height:52px;padding:0 14px;background:var(--l2);border:1px solid var(--bd2);border-radius:12px;color:var(--muted);font-size:14.5px;cursor:text}
+.bl-input svg{flex:none;color:var(--blue4)}
+.bl-input input{flex:1;min-width:0;border:0;background:transparent;outline:none;font:inherit;color:var(--navy);font-size:14.5px}
+.bl-drop{margin-top:2px;border:1.5px dashed var(--bd2);border-radius:14px;background:var(--page);padding:22px 16px;text-align:center;display:flex;flex-direction:column;gap:4px;align-items:center;cursor:pointer;color:var(--blue4)}
+.bl-drop-t{font-size:14px;font-weight:600;color:var(--navy)}
+.bl-drop-s{font-size:12.5px;color:var(--muted)}
+.bl-pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap}
+.bl-pill-pass{background:var(--passbg);color:var(--pass)}
+.bl-pill-flag{background:var(--failbg);color:var(--fail)}
+.bl-pill-warn{background:var(--warnbg);color:var(--warn)}
+.bl-pill-blue{background:var(--peri);color:var(--blue)}
+.bl-sectag{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;background:#fff;border:1px solid var(--bd2);border-radius:999px;padding:5px 12px 5px 6px;font-size:11.5px;font-weight:600;color:var(--muted)}
+.bl-sectag img{width:19px;height:19px}
+.bl-truststrip{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;font-size:13px;font-weight:500;color:var(--body)}
+.bl-truststrip span{display:inline-flex;align-items:center;gap:7px}
+.bl-truststrip svg{color:var(--blue);flex:none}
+.bl-pulse{width:8px;height:8px;border-radius:50%;background:var(--blue);animation:blPulse 1.4s ease-in-out infinite;flex:none;display:block}
+@keyframes blPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.85)}}
+
+/* hero */
+.bl-herowrap{position:relative;overflow:hidden;padding:56px 20px 64px}
+.bl-wash{position:absolute;inset:0;pointer-events:none;z-index:0}
+.bl-g1{position:absolute;inset:0;background:linear-gradient(135deg,var(--page),rgba(41,79,246,.04) 45%,rgba(41,79,246,.10))}
+.bl-b1{position:absolute;top:-10%;right:-10%;width:420px;height:420px;border-radius:50%;background:rgba(41,79,246,.22);filter:blur(120px)}
+.bl-b2{position:absolute;bottom:-15%;left:-8%;width:340px;height:340px;border-radius:50%;background:rgba(41,79,246,.14);filter:blur(100px)}
+.bl-grid{position:absolute;inset:0;opacity:.05;background-image:radial-gradient(circle at 1px 1px,#000f4d 1px,transparent 0);background-size:32px 32px}
+.bl-herogrid{position:relative;z-index:1;display:flex;flex-direction:column;gap:36px;max-width:1140px;margin:0 auto}
+.bl-hcol{display:flex;flex-direction:column;gap:18px;align-items:flex-start;min-width:0}
+.bl-eyebrow{display:inline-flex;align-items:center;gap:10px;padding:9px 16px;background:rgba(135,156,247,.16);color:var(--navy);font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:999px}
+.bl-eyebrow i{width:8px;height:8px;border-radius:50%;background:var(--blue5);box-shadow:0 0 0 3px rgba(135,156,247,.22);display:block;flex:none}
+.bl-h1blk{display:flex;flex-direction:column;gap:2px}
+.bl-h1blk h1{font-size:33px;line-height:1.05}
+.bl-typing{font-size:33px;font-weight:800;color:var(--blue5);letter-spacing:-.03em;line-height:1.05;margin-top:2px;min-height:1.05em}
+.bl-caret{display:inline-block;width:3px;height:.85em;background:var(--blue5);margin-left:3px;vertical-align:-.05em;animation:blBlink 1.05s steps(1) infinite}
+@keyframes blBlink{50%{opacity:0}}
+.bl-sub{font-size:15px;line-height:1.5;color:var(--body);max-width:46ch;text-align:left}
+.bl-tabs{display:inline-flex;gap:2px;padding:4px;background:rgba(255,255,255,.85);border:1px solid var(--bd2);border-radius:999px;box-shadow:0 1px 3px rgba(0,15,77,.06)}
+.bl-tabs button{display:inline-flex;align-items:center;gap:7px;border:0;background:transparent;font-size:13px;font-weight:600;color:var(--muted);padding:8px 15px;border-radius:999px;cursor:pointer}
+.bl-tabs button[aria-selected="true"]{background:var(--blue5);color:#fff}
+.bl-repgrid{display:grid;grid-template-columns:264px minmax(0,1fr);gap:22px;align-items:start;margin-top:18px}
+.bl-repvideo{position:sticky;top:88px}
+.bl-repvideo iframe,.bl-repvideo video,.bl-repvideo>img{width:100%;aspect-ratio:9/16;border:1px solid var(--bd2);border-radius:16px;background:#000;display:block;object-fit:cover}
+.bl-repvideo-cap{margin:8px 2px 0;font-size:12px;color:var(--muted);text-align:center}
+@media (max-width: 900px){.bl-repgrid{grid-template-columns:1fr}.bl-repvideo{position:static;width:min(250px,100%);margin:0 auto}}
+.bl-inputcard{width:100%;padding:18px}
+.bl-inputrow{display:flex;flex-direction:column;gap:10px}
+.bl-assetwrap{position:relative;width:100%;max-width:252px;margin:6px auto 0;aspect-ratio:1}
+.bl-halo2{position:absolute;inset:0;border-radius:50%;background:rgba(41,79,246,.26);filter:blur(70px)}
+.bl-assetdisc{position:relative;width:100%;height:100%;border-radius:50%;overflow:hidden;border:6px solid #fff;background:radial-gradient(circle at 50% 26%,#f4f7ff 0%,#e4eaff 55%,#d9e0ff 100%);box-shadow:0 30px 80px -25px rgba(41,79,246,.5);display:grid;place-items:center}
+.bl-discvid{position:relative;height:66%;aspect-ratio:9/16;border-radius:12px;overflow:hidden;transform:rotate(-5deg);background:#d5dcf0;border:1px solid rgba(255,255,255,.85);box-shadow:0 16px 34px -16px rgba(0,15,77,.4)}
+.bl-discvid video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.bl-tl{position:absolute;left:9px;right:9px;bottom:9px;height:4px;border-radius:99px;background:rgba(255,255,255,.6);overflow:hidden;z-index:3}
+.bl-tl b{display:block;height:100%;width:44%;background:var(--blue)}
+.bl-scanui{position:absolute;inset:0;z-index:2;pointer-events:none}
+.bl-scanui:before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.16) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.16) 1px,transparent 1px);background-size:100% 33.34%,33.34% 100%}
+.bl-k{position:absolute;width:20px;height:20px;border:2.5px solid rgba(41,79,246,.95);border-radius:4px}
+.bl-k1{top:8px;left:8px;border-right:0;border-bottom:0}
+.bl-k2{top:8px;right:8px;border-left:0;border-bottom:0}
+.bl-k3{bottom:8px;left:8px;border-right:0;border-top:0}
+.bl-k4{bottom:8px;right:8px;border-left:0;border-top:0}
+.bl-scanline{position:absolute;top:0;left:0;right:0;height:24%;background:linear-gradient(180deg,rgba(41,79,246,0),rgba(135,156,247,.3) 55%,rgba(41,79,246,.55));border-bottom:2px solid rgba(41,79,246,.9);box-shadow:0 0 18px rgba(41,79,246,.55);animation:blScan 3s ease-in-out infinite alternate}
+@keyframes blScan{0%{transform:translateY(-100%)}100%{transform:translateY(416%)}}
+.bl-flo{position:absolute;z-index:3;width:var(--s);height:var(--s);top:var(--top,auto);right:var(--right,auto);bottom:var(--bot,auto);left:var(--left,auto);animation:blFloat 7s ease-in-out var(--d,0s) infinite alternate}
+.bl-flo.bl-rev{animation-direction:alternate-reverse}
+.bl-flo img{width:100%;height:100%;object-fit:contain;display:block;transform:rotate(var(--r,0deg)) scaleX(var(--fx,1));filter:drop-shadow(0 12px 24px rgba(99,102,241,.25))}
+@keyframes blFloat{0%{transform:translateY(0)}100%{transform:translateY(-16px)}}
+.bl-chip2{position:absolute;z-index:4;top:4%;left:52%;display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--bd2);border-radius:999px;padding:7px 13px;font-size:11px;font-weight:700;color:var(--navy);white-space:nowrap;box-shadow:0 10px 24px -12px rgba(0,15,77,.34);animation:blChip 6s ease-in-out .4s infinite alternate}
+@keyframes blChip{0%{transform:translateY(0)}100%{transform:translateY(-6px)}}
+.bl-ping{position:relative;width:8px;height:8px;flex:none;display:block}
+.bl-ping i{position:absolute;inset:0;border-radius:50%;background:var(--blue);display:block}
+.bl-ping i:first-child{animation:blPing 1.7s cubic-bezier(0,0,.2,1) infinite;opacity:.7}
+@keyframes blPing{75%,100%{transform:scale(2.2);opacity:0}}
+.bl-scorechip{position:absolute;z-index:4;bottom:4%;right:52%;white-space:nowrap;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--bd2);border-radius:15px;padding:9px 14px;box-shadow:0 14px 34px -14px rgba(0,15,77,.36);animation:blChip 6s ease-in-out 1s infinite alternate-reverse}
+.bl-scorechip b{font-size:23px;font-weight:800;color:var(--blue);line-height:1;letter-spacing:-.03em}
+.bl-scorechip>span{display:flex;flex-direction:column}
+.bl-sc-t{font-size:9px;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--quiet)}
+.bl-sc-v{font-size:11px;font-weight:600;color:var(--navy)}
+
+/* landing sections */
+.bl-lsec{position:relative;padding:46px 20px;background:#fff}
+.bl-lsec.bl-alt{background:var(--page);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.bl-lsec.bl-dark{background:linear-gradient(160deg,#001364 0%,#000f4d 55%,#00092f 100%);overflow:hidden}
+.bl-lsec.bl-dark .bl-sectag{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18);color:#c3ccf5}
+.bl-lwrap{max-width:1140px;margin:0 auto;display:flex;flex-direction:column;gap:26px}
+.bl-sechead{display:flex;flex-direction:column;gap:12px;max-width:56ch}
+.bl-sechead h2{font-size:26px;line-height:1.12}
+.bl-sechead p{font-size:14.5px;line-height:1.55;color:var(--body)}
+.bl-sechead.bl-left{align-items:flex-start;text-align:left}
+.bl-flagwrap{display:flex;flex-direction:column;gap:10px}
+.bl-flaglabel{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--quiet)}
+.bl-flagrows{display:grid;gap:10px}
+.bl-flagrow{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 16px;box-shadow:0 8px 24px -20px rgba(0,15,77,.3)}
+.bl-ts{font-size:19px;font-weight:800;color:var(--blue);letter-spacing:-.03em;line-height:1;flex:none;min-width:52px}
+.bl-flagrow .bl-nm{flex:1;font-size:13.5px;font-weight:600;color:var(--navy)}
+.bl-cards3{display:grid;gap:16px}
+.bl-fcard{background:#fff;border:1px solid var(--border);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px -22px rgba(0,15,77,.28)}
+.bl-viz{padding:20px;background:linear-gradient(155deg,rgba(41,79,246,.05),rgba(41,79,246,.12));border-bottom:1px solid var(--border);min-height:150px;display:flex;align-items:center;justify-content:center}
+.bl-fcard-txt{padding:18px;display:flex;flex-direction:column;gap:7px}
+.bl-fcard h3{font-size:16.5px;line-height:1.28}
+.bl-fcard p{font-size:13.5px;line-height:1.55;color:var(--body)}
+.bl-vizring{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid var(--bd2);border-radius:14px;padding:14px 16px;box-shadow:0 10px 26px -18px rgba(0,15,77,.3)}
+.bl-vr-c{display:flex;flex-direction:column;gap:3px}
+.bl-vr-c b{font-size:13px;color:var(--navy)}
+.bl-vr-c i{font-style:normal;font-size:11.5px;color:var(--muted)}
+.bl-vizrows{width:100%;display:flex;flex-direction:column;gap:7px}
+.bl-vizrows div{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fff;border:1px solid var(--bd2);border-radius:10px;padding:9px 12px;font-size:12.5px;font-weight:600;color:var(--navy)}
+.bl-viznote{background:#fff;border:1px solid var(--bd2);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;box-shadow:0 10px 26px -18px rgba(0,15,77,.3);align-items:flex-start}
+.bl-viznote b{font-size:12.5px;color:var(--navy)}
+.bl-viznote i{font-style:normal;font-size:11.5px;color:var(--muted);line-height:1.4;max-width:26ch}
+.bl-benefits{display:grid;gap:18px}
+.bl-ben{display:flex;gap:12px}
+.bl-ben-ic{width:36px;height:36px;flex:none;border-radius:11px;background:rgba(41,79,246,.09);display:grid;place-items:center;color:var(--blue)}
+.bl-ben h4{font-size:13.5px;line-height:1.3}
+.bl-ben p{font-size:12.5px;line-height:1.5;color:var(--body);margin-top:3px}
+.bl-steps{display:flex;flex-direction:column;gap:14px}
+.bl-step{display:flex;gap:14px;background:#fff;border:1px solid var(--border);border-radius:16px;padding:18px}
+.bl-no{font-size:30px;font-weight:800;color:rgba(41,79,246,.28);line-height:1;letter-spacing:-.04em;flex:none}
+.bl-step h3{font-size:16px;line-height:1.3}
+.bl-step p{font-size:13.5px;line-height:1.55;color:var(--body);margin-top:6px}
+.bl-agrid{display:grid;gap:16px}
+.bl-agroup{background:#fff;border:1px solid var(--border);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px}
+.bl-agroup-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.bl-agroup h3{font-size:15px}
+.bl-achips{display:flex;flex-wrap:wrap;gap:7px}
+.bl-achips span{font-size:12px;font-weight:500;color:var(--navy2);background:var(--l2);border:1px solid var(--border);border-radius:8px;padding:5px 9px}
+.bl-moments{display:grid;gap:14px}
+.bl-moment{background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:8px}
+.bl-moment h3{font-size:15.5px}
+.bl-moment p{font-size:13px;line-height:1.55;color:var(--body)}
+.bl-faqlist{display:flex;flex-direction:column;gap:10px}
+.bl-faq{background:#fff;border:1px solid var(--border);border-radius:14px}
+.bl-faq>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:16px 18px;font-size:14.5px;font-weight:600;color:var(--navy)}
+.bl-faq>summary::-webkit-details-marker{display:none}
+.bl-faq>summary span{flex:1}
+.bl-faq>summary svg{color:var(--blue4);flex:none;transition:transform .18s}
+.bl-faq[open]>summary svg{transform:rotate(45deg)}
+.bl-faq p{padding:0 18px 17px;font-size:13.5px;line-height:1.6;color:var(--body)}
+.bl-finalwrap{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;text-align:center;gap:16px;max-width:640px;margin:0 auto}
+.bl-finalwrap h2{font-size:29px;line-height:1.1;color:#fff;max-width:24ch}
+.bl-finalwrap p{font-size:15px;line-height:1.55;color:#b9c4ee;max-width:44ch}
+.bl-finalwrap .bl-sectag{align-self:center}
+.bl-blob{position:absolute;border-radius:50%;filter:blur(110px);pointer-events:none}
+.bl-blob-a{top:-30%;left:12%;width:380px;height:380px;background:rgba(41,79,246,.55)}
+.bl-blob-b{bottom:-35%;right:8%;width:320px;height:320px;background:rgba(135,156,247,.35)}
+.bl-logostrip{display:flex;flex-wrap:wrap;justify-content:center;gap:12px;margin-top:2px}
+.bl-logostrip img{width:44px;height:44px;object-fit:contain;filter:drop-shadow(0 8px 16px rgba(41,79,246,.35))}
+.bl-ctastack{display:flex;flex-direction:column;gap:10px;width:100%;max-width:340px}
+.bl-ctastack .bl-btn{width:100%}
+.bl-crosslink{font-size:12.5px;color:var(--muted)}
+.bl-crosslink a{font-weight:600;color:var(--blue)}
+.bl-backlink{border:0;background:none;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline;align-self:center}
+
+/* gate */
+.bl-gatewrap{max-width:480px;margin:0 auto;padding:56px 20px 72px;display:flex;flex-direction:column;gap:16px}
+.bl-gatecard{padding:22px 20px;display:flex;flex-direction:column;gap:10px}
+.bl-gatecard h3{font-size:19px}
+.bl-gatecard>p{font-size:13px;color:var(--muted);line-height:1.5}
+.bl-gatevid{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid var(--border);border-radius:16px;padding:14px}
+.bl-gvshot{width:44px;height:44px;flex:none;border-radius:10px;overflow:hidden;background:var(--l2);display:grid;place-items:center}
+.bl-gvshot img{width:34px;height:34px;object-fit:contain;display:block}
+.bl-gvmeta{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.bl-gvmeta b{font-size:14px;font-weight:700;color:var(--navy);letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bl-gvsub{font-size:12px;color:var(--muted)}
+.bl-minilabel{font-size:10.5px;font-weight:700;color:var(--quiet);letter-spacing:.06em;text-transform:uppercase}
+.bl-optin{display:flex;gap:9px;align-items:flex-start;font-size:12px;color:var(--muted);line-height:1.45;cursor:pointer}
+.bl-optin input{margin-top:2px;accent-color:var(--blue)}
+
+/* processing */
+.bl-proc{display:flex;flex-direction:column;align-items:center;gap:18px;padding:56px 24px 60px;text-align:center}
+.bl-procvid{max-width:380px;width:100%;text-align:left;margin-bottom:8px}
+.bl-procscan{position:relative;width:190px;aspect-ratio:9/16;border-radius:16px;overflow:hidden;background:#d5dcf0;border:1px solid var(--bd2);box-shadow:0 24px 50px -22px rgba(0,15,77,.45)}
+.bl-procscan video,.bl-procscan>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.bl-halo{position:relative;width:150px;height:150px;display:grid;place-items:center}
+.bl-halo:before{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle,var(--lav) 0%,rgba(216,216,255,0) 68%);animation:blBreathe 3.4s ease-in-out infinite}
+.bl-halo img{width:108px;height:108px;position:relative;animation:blHFloat 4.6s ease-in-out infinite}
+@keyframes blBreathe{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.12);opacity:1}}
+@keyframes blHFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.bl-proc h2{font-size:22px}
+.bl-status{min-height:22px;font-size:14.5px;font-weight:600;color:var(--blue)}
+.bl-barind{width:100%;max-width:320px;height:6px;border-radius:99px;background:var(--l2);overflow:hidden;position:relative}
+.bl-barind:after{content:"";position:absolute;top:0;bottom:0;width:42%;border-radius:99px;background:linear-gradient(90deg,var(--blue5),var(--blue));animation:blSlide 1.9s cubic-bezier(.45,0,.55,1) infinite}
+@keyframes blSlide{0%{left:-45%}100%{left:100%}}
+.bl-dots{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:280px}
+.bl-dots i{width:7px;height:7px;border-radius:50%;background:var(--lav);display:block}
+.bl-dots i.bl-on{background:var(--blue5)}
+.bl-cnt{font-size:12.5px;color:var(--muted);font-weight:500}
+
+/* score */
+.bl-scorepad{padding:30px 20px 48px;max-width:1140px;margin:0 auto}
+.bl-scoreside{display:flex;flex-direction:column;gap:24px}
+.bl-scard{background:linear-gradient(168deg,#fff 0%,#fdfdff 52%,#f4f7ff 100%);border:1px solid var(--bd2);border-radius:22px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 60px -30px rgba(0,15,77,.42)}
+.bl-scard-top{display:flex;gap:16px;padding:20px 20px 14px;align-items:center;justify-content:space-between}
+.bl-thumb{width:64px;aspect-ratio:9/16;flex:none;position:relative;overflow:hidden;border-radius:10px;background:#dfe5f5;border:1px solid var(--bd2)}
+.bl-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.bl-thumb b{position:absolute;left:0;right:0;bottom:5px;text-align:center;font-size:9px;font-weight:700;color:#fff;letter-spacing:.04em;text-shadow:0 1px 3px rgba(0,15,77,.7)}
+.bl-ring{position:relative;flex:none;display:block}
+.bl-ring-val{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.bl-ring-lg .bl-ring-val b{font-size:34px;font-weight:800;color:var(--blue);letter-spacing:-.04em;line-height:1}
+.bl-ring-lg .bl-ring-val i{font-style:normal;font-size:10.5px;font-weight:700;color:var(--quiet);letter-spacing:.06em}
+.bl-ring-sm .bl-ring-val b{font-size:20px;font-weight:800;color:var(--blue);letter-spacing:-.03em}
+.bl-metarow{display:flex;flex-direction:column;gap:3px;padding:0 20px 16px;min-width:0}
+.bl-lbl{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--blue5)}
+.bl-metarow .bl-h{font-size:17px;font-weight:700;color:var(--navy);letter-spacing:-.01em}
+.bl-metarow .bl-sm{font-size:13px;color:var(--muted)}
+.bl-verdict{margin:0 20px 16px;padding:14px 16px;background:var(--peri);border-radius:12px;font-size:13.5px;line-height:1.5;color:var(--navy2)}
+.bl-checks{display:flex;flex-direction:column;gap:1px;background:var(--border);margin:0 20px;border-radius:12px;overflow:hidden}
+.bl-checkrow{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;padding:11px 14px}
+.bl-checkrow .bl-nm{font-size:13.5px;font-weight:600;color:var(--navy)}
+.bl-mark{margin-top:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;background:var(--navy)}
+.bl-mark-l{display:flex;align-items:center;gap:9px}
+.bl-mark-l img{width:22px;height:22px}
+.bl-mark-l b{font-size:13px;font-weight:700;letter-spacing:-.01em;color:#fff}
+.bl-mark-r{font-size:11.5px;color:#a9b6e8;letter-spacing:.02em}
+.bl-cropnote{display:flex;justify-content:center;margin-top:10px}
+.bl-cropnote span{font-size:11.5px;color:var(--quiet)}
+.bl-aside{display:flex;flex-direction:column;gap:18px}
+.bl-sharerow{display:flex;flex-wrap:wrap;gap:8px}
+
+/* breakdown */
+.bl-band{display:flex;align-items:center;gap:14px;padding:14px 16px;background:#fff;border:1px solid var(--border);border-radius:14px;margin-bottom:16px}
+.bl-band-num{font-size:26px;font-weight:800;color:var(--blue);letter-spacing:-.04em;line-height:1}
+.bl-band-num sup{font-size:12px;font-weight:700;color:var(--quiet)}
+.bl-band-txt{font-size:13px;color:var(--body);font-weight:500}
+.bl-track{flex:1;height:6px;background:var(--l2);border-radius:99px;overflow:hidden;min-width:60px}
+.bl-track b{display:block;height:100%;background:linear-gradient(90deg,var(--blue5),var(--blue))}
+.bl-groups{display:flex;flex-direction:column;gap:10px}
+.bl-grp{background:#fff;border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.bl-grp>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:15px 16px}
+.bl-grp>summary::-webkit-details-marker{display:none}
+.bl-gname{flex:1;font-size:14.5px;font-weight:700;color:var(--navy);letter-spacing:-.01em}
+.bl-chev{color:var(--blue4);transition:transform .18s}
+.bl-grp[open]>summary .bl-chev{transform:rotate(180deg)}
+.bl-grp[open]>summary{border-bottom:1px solid var(--border)}
+.bl-agents{display:flex;flex-direction:column}
+.bl-agent{display:flex;gap:12px;padding:14px 16px;border-top:1px solid var(--page)}
+.bl-agent:first-child{border-top:0}
+.bl-shot{width:44px;aspect-ratio:9/16;flex:none;border-radius:7px;overflow:hidden;background:#e3e8f7;border:1px solid var(--border)}
+.bl-shot img{width:100%;height:100%;object-fit:cover;display:block}
+.bl-agent-bd{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.bl-agent-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bl-an{font-size:13.5px;font-weight:600;color:var(--navy)}
+.bl-cm{font-size:12.5px;line-height:1.5;color:var(--body)}
+.bl-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--muted);background:var(--l2);border-radius:6px;padding:3px 7px}
+.bl-score{font-size:12px;font-weight:700;color:var(--blue);letter-spacing:-.01em}
+/* report tabs + insight panels */
+.bl-rtabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+.bl-rtabs button{border:1px solid var(--bd2);background:#fff;color:var(--muted);font-family:inherit;font-size:13px;font-weight:600;padding:8px 14px;border-radius:999px;cursor:pointer}
+.bl-rtabs button[aria-selected="true"]{background:var(--blue5);border-color:var(--blue5);color:#fff}
+.bl-ipanel{display:flex;flex-direction:column;gap:12px}
+.bl-istats{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:10px}
+.bl-istats div{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 10px;text-align:center;display:flex;flex-direction:column;gap:2px}
+.bl-istats b{font-size:18px;font-weight:800;color:var(--blue);letter-spacing:-.02em}
+.bl-istats span{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.bl-icard{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px 18px}
+.bl-icard h4{font-size:14px;line-height:1.4;margin-bottom:6px}
+.bl-icard p{font-size:13.5px;line-height:1.6;color:var(--body)}
+.bl-iquote{background:var(--l2);border-radius:10px;padding:10px 12px;font-style:italic;color:var(--navy2)!important;margin-bottom:8px}
+.bl-ichips{display:flex;gap:8px;flex-wrap:wrap}
+.bl-ibarrow{display:flex;align-items:center;gap:10px;margin:8px 0}
+.bl-ibar{flex:1;height:6px;background:var(--l2);border-radius:99px;overflow:hidden;max-width:320px}
+.bl-ibar b{display:block;height:100%;background:linear-gradient(90deg,var(--blue5),var(--blue))}
+.bl-iscore{font-size:12.5px;font-weight:800;color:var(--blue)}
+.bl-icopyrow{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px}
+.bl-icopyrow h4{margin-bottom:0}
+
+.bl-closing{display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;padding:44px 22px 20px}
+.bl-closing h2{font-size:23px;line-height:1.2;max-width:22ch}
+.bl-closing-s{font-size:14px;color:var(--body);max-width:38ch;line-height:1.5}
+
+/* failure */
+.bl-errwrap{padding:44px 20px 50px;display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center}
+.bl-errcard{width:100%;max-width:420px;padding:24px 20px;display:flex;flex-direction:column;gap:14px;align-items:center}
+.bl-err-ic{width:44px;height:44px;border-radius:12px;background:var(--l2);display:grid;place-items:center;color:var(--blue4)}
+.bl-errcard h3{font-size:17px}
+.bl-errcard p{font-size:13.5px;color:var(--body);line-height:1.5;max-width:30ch}
+
+/* desktop */
+@media (min-width:700px){
+ .bl-herowrap{padding:72px 40px 84px}
+ .bl-herogrid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(300px,1fr);gap:56px;align-items:center}
+ .bl-hcol{gap:22px}
+ .bl-h1blk h1{font-size:50px}
+ .bl-typing{font-size:50px}
+ .bl-assetwrap{max-width:440px;margin:0 auto}
+ .bl-inputcard{padding:26px}
+ .bl-inputrow{flex-direction:row;align-items:center;gap:12px}
+ .bl-inputrow .bl-input{flex:1;min-width:0;height:58px;font-size:15.5px}
+ .bl-inputrow .bl-btn{height:58px;padding:0 30px;font-size:16px}
+ .bl-lsec{padding:78px 40px}
+ .bl-lwrap{gap:38px}
+ .bl-sechead h2{font-size:40px}
+ .bl-sechead p{font-size:17px}
+ .bl-flagrows{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .bl-ts{font-size:22px}
+ .bl-cards3{grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}
+ .bl-viz{min-height:190px;padding:26px}
+ .bl-fcard-txt{padding:22px}
+ .bl-fcard h3{font-size:18px}
+ .bl-benefits{grid-template-columns:repeat(3,minmax(0,1fr));gap:26px 32px}
+ .bl-steps{flex-direction:row;gap:20px}
+ .bl-step{flex-direction:column;flex:1;padding:24px}
+ .bl-no{font-size:44px}
+ .bl-step h3{font-size:19px}
+ .bl-agrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+ .bl-agroup{padding:24px}
+ .bl-moments{grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+ .bl-moment{padding:24px}
+ .bl-fbfrow{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:64px}
+ .bl-fbfcopy h2{font-size:44px}
+ .bl-fbfcopy>p{font-size:17px}
+ .bl-fbflist{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .bl-fbflist li{font-size:15px}
+ .bl-fbfgrid{gap:24px}
+ .bl-fbfshot-down{margin-top:48px}
+ .bl-wghead h2{font-size:44px}
+ .bl-wghead p{font-size:17px}
+ .bl-wgcards{grid-template-columns:repeat(3,minmax(0,1fr));gap:28px}
+ .bl-hiwhead h2{font-size:44px}
+ .bl-hiwhead p{font-size:17px}
+ .bl-hiwrows{gap:64px}
+ .bl-hiwrow{grid-template-columns:repeat(2,minmax(0,1fr));gap:48px}
+ .bl-hiwrow.bl-rev2>div:first-child{order:2}
+ .bl-hiwno{font-size:60px}
+ .bl-hiwcopy h3{font-size:30px}
+ .bl-hiwcopy p{font-size:17px}
+ .bl-hiwlogo-lg{width:176px;height:176px}
+ .bl-hiwlogo-sm{width:112px;height:112px}
+ .bl-nav{padding:16px 40px}
+ .bl-nav-logo img{height:48px}
+ .bl-cmphead h2{font-size:44px}
+ .bl-cmphead p{font-size:17px}
+ .bl-cmptable thead th{font-size:13px;padding:20px 16px}
+ .bl-cmptable tbody th{font-size:15px;padding:16px 16px 16px 24px}
+ .bl-cmptable td{padding:16px}
+ .bl-faqhead h2{font-size:44px}
+ .bl-finalwrap2 h2{font-size:48px}
+ .bl-finalwrap2>p{font-size:18px}
+ .bl-logostrip img{width:56px;height:56px}
+ .bl-ctastack{flex-direction:row;max-width:none;justify-content:center}
+ .bl-ctastack .bl-btn{width:auto}
+ .bl-proc{padding:96px 40px 100px}
+ .bl-procscan{width:236px}
+ .bl-halo{width:210px;height:210px}
+ .bl-halo img{width:152px;height:152px}
+ .bl-proc h2{font-size:30px}
+ .bl-status{font-size:17px}
+ .bl-scorepad{padding:64px 40px 72px}
+ .bl-scoreside{display:grid;grid-template-columns:420px minmax(0,1fr);gap:56px;align-items:start}
+ .bl-scard{border-radius:26px}
+ .bl-scard-top{padding:28px 28px 18px;gap:22px}
+ .bl-metarow{padding:0 28px 20px}
+ .bl-thumb{width:96px}
+ .bl-verdict{margin:0 28px 20px;font-size:15px;padding:16px 18px}
+ .bl-checks{margin:0 28px}
+ .bl-checkrow{padding:13px 16px}
+ .bl-mark{padding:16px 28px}
+ .bl-band{padding:18px 22px}
+ .bl-band-num{font-size:32px}
+ .bl-grp>summary{padding:18px 20px}
+ .bl-gname{font-size:16px}
+ .bl-agent{padding:16px 20px;gap:16px}
+ .bl-an{font-size:14px}
+ .bl-cm{font-size:13px}
+ .bl-shot{width:54px}
+ .bl-closing{padding:76px 40px 24px}
+ .bl-closing h2{font-size:34px}
+ .bl-errwrap{padding:80px 40px 88px}
+ .bl-gatewrap{padding:96px 40px 110px}
+}
+/* What you get — v2 block design */
+.bl-wghead{display:flex;flex-direction:column;align-items:flex-start;gap:16px;max-width:768px}
+.bl-wghead h2{font-size:30px;line-height:1.1;letter-spacing:-.02em}
+.bl-wghead p{font-size:15px;line-height:1.6;color:var(--body)}
+.bl-wgcards{display:grid;gap:20px}
+.bl-wgcard{background:#fff;border:1px solid var(--border);border-radius:18px;overflow:hidden;transition:transform .2s,box-shadow .2s,border-color .2s}
+.bl-wgcard:hover{transform:translateY(-4px);box-shadow:0 20px 60px -25px rgba(41,79,246,.4);border-color:rgba(41,79,246,.3)}
+.bl-wgimg{aspect-ratio:4/3;background:linear-gradient(135deg,rgba(41,79,246,.06),rgba(41,79,246,.12));overflow:hidden}
+.bl-wgimg img{width:100%;height:100%;object-fit:cover;display:block}
+.bl-wgtxt{padding:22px}
+.bl-wgtxt h3{font-size:18px;line-height:1.25}
+.bl-wgtxt p{margin-top:8px;font-size:14px;line-height:1.6;color:var(--body)}
+
+/* How it works — v2 block design (alternating rows) */
+.bl-hiwsec{background:linear-gradient(180deg,#fff,rgba(41,79,246,.03),#fff)}
+.bl-hiwhead{display:flex;flex-direction:column;align-items:center;text-align:center;gap:16px;max-width:640px;margin:0 auto}
+.bl-hiwhead h2{font-size:30px;line-height:1.1;letter-spacing:-.02em}
+.bl-hiwhead p{font-size:15px;line-height:1.6;color:var(--body)}
+.bl-hiwrows{display:flex;flex-direction:column;gap:48px}
+.bl-hiwrow{display:grid;gap:28px;align-items:center}
+.bl-hiwtop{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.bl-hiwno{font-size:52px;font-weight:900;color:rgba(41,79,246,.3);line-height:1;letter-spacing:-.04em}
+.bl-hiwic{width:48px;height:48px;border-radius:12px;background:rgba(41,79,246,.1);display:grid;place-items:center;color:var(--blue)}
+.bl-hiwcopy h3{font-size:24px;line-height:1.2;letter-spacing:-.01em}
+.bl-hiwcopy p{margin-top:10px;font-size:15px;line-height:1.6;color:var(--body)}
+.bl-hiwimgwrap{position:relative}
+.bl-hiwglow{position:absolute;inset:0;border-radius:24px;background:rgba(41,79,246,.15);filter:blur(60px);z-index:0}
+.bl-hiwimg{position:relative;z-index:1;border-radius:18px;overflow:hidden;border:1px solid var(--border);background:#fff;box-shadow:0 20px 60px -25px rgba(41,79,246,.45)}
+.bl-hiwimg img{width:100%;height:auto;display:block}
+.bl-hiwdrop{border:2px dashed rgba(41,79,246,.3);background:rgba(41,79,246,.04);border-radius:18px;aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;gap:24px;padding:24px}
+.bl-hiwlogo-lg{width:128px;height:128px;object-fit:contain;filter:drop-shadow(0 16px 32px rgba(41,79,246,.3))}
+.bl-hiwlogo-sm{width:80px;height:80px;object-fit:contain;filter:drop-shadow(0 12px 24px rgba(41,79,246,.25))}
+.bl-hiwplus{font-size:32px;font-weight:700;color:rgba(41,79,246,.4);user-select:none}
+
+/* Frame by frame — v2 block design (During/Result composition) */
+.bl-fbfrow{display:grid;gap:36px;align-items:center}
+.bl-fbfcopy{display:flex;flex-direction:column;align-items:flex-start;gap:16px}
+.bl-fbfcopy h2{font-size:30px;line-height:1.1;letter-spacing:-.02em}
+.bl-fbfcopy>p{font-size:15px;line-height:1.6;color:var(--body)}
+.bl-fbflist{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:10px 24px}
+.bl-fbflist li{display:flex;align-items:flex-start;gap:8px;font-size:14px;color:var(--navy2);line-height:1.45}
+.bl-fbflist li svg{color:var(--blue);flex:none;margin-top:2px}
+.bl-fbfvis{position:relative}
+.bl-fbfglow{position:absolute;inset:0;border-radius:24px;background:rgba(41,79,246,.2);filter:blur(80px);z-index:0}
+.bl-fbfgrid{position:relative;z-index:1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.bl-fbfshot{position:relative}
+.bl-fbfshot-down{margin-top:32px}
+.bl-fbftag{position:absolute;top:-12px;left:12px;z-index:2;display:inline-flex;align-items:center;background:#fff;border:1px solid var(--bd2);border-radius:999px;padding:4px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--muted);box-shadow:0 2px 6px rgba(0,15,77,.08)}
+.bl-fbftag-blue{background:var(--blue5);border-color:var(--blue5);color:#fff}
+.bl-fbfimg{border-radius:16px;overflow:hidden;border:1px solid var(--border);background:#fff;box-shadow:0 16px 40px -20px rgba(0,15,77,.35)}
+.bl-fbfimg img{width:100%;height:auto;display:block}
+
+/* Comparison table — v2 block design */
+.bl-cmphead{display:flex;flex-direction:column;align-items:center;text-align:center;gap:16px;max-width:768px;margin:0 auto}
+.bl-cmphead h2{font-size:30px;line-height:1.1;letter-spacing:-.02em}
+.bl-cmphead p{font-size:15px;line-height:1.6;color:var(--body)}
+.bl-cmpcard{background:#fff;border:1px solid var(--border);border-radius:18px;overflow:hidden;box-shadow:0 20px 60px -25px rgba(41,79,246,.25)}
+.bl-cmpscroll{overflow-x:auto}
+.bl-cmptable{width:100%;min-width:720px;border-collapse:collapse;text-align:left;table-layout:fixed}
+.bl-cmptable thead tr{border-bottom:1px solid var(--border)}
+.bl-cmptable thead th{padding:16px 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:center}
+.bl-cmptable thead th.bl-cmpfeat{text-align:left;padding-left:20px;width:26%;font-weight:600}
+.bl-cmptable tbody tr{border-bottom:1px solid rgba(238,244,253,.6)}
+.bl-cmptable tbody tr:last-child{border-bottom:0}
+.bl-cmptable tbody th{padding:12px 12px 12px 20px;font-size:13.5px;font-weight:500;color:var(--navy2);text-align:left}
+.bl-cmptable td{padding:12px;text-align:center}
+.bl-cmptable td svg{vertical-align:middle}
+.bl-cmpbrand{background:rgba(41,79,246,.06);border-left:1px solid rgba(41,79,246,.2);border-right:1px solid rgba(41,79,246,.2)}
+.bl-cmptable thead th.bl-cmpbrand{color:var(--blue);font-weight:800}
+.bl-cmp-y{color:var(--blue)}
+.bl-cmp-p{color:var(--muted)}
+.bl-cmp-n{color:#dfe3ee}
+.bl-cmplegend{display:flex;flex-wrap:wrap;justify-content:center;gap:10px 24px;font-size:12px;color:var(--muted)}
+.bl-cmplegend span{display:inline-flex;align-items:center;gap:6px}
+
+/* FAQ — v2 block design */
+.bl-faqwrap{max-width:768px;margin:0 auto;display:flex;flex-direction:column;gap:34px}
+.bl-faqhead{display:flex;flex-direction:column;align-items:center;text-align:center;gap:18px}
+.bl-faqhead h2{font-size:30px;line-height:1.1;letter-spacing:-.02em}
+.bl-pillbadge{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--bd2);background:#fff;border-radius:999px;padding:4px 12px 4px 6px;font-size:12px;font-weight:500;color:var(--muted)}
+.bl-pillbadge img{width:20px;height:20px}
+.bl-faqcard{background:#fff;border:1px solid var(--border);border-radius:18px;padding:0 22px;box-shadow:0 10px 30px -22px rgba(0,15,77,.25)}
+.bl-faqitem{border-bottom:1px solid var(--border)}
+.bl-faqitem:last-child{border-bottom:0}
+.bl-faqitem>button{width:100%;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0;background:none;border:0;cursor:pointer;text-align:left}
+.bl-faqitem>button h3{font-size:15.5px;font-weight:600;color:var(--navy);line-height:1.35;transition:color .15s}
+.bl-faqitem>button:hover h3{color:var(--blue)}
+.bl-faqtoggle{flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:var(--l2);color:var(--muted);transition:all .18s}
+.bl-faqitem>button:hover .bl-faqtoggle{background:rgba(41,79,246,.1);color:var(--blue)}
+.bl-faqtoggle.bl-open{background:var(--blue5);color:#fff}
+.bl-faqbody{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .3s ease,opacity .3s ease}
+.bl-faqbody.bl-open{grid-template-rows:1fr;opacity:1;padding-bottom:20px}
+.bl-faqbody>div{overflow:hidden}
+.bl-faqbody p{font-size:14px;line-height:1.6;color:var(--body);padding-right:48px}
+
+/* Final CTA — v2 block design (light band + glow blobs) */
+.bl-lsec.bl-final{background:linear-gradient(135deg,rgba(41,79,246,.06),var(--page) 45%,rgba(41,79,246,.10));overflow:hidden}
+.bl-fblob{position:absolute;border-radius:50%;filter:blur(110px);pointer-events:none}
+.bl-fblob-a{top:-20%;left:25%;width:420px;height:420px;background:rgba(41,79,246,.25)}
+.bl-fblob-b{bottom:-20%;right:25%;width:360px;height:360px;background:rgba(41,79,246,.15)}
+.bl-finalwrap2{position:relative;z-index:1;max-width:768px;margin:0 auto;display:flex;flex-direction:column;align-items:center;text-align:center;gap:20px}
+.bl-finalwrap2 h2{font-size:32px;line-height:1.08;letter-spacing:-.02em;max-width:22ch}
+.bl-finalwrap2>p{font-size:15px;line-height:1.6;color:var(--body);max-width:46ch}
+
+/* Nav — pinned, transparent over the page, sized to match the native site nav */
+.bl-nav{position:sticky;top:0;z-index:50;padding:14px 20px;background:transparent}
+.bl-navin{max-width:1140px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.bl-nav-logo img{height:42px;width:auto;display:block}
+.bl-nav-right{display:flex;align-items:center;gap:22px}
+.bl-nav-link{font-size:15px;font-weight:600;color:var(--navy);text-decoration:none}
+.bl-nav-link:hover{color:var(--blue)}
+.bl-nav .bl-btn.bl-sm{height:44px;padding:0 20px;font-size:14.5px}
+
+/* Pinned download bar */
+.bl-dlbar{position:sticky;top:70px;z-index:40;display:flex;justify-content:flex-end;margin-bottom:10px}
+.bl-dlbar .bl-btn{box-shadow:0 10px 26px -12px rgba(0,15,77,.4)}
+
+/* Closing bridge line */
+.bl-closing-line{font-size:15px;font-weight:700;color:var(--navy);margin-top:6px}
+
+/* Print report */
+.bl-printreport{display:none}
+@media print{
+ body *{visibility:hidden!important}
+ iframe{display:none!important}
+ .bl-nav,.bl-dlbar{display:none!important}
+ .bl-printreport,.bl-printreport *{visibility:visible!important}
+ .bl-printreport{display:block;position:absolute;top:0;left:0;width:100%;background:#fff;color:#20242f;padding:26px 30px;font-family:"Inter",-apple-system,sans-serif;font-size:11px;line-height:1.5;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+ .bl-pr-head{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #001364;padding-bottom:10px;margin-bottom:8px}
+ .bl-pr-brand{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:#565d78}
+ .bl-pr-brand img{width:24px;height:24px}
+ .bl-pr-brand b{color:#001364;font-weight:800}
+ .bl-pr-thumb{float:right;width:44px;height:78px;object-fit:cover;border-radius:8px;border:1px solid #d6defc;margin:0 0 8px 12px}
+ .bl-pr-score{font-size:30px;font-weight:800;color:#294ff6;letter-spacing:-.03em}
+ .bl-pr-score i{font-style:normal;font-size:12px;color:#838aa3;font-weight:700;letter-spacing:0}
+ .bl-pr-meta{color:#565d78;margin:0 0 12px;font-size:11.5px}
+ .bl-pr-verdict{font-weight:600;color:#001364;background:#e6ebff;border-radius:8px;padding:10px 12px;margin:0 0 8px;font-size:12.5px;line-height:1.5}
+ .bl-pr-comment{color:#3c4358;white-space:pre-line;margin:0 0 14px}
+ .bl-pr-fixfirst{background:#fdf3f2;border:1px solid #f3d5d2;border-radius:10px;padding:12px 14px;margin:0 0 16px;break-inside:avoid-page}
+ .bl-pr-fixfirst h3{font-size:12px;font-weight:800;color:#b03a33;text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px}
+ .bl-pr-fix{display:flex;gap:10px;margin:0 0 9px;break-inside:avoid}
+ .bl-pr-fix:last-child{margin-bottom:0}
+ .bl-pr-frame{width:34px;height:60px;object-fit:cover;border-radius:5px;border:1px solid #e6d0ce;flex:none}
+ .bl-pr-group{margin:0 0 14px;break-inside:avoid-page}
+ .bl-pr-group h3{font-size:12.5px;font-weight:800;color:#001364;border-bottom:1.5px solid #d6defc;padding-bottom:5px;margin:0 0 7px;display:flex;justify-content:space-between;align-items:baseline}
+ .bl-pr-group h3 span{font-size:10.5px;font-weight:700;color:#294ff6;background:#e6ebff;border-radius:99px;padding:2px 8px}
+ .bl-pr-agent{margin:0 0 8px;break-inside:avoid}
+ .bl-pr-ahead{margin:0;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+ .bl-pr-ahead b{color:#20242f;font-size:11.5px}
+ .bl-pr-ahead i{font-style:normal;color:#565d78;font-size:10px;background:#eef2fa;border-radius:5px;padding:1px 6px}
+ .bl-pr-pass{color:#1e7a48;background:rgba(45,170,99,.13);font-weight:700;font-size:9.5px;border-radius:99px;padding:1.5px 8px;text-transform:uppercase;letter-spacing:.04em}
+ .bl-pr-flag{color:#b03a33;background:rgba(200,68,60,.12);font-weight:700;font-size:9.5px;border-radius:99px;padding:1.5px 8px;text-transform:uppercase;letter-spacing:.04em}
+ .bl-pr-cm{margin:2px 0 0;color:#3c4358}
+ .bl-pr-foot{margin-top:18px;border-top:1.5px solid #d6defc;padding-top:9px;color:#838aa3;font-size:9.5px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+ .bl-pr-foot span:last-child{color:#294ff6;font-weight:600}
+}
+
+@media (prefers-reduced-motion:reduce){
+ .bl-scanline,.bl-flo,.bl-chip2,.bl-scorechip,.bl-pulse,.bl-caret,.bl-halo:before,.bl-halo img,.bl-barind:after,.bl-ping i:first-child{animation:none}
+}
+`;
