@@ -1,0 +1,1172 @@
+[
+ {
+  "pageId": "a3f71933-4fa8-4bfe-8eb9-d8337181f2f3",
+  "path": "/",
+  "name": "Home",
+  "cat": "Website",
+  "sub": "",
+  "fpath": "Site root",
+  "block8": "28462327"
+ },
+ {
+  "pageId": "a3f71933-4fa8-4bfe-8eb9-d8337181f2f3",
+  "path": "/",
+  "name": "Home",
+  "cat": "Website",
+  "sub": "",
+  "fpath": "Site root",
+  "block8": "53999f37"
+ },
+ {
+  "pageId": "a3f71933-4fa8-4bfe-8eb9-d8337181f2f3",
+  "path": "/",
+  "name": "Home",
+  "cat": "Website",
+  "sub": "",
+  "fpath": "Site root",
+  "block8": "66f1332b"
+ },
+ {
+  "pageId": "a3f71933-4fa8-4bfe-8eb9-d8337181f2f3",
+  "path": "/",
+  "name": "Home",
+  "cat": "Website",
+  "sub": "",
+  "fpath": "Site root",
+  "block8": "886ae67b"
+ },
+ {
+  "pageId": "a3f71933-4fa8-4bfe-8eb9-d8337181f2f3",
+  "path": "/",
+  "name": "Home",
+  "cat": "Website",
+  "sub": "",
+  "fpath": "Site root",
+  "block8": "ab85b7c9"
+ },
+ {
+  "pageId": "a3f71933-4fa8-4bfe-8eb9-d8337181f2f3",
+  "path": "/",
+  "name": "Home",
+  "cat": "Website",
+  "sub": "",
+  "fpath": "Site root",
+  "block8": "cc5ae2d5"
+ },
+ {
+  "pageId": "a3f71933-4fa8-4bfe-8eb9-d8337181f2f3",
+  "path": "/",
+  "name": "Home",
+  "cat": "Website",
+  "sub": "",
+  "fpath": "Site root",
+  "block8": "ccee53d0"
+ },
+ {
+  "pageId": "a3f71933-4fa8-4bfe-8eb9-d8337181f2f3",
+  "path": "/",
+  "name": "Home",
+  "cat": "Website",
+  "sub": "",
+  "fpath": "Site root",
+  "block8": "cd9d8a55"
+ },
+ {
+  "pageId": "a3f71933-4fa8-4bfe-8eb9-d8337181f2f3",
+  "path": "/",
+  "name": "Home",
+  "cat": "Website",
+  "sub": "",
+  "fpath": "Site root",
+  "block8": "e21b9439"
+ },
+ {
+  "pageId": "a3f71933-4fa8-4bfe-8eb9-d8337181f2f3",
+  "path": "/",
+  "name": "Home",
+  "cat": "Website",
+  "sub": "",
+  "fpath": "Site root",
+  "block8": "e4eef348"
+ },
+ {
+  "pageId": "a3f71933-4fa8-4bfe-8eb9-d8337181f2f3",
+  "path": "/",
+  "name": "Home",
+  "cat": "Website",
+  "sub": "",
+  "fpath": "Site root",
+  "block8": "e7395c0e"
+ },
+ {
+  "pageId": "a3f71933-4fa8-4bfe-8eb9-d8337181f2f3",
+  "path": "/",
+  "name": "Home",
+  "cat": "Website",
+  "sub": "",
+  "fpath": "Site root",
+  "block8": "ea3f0f40"
+ },
+ {
+  "pageId": "a3f71933-4fa8-4bfe-8eb9-d8337181f2f3",
+  "path": "/",
+  "name": "Home",
+  "cat": "Website",
+  "sub": "",
+  "fpath": "Site root",
+  "block8": "f8f16fbe"
+ },
+ {
+  "pageId": "665838fc-e5f1-45c1-bbdb-c1214c354aa2",
+  "path": "/notifications",
+  "name": "Notifications",
+  "cat": "Admin",
+  "sub": "",
+  "fpath": "Admin",
+  "block8": "a1ada5fa"
+ },
+ {
+  "pageId": "0691ec07-8768-40c6-834d-eef5b4a0c753",
+  "path": "/unsubscribe",
+  "name": "Unsubscribe",
+  "cat": "Admin",
+  "sub": "",
+  "fpath": "Admin",
+  "block8": "535a985d"
+ },
+ {
+  "pageId": "46ba02fd-fd20-44e6-b943-1a967001846d",
+  "path": "/archie",
+  "name": "Archie",
+  "cat": "Admin",
+  "sub": "Archive",
+  "fpath": "Admin / Archive",
+  "block8": "438aa996"
+ },
+ {
+  "pageId": "46ba02fd-fd20-44e6-b943-1a967001846d",
+  "path": "/archie",
+  "name": "Archie",
+  "cat": "Admin",
+  "sub": "Archive",
+  "fpath": "Admin / Archive",
+  "block8": "8fd98cd1"
+ },
+ {
+  "pageId": "46ba02fd-fd20-44e6-b943-1a967001846d",
+  "path": "/archie",
+  "name": "Archie",
+  "cat": "Admin",
+  "sub": "Archive",
+  "fpath": "Admin / Archive",
+  "block8": "dfa2003c"
+ },
+ {
+  "pageId": "7a435b18-a5fc-49ba-93be-3162a4c87f45",
+  "path": "/old-home",
+  "name": "Old home",
+  "cat": "Admin",
+  "sub": "Archive",
+  "fpath": "Admin / Archive",
+  "block8": "17d28e8f"
+ },
+ {
+  "pageId": "a2a6a47f-5993-4d2d-aa72-b1d38efe2b6b",
+  "path": "/new",
+  "name": "New",
+  "cat": "App",
+  "sub": "",
+  "fpath": "App",
+  "block8": "0b346bec"
+ },
+ {
+  "pageId": "a2a6a47f-5993-4d2d-aa72-b1d38efe2b6b",
+  "path": "/new",
+  "name": "New",
+  "cat": "App",
+  "sub": "",
+  "fpath": "App",
+  "block8": "2483592c"
+ },
+ {
+  "pageId": "a2a6a47f-5993-4d2d-aa72-b1d38efe2b6b",
+  "path": "/new",
+  "name": "New",
+  "cat": "App",
+  "sub": "",
+  "fpath": "App",
+  "block8": "306ec3c3"
+ },
+ {
+  "pageId": "a762a0bd-795d-45f5-9cc0-5d9d95259931",
+  "path": "/briefs",
+  "name": "Briefs",
+  "cat": "App",
+  "sub": "Briefs",
+  "fpath": "App / Briefs / Brands",
+  "block8": "3eea95d5"
+ },
+ {
+  "pageId": "ef3319bb-5ba9-4e51-ab6a-60ed2d766280",
+  "path": "/briefs/details",
+  "name": "Briefs Details",
+  "cat": "App",
+  "sub": "Briefs",
+  "fpath": "App / Briefs / Brands",
+  "block8": "4e2ff7ca"
+ },
+ {
+  "pageId": "ef3319bb-5ba9-4e51-ab6a-60ed2d766280",
+  "path": "/briefs/details",
+  "name": "Briefs Details",
+  "cat": "App",
+  "sub": "Briefs",
+  "fpath": "App / Briefs / Brands",
+  "block8": "5de4d174"
+ },
+ {
+  "pageId": "ef3319bb-5ba9-4e51-ab6a-60ed2d766280",
+  "path": "/briefs/details",
+  "name": "Briefs Details",
+  "cat": "App",
+  "sub": "Briefs",
+  "fpath": "App / Briefs / Brands",
+  "block8": "6979cba4"
+ },
+ {
+  "pageId": "d7a1519d-2a93-49bd-a36e-ce49561672ad",
+  "path": "/bulk-briefs",
+  "name": "Bulk Briefs",
+  "cat": "App",
+  "sub": "Briefs",
+  "fpath": "App / Briefs / Brands",
+  "block8": "aa7ff022"
+ },
+ {
+  "pageId": "00964065-338b-41aa-850b-8c4d4ec66f42",
+  "path": "/new-brief",
+  "name": "New Brief",
+  "cat": "App",
+  "sub": "Briefs",
+  "fpath": "App / Briefs / Brands",
+  "block8": "f82a4fb0"
+ },
+ {
+  "pageId": "00964065-338b-41aa-850b-8c4d4ec66f42",
+  "path": "/new-brief",
+  "name": "New Brief",
+  "cat": "App",
+  "sub": "Briefs",
+  "fpath": "App / Briefs / Brands",
+  "block8": "fdddca8c"
+ },
+ {
+  "pageId": "aba41b75-fb7a-4ab5-8ee2-cc5f10b3b0fa",
+  "path": "/brief/details/live",
+  "name": "Creator Brief",
+  "cat": "App",
+  "sub": "Briefs",
+  "fpath": "App / Briefs / Creators",
+  "block8": "8c2ea7c5"
+ },
+ {
+  "pageId": "e6bb7725-dab2-41c3-9b9a-319f3f0150a7",
+  "path": "/briefs-page",
+  "name": "Briefs Page",
+  "cat": "App",
+  "sub": "Briefs",
+  "fpath": "App / Briefs / Creators",
+  "block8": "23272069"
+ },
+ {
+  "pageId": "46abe919-b0c5-4efb-a10a-ec84f945ef6a",
+  "path": "/bulk",
+  "name": "Bulk",
+  "cat": "App",
+  "sub": "Content",
+  "fpath": "App / Content",
+  "block8": "6caa549d"
+ },
+ {
+  "pageId": "b33f932d-b196-4024-a57a-eec18634450c",
+  "path": "/review-details",
+  "name": "Review Details",
+  "cat": "App",
+  "sub": "Content",
+  "fpath": "App / Content",
+  "block8": "a6226e3e"
+ },
+ {
+  "pageId": "a56d9bf5-e0ad-446f-bfab-2b4722c83784",
+  "path": "/submissions/details",
+  "name": "Submissions Details",
+  "cat": "App",
+  "sub": "Content",
+  "fpath": "App / Content",
+  "block8": "10354cbf"
+ },
+ {
+  "pageId": "44b3e1d1-3438-4e0c-becf-89b652d95a59",
+  "path": "/videos",
+  "name": "Videos",
+  "cat": "App",
+  "sub": "Content",
+  "fpath": "App / Content",
+  "block8": "41b2194f"
+ },
+ {
+  "pageId": "44b3e1d1-3438-4e0c-becf-89b652d95a59",
+  "path": "/videos",
+  "name": "Videos",
+  "cat": "App",
+  "sub": "Content",
+  "fpath": "App / Content",
+  "block8": "6b9be687"
+ },
+ {
+  "pageId": "d50fc969-6a80-469f-b965-d99cc8833881",
+  "path": "/checklist",
+  "name": "Checklist",
+  "cat": "App",
+  "sub": "Onboarding",
+  "fpath": "App / Onboarding",
+  "block8": "6bcbe18e"
+ },
+ {
+  "pageId": "67337600-637c-4951-8a3d-d330ffcb2a38",
+  "path": "/getting-started",
+  "name": "Getting Started",
+  "cat": "App",
+  "sub": "Onboarding",
+  "fpath": "App / Onboarding",
+  "block8": "39683182"
+ },
+ {
+  "pageId": "e332919c-b0c5-4a6c-ac20-31fe96faa761",
+  "path": "/payment-success",
+  "name": "Payment Success",
+  "cat": "App",
+  "sub": "Onboarding",
+  "fpath": "App / Onboarding",
+  "block8": "4104b067"
+ },
+ {
+  "pageId": "ec3f6b8a-b8f2-4d97-ba95-5d8781e27c19",
+  "path": "/set-up",
+  "name": "Set-up",
+  "cat": "App",
+  "sub": "Onboarding",
+  "fpath": "App / Onboarding",
+  "block8": "1de12b60"
+ },
+ {
+  "pageId": "404b187e-ff8d-4d83-b3ef-edb4c2d15235",
+  "path": "/set-up/customize",
+  "name": "Customize",
+  "cat": "App",
+  "sub": "Onboarding",
+  "fpath": "App / Onboarding",
+  "block8": "5e845f05"
+ },
+ {
+  "pageId": "404b187e-ff8d-4d83-b3ef-edb4c2d15235",
+  "path": "/set-up/customize",
+  "name": "Customize",
+  "cat": "App",
+  "sub": "Onboarding",
+  "fpath": "App / Onboarding",
+  "block8": "70a72dc3"
+ },
+ {
+  "pageId": "aec00a1e-c2a1-4579-8577-29d50e20b516",
+  "path": "/verify-email",
+  "name": "Verify Email",
+  "cat": "App",
+  "sub": "Onboarding",
+  "fpath": "App / Onboarding",
+  "block8": "078408c2"
+ },
+ {
+  "pageId": "03871068-da2f-4eae-9487-13f6b328ef6a",
+  "path": "/create-project",
+  "name": "Create Project",
+  "cat": "App",
+  "sub": "Projects",
+  "fpath": "App / Projects",
+  "block8": "5ca30b2a"
+ },
+ {
+  "pageId": "03871068-da2f-4eae-9487-13f6b328ef6a",
+  "path": "/create-project",
+  "name": "Create Project",
+  "cat": "App",
+  "sub": "Projects",
+  "fpath": "App / Projects",
+  "block8": "dcb8c829"
+ },
+ {
+  "pageId": "ee1886f0-ffe7-492b-bd52-7e9ae55e92fd",
+  "path": "/project",
+  "name": "Project",
+  "cat": "App",
+  "sub": "Projects",
+  "fpath": "App / Projects",
+  "block8": "2fcb09df"
+ },
+ {
+  "pageId": "ee1886f0-ffe7-492b-bd52-7e9ae55e92fd",
+  "path": "/project",
+  "name": "Project",
+  "cat": "App",
+  "sub": "Projects",
+  "fpath": "App / Projects",
+  "block8": "adaf91a6"
+ },
+ {
+  "pageId": "ee1886f0-ffe7-492b-bd52-7e9ae55e92fd",
+  "path": "/project",
+  "name": "Project",
+  "cat": "App",
+  "sub": "Projects",
+  "fpath": "App / Projects",
+  "block8": "c9dae702"
+ },
+ {
+  "pageId": "02e3de16-1319-4910-8fd4-a8345b666359",
+  "path": "/projects/details",
+  "name": "Projects Details",
+  "cat": "App",
+  "sub": "Projects",
+  "fpath": "App / Projects",
+  "block8": "5805b19f"
+ },
+ {
+  "pageId": "02e3de16-1319-4910-8fd4-a8345b666359",
+  "path": "/projects/details",
+  "name": "Projects Details",
+  "cat": "App",
+  "sub": "Projects",
+  "fpath": "App / Projects",
+  "block8": "ffd9bc49"
+ },
+ {
+  "pageId": "dd46e0bf-882b-4e7b-83df-37ca2990d473",
+  "path": "/settings",
+  "name": "Settings",
+  "cat": "App",
+  "sub": "Settings",
+  "fpath": "App / Settings",
+  "block8": "1cdd429d"
+ },
+ {
+  "pageId": "dd46e0bf-882b-4e7b-83df-37ca2990d473",
+  "path": "/settings",
+  "name": "Settings",
+  "cat": "App",
+  "sub": "Settings",
+  "fpath": "App / Settings",
+  "block8": "61d8e50b"
+ },
+ {
+  "pageId": "dd46e0bf-882b-4e7b-83df-37ca2990d473",
+  "path": "/settings",
+  "name": "Settings",
+  "cat": "App",
+  "sub": "Settings",
+  "fpath": "App / Settings",
+  "block8": "72187d06"
+ },
+ {
+  "pageId": "dd46e0bf-882b-4e7b-83df-37ca2990d473",
+  "path": "/settings",
+  "name": "Settings",
+  "cat": "App",
+  "sub": "Settings",
+  "fpath": "App / Settings",
+  "block8": "98beaa24"
+ },
+ {
+  "pageId": "dd46e0bf-882b-4e7b-83df-37ca2990d473",
+  "path": "/settings",
+  "name": "Settings",
+  "cat": "App",
+  "sub": "Settings",
+  "fpath": "App / Settings",
+  "block8": "afc7e171"
+ },
+ {
+  "pageId": "dd46e0bf-882b-4e7b-83df-37ca2990d473",
+  "path": "/settings",
+  "name": "Settings",
+  "cat": "App",
+  "sub": "Settings",
+  "fpath": "App / Settings",
+  "block8": "d606d300"
+ },
+ {
+  "pageId": "dd46e0bf-882b-4e7b-83df-37ca2990d473",
+  "path": "/settings",
+  "name": "Settings",
+  "cat": "App",
+  "sub": "Settings",
+  "fpath": "App / Settings",
+  "block8": "da36cd46"
+ },
+ {
+  "pageId": "dd46e0bf-882b-4e7b-83df-37ca2990d473",
+  "path": "/settings",
+  "name": "Settings",
+  "cat": "App",
+  "sub": "Settings",
+  "fpath": "App / Settings",
+  "block8": "fb3028dc"
+ },
+ {
+  "pageId": "59a8a289-4641-4ba3-b7a9-f5888d4961a8",
+  "path": "/board",
+  "name": "Board",
+  "cat": "App",
+  "sub": "Swipes",
+  "fpath": "App / Swipes",
+  "block8": "4ba8884a"
+ },
+ {
+  "pageId": "59a8a289-4641-4ba3-b7a9-f5888d4961a8",
+  "path": "/board",
+  "name": "Board",
+  "cat": "App",
+  "sub": "Swipes",
+  "fpath": "App / Swipes",
+  "block8": "5aac816e"
+ },
+ {
+  "pageId": "420d7785-33c8-4a39-bebb-623e6055318e",
+  "path": "/boards",
+  "name": "Boards",
+  "cat": "App",
+  "sub": "Swipes",
+  "fpath": "App / Swipes",
+  "block8": "3039ac27"
+ },
+ {
+  "pageId": "edbd4822-5e4e-4bdb-b6c9-0e40e26bc68d",
+  "path": "/briefs/inspo-picker",
+  "name": "Inspo",
+  "cat": "App",
+  "sub": "Swipes",
+  "fpath": "App / Swipes",
+  "block8": "413da1a4"
+ },
+ {
+  "pageId": "c996cc50-ee66-46cb-a487-fec42757ba63",
+  "path": "/create-board",
+  "name": "Create Board",
+  "cat": "App",
+  "sub": "Swipes",
+  "fpath": "App / Swipes",
+  "block8": "e0a4ec29"
+ },
+ {
+  "pageId": "b8a3a126-4e4d-4ebe-8637-a90685637af8",
+  "path": "/discover",
+  "name": "Discover",
+  "cat": "App",
+  "sub": "Swipes",
+  "fpath": "App / Swipes",
+  "block8": "01749b30"
+ },
+ {
+  "pageId": "b8a3a126-4e4d-4ebe-8637-a90685637af8",
+  "path": "/discover",
+  "name": "Discover",
+  "cat": "App",
+  "sub": "Swipes",
+  "fpath": "App / Swipes",
+  "block8": "1b77c66a"
+ },
+ {
+  "pageId": "081b6ba2-3638-4e59-8220-835f8a30689b",
+  "path": "/swipe-formats",
+  "name": "Swipe Formats",
+  "cat": "App",
+  "sub": "Swipes",
+  "fpath": "App / Swipes",
+  "block8": "87def07e"
+ },
+ {
+  "pageId": "081b6ba2-3638-4e59-8220-835f8a30689b",
+  "path": "/swipe-formats",
+  "name": "Swipe Formats",
+  "cat": "App",
+  "sub": "Swipes",
+  "fpath": "App / Swipes",
+  "block8": "966a835b"
+ },
+ {
+  "pageId": "81f9d80c-2ff3-4d3d-9103-45fb80ef56d4",
+  "path": "/swipe-picker",
+  "name": "Swipe",
+  "cat": "App",
+  "sub": "Swipes",
+  "fpath": "App / Swipes",
+  "block8": "580ab6cc"
+ },
+ {
+  "pageId": "03c30288-c3d2-4689-9cce-d8d97adbb169",
+  "path": "/videos-details",
+  "name": "Videos Details",
+  "cat": "App",
+  "sub": "Swipes",
+  "fpath": "App / Swipes",
+  "block8": "698cadc5"
+ },
+ {
+  "pageId": "42fa22b9-d39d-49f6-878a-4a2747204c1c",
+  "path": "/plan",
+  "name": "Plan",
+  "cat": "Pricing",
+  "sub": "",
+  "fpath": "Pricing",
+  "block8": "52239992"
+ },
+ {
+  "pageId": "42fa22b9-d39d-49f6-878a-4a2747204c1c",
+  "path": "/plan",
+  "name": "Plan",
+  "cat": "Pricing",
+  "sub": "",
+  "fpath": "Pricing",
+  "block8": "8e98d3ac"
+ },
+ {
+  "pageId": "327e8184-8f0c-43af-860c-5634d33f96c7",
+  "path": "/pricing",
+  "name": "Pricing",
+  "cat": "Pricing",
+  "sub": "",
+  "fpath": "Pricing",
+  "block8": "96353646"
+ },
+ {
+  "pageId": "327e8184-8f0c-43af-860c-5634d33f96c7",
+  "path": "/pricing",
+  "name": "Pricing",
+  "cat": "Pricing",
+  "sub": "",
+  "fpath": "Pricing",
+  "block8": "9aff9d38"
+ },
+ {
+  "pageId": "327e8184-8f0c-43af-860c-5634d33f96c7",
+  "path": "/pricing",
+  "name": "Pricing",
+  "cat": "Pricing",
+  "sub": "",
+  "fpath": "Pricing",
+  "block8": "e6c1b07a"
+ },
+ {
+  "pageId": "327e8184-8f0c-43af-860c-5634d33f96c7",
+  "path": "/pricing",
+  "name": "Pricing",
+  "cat": "Pricing",
+  "sub": "",
+  "fpath": "Pricing",
+  "block8": "fe58afaf"
+ },
+ {
+  "pageId": "b7340f04-904c-4a3a-8722-1ba2df0aeebd",
+  "path": "/book-a-demo",
+  "name": "Book Demo",
+  "cat": "Website",
+  "sub": "CTAs",
+  "fpath": "Website / CTAs",
+  "block8": "e00ec189"
+ },
+ {
+  "pageId": "5e02ffa9-8513-4c73-ac29-772fbda28535",
+  "path": "/book-call",
+  "name": "Book Call",
+  "cat": "Website",
+  "sub": "CTAs",
+  "fpath": "Website / CTAs",
+  "block8": "d92269a8"
+ },
+ {
+  "pageId": "cfcb7183-321c-4092-b2f0-146f4934b09f",
+  "path": "/demo",
+  "name": "Demo",
+  "cat": "Website",
+  "sub": "CTAs",
+  "fpath": "Website / CTAs",
+  "block8": "1a6fa920"
+ },
+ {
+  "pageId": "cfcb7183-321c-4092-b2f0-146f4934b09f",
+  "path": "/demo",
+  "name": "Demo",
+  "cat": "Website",
+  "sub": "CTAs",
+  "fpath": "Website / CTAs",
+  "block8": "4e5adc73"
+ },
+ {
+  "pageId": "cfcb7183-321c-4092-b2f0-146f4934b09f",
+  "path": "/demo",
+  "name": "Demo",
+  "cat": "Website",
+  "sub": "CTAs",
+  "fpath": "Website / CTAs",
+  "block8": "55cc3c65"
+ },
+ {
+  "pageId": "f23364a1-256f-423f-8e54-753ef2cac127",
+  "path": "/sign-up",
+  "name": "Join",
+  "cat": "Website",
+  "sub": "CTAs",
+  "fpath": "Website / CTAs",
+  "block8": "ac6319fa"
+ },
+ {
+  "pageId": "f23364a1-256f-423f-8e54-753ef2cac127",
+  "path": "/sign-up",
+  "name": "Join",
+  "cat": "Website",
+  "sub": "CTAs",
+  "fpath": "Website / CTAs",
+  "block8": "d4c6763a"
+ },
+ {
+  "pageId": "c4dd6ef7-93a1-4792-bedb-41fbce50aac6",
+  "path": "/signup",
+  "name": "Create Account",
+  "cat": "Website",
+  "sub": "CTAs",
+  "fpath": "Website / CTAs",
+  "block8": "6b961203"
+ },
+ {
+  "pageId": "e943e3a0-d413-4fe5-b9b3-76f6ac4ed4e5",
+  "path": "/affiliates",
+  "name": "Affiliates",
+  "cat": "Website",
+  "sub": "Landing Pages",
+  "fpath": "Website / Landing Pages",
+  "block8": "81e9efeb"
+ },
+ {
+  "pageId": "f3c77fd6-6cf3-4894-a92b-ea1da25f6e23",
+  "path": "/calculator",
+  "name": "Calculator",
+  "cat": "Website",
+  "sub": "Landing Pages",
+  "fpath": "Website / Landing Pages",
+  "block8": "eab05217"
+ },
+ {
+  "pageId": "c4470dd5-c5bf-4c8e-963c-fdd68c3b9507",
+  "path": "/claim",
+  "name": "Studio Offer",
+  "cat": "Website",
+  "sub": "Landing Pages",
+  "fpath": "Website / Landing Pages",
+  "block8": "2c0a4234"
+ },
+ {
+  "pageId": "f0d9c9dd-d059-4623-abb7-0fd75dc8311a",
+  "path": "/facebook-reel-checker",
+  "name": "Facebook Reel Checker",
+  "cat": "Website",
+  "sub": "Landing Pages",
+  "fpath": "Website / Landing Pages",
+  "block8": "313adddc"
+ },
+ {
+  "pageId": "0deea133-98c6-4932-81f0-9dcae1ae66a7",
+  "path": "/instagram-reel-checker",
+  "name": "Instagram Reel Checker",
+  "cat": "Website",
+  "sub": "Landing Pages",
+  "fpath": "Website / Landing Pages",
+  "block8": "872d1ec7"
+ },
+ {
+  "pageId": "fb36176c-20b7-49c6-a1a0-4f375dc89801",
+  "path": "/offer",
+  "name": "Offer",
+  "cat": "Website",
+  "sub": "Landing Pages",
+  "fpath": "Website / Landing Pages",
+  "block8": "20086cb7"
+ },
+ {
+  "pageId": "fb36176c-20b7-49c6-a1a0-4f375dc89801",
+  "path": "/offer",
+  "name": "Offer",
+  "cat": "Website",
+  "sub": "Landing Pages",
+  "fpath": "Website / Landing Pages",
+  "block8": "2baba88a"
+ },
+ {
+  "pageId": "fb36176c-20b7-49c6-a1a0-4f375dc89801",
+  "path": "/offer",
+  "name": "Offer",
+  "cat": "Website",
+  "sub": "Landing Pages",
+  "fpath": "Website / Landing Pages",
+  "block8": "2c9ddfdf"
+ },
+ {
+  "pageId": "c0f30d9f-d237-4468-bdbb-0737b9d2beff",
+  "path": "/partners",
+  "name": "Partners",
+  "cat": "Website",
+  "sub": "Landing Pages",
+  "fpath": "Website / Landing Pages",
+  "block8": "993e0d12"
+ },
+ {
+  "pageId": "31f0c0bc-fb65-4b1e-9bf4-b50a8083b205",
+  "path": "/tiktok-checker",
+  "name": "TikTok Checker",
+  "cat": "Website",
+  "sub": "Landing Pages",
+  "fpath": "Website / Landing Pages",
+  "block8": "cd081429"
+ },
+ {
+  "pageId": "086ea89c-c392-4cbf-ac3f-633d896cf76c",
+  "path": "/video-checker",
+  "name": "Video Checker",
+  "cat": "Website",
+  "sub": "Landing Pages",
+  "fpath": "Website / Landing Pages",
+  "block8": "5366ef2d"
+ },
+ {
+  "pageId": "aafdb76e-7cd8-4637-b777-90e2552cc979",
+  "path": "/youtube-shorts-checker",
+  "name": "YouTube Shorts Checker",
+  "cat": "Website",
+  "sub": "Landing Pages",
+  "fpath": "Website / Landing Pages",
+  "block8": "dc5b644d"
+ },
+ {
+  "pageId": "b4cbf9b9-0eec-453e-8fe7-7ee3078344bf",
+  "path": "/instagram-engagement-rate-calculator",
+  "name": "Free Instagram Engagement Rate Calculator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Engagement Calculator",
+  "block8": "1f3d135b"
+ },
+ {
+  "pageId": "b4cbf9b9-0eec-453e-8fe7-7ee3078344bf",
+  "path": "/instagram-engagement-rate-calculator",
+  "name": "Free Instagram Engagement Rate Calculator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Engagement Calculator",
+  "block8": "44a66138"
+ },
+ {
+  "pageId": "b4cbf9b9-0eec-453e-8fe7-7ee3078344bf",
+  "path": "/instagram-engagement-rate-calculator",
+  "name": "Free Instagram Engagement Rate Calculator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Engagement Calculator",
+  "block8": "759c32ea"
+ },
+ {
+  "pageId": "b4cbf9b9-0eec-453e-8fe7-7ee3078344bf",
+  "path": "/instagram-engagement-rate-calculator",
+  "name": "Free Instagram Engagement Rate Calculator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Engagement Calculator",
+  "block8": "c9cb4090"
+ },
+ {
+  "pageId": "b4cbf9b9-0eec-453e-8fe7-7ee3078344bf",
+  "path": "/instagram-engagement-rate-calculator",
+  "name": "Free Instagram Engagement Rate Calculator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Engagement Calculator",
+  "block8": "edaa4a42"
+ },
+ {
+  "pageId": "1fd96848-40f5-4bb6-b764-75be7306346c",
+  "path": "/tiktok-engagement-rate-calculator",
+  "name": "Free TikTok Engagement Rate Calculator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Engagement Calculator",
+  "block8": "104334d8"
+ },
+ {
+  "pageId": "1fd96848-40f5-4bb6-b764-75be7306346c",
+  "path": "/tiktok-engagement-rate-calculator",
+  "name": "Free TikTok Engagement Rate Calculator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Engagement Calculator",
+  "block8": "19012ce9"
+ },
+ {
+  "pageId": "1fd96848-40f5-4bb6-b764-75be7306346c",
+  "path": "/tiktok-engagement-rate-calculator",
+  "name": "Free TikTok Engagement Rate Calculator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Engagement Calculator",
+  "block8": "3b623d71"
+ },
+ {
+  "pageId": "1fd96848-40f5-4bb6-b764-75be7306346c",
+  "path": "/tiktok-engagement-rate-calculator",
+  "name": "Free TikTok Engagement Rate Calculator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Engagement Calculator",
+  "block8": "9e98fd35"
+ },
+ {
+  "pageId": "1fd96848-40f5-4bb6-b764-75be7306346c",
+  "path": "/tiktok-engagement-rate-calculator",
+  "name": "Free TikTok Engagement Rate Calculator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Engagement Calculator",
+  "block8": "d47f3a61"
+ },
+ {
+  "pageId": "7e2204c9-0d3e-43db-87ae-95a77be2b8b6",
+  "path": "/youtube-engagement-rate-calculator",
+  "name": "Free YouTube Engagement Rate Calculator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Engagement Calculator",
+  "block8": "1182381d"
+ },
+ {
+  "pageId": "7e2204c9-0d3e-43db-87ae-95a77be2b8b6",
+  "path": "/youtube-engagement-rate-calculator",
+  "name": "Free YouTube Engagement Rate Calculator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Engagement Calculator",
+  "block8": "4ded8070"
+ },
+ {
+  "pageId": "7e2204c9-0d3e-43db-87ae-95a77be2b8b6",
+  "path": "/youtube-engagement-rate-calculator",
+  "name": "Free YouTube Engagement Rate Calculator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Engagement Calculator",
+  "block8": "5b45849e"
+ },
+ {
+  "pageId": "7e2204c9-0d3e-43db-87ae-95a77be2b8b6",
+  "path": "/youtube-engagement-rate-calculator",
+  "name": "Free YouTube Engagement Rate Calculator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Engagement Calculator",
+  "block8": "667e565c"
+ },
+ {
+  "pageId": "7e2204c9-0d3e-43db-87ae-95a77be2b8b6",
+  "path": "/youtube-engagement-rate-calculator",
+  "name": "Free YouTube Engagement Rate Calculator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Engagement Calculator",
+  "block8": "abcf7a59"
+ },
+ {
+  "pageId": "3969f315-bf79-4b05-a899-566c8dcaee6f",
+  "path": "/ai-ugc-storyboard-generator",
+  "name": "Free Tool AI UGC Storyboard Generator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Other",
+  "block8": "b20bf2d1"
+ },
+ {
+  "pageId": "5beca4dc-a1ea-4465-8c3d-f0c2e2509edf",
+  "path": "/facebook-creative-calculator",
+  "name": "Free Tool Meta Andromeda Creative Calculator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Other",
+  "block8": "f47f1770"
+ },
+ {
+  "pageId": "e3e0ff7b-d912-4bdd-8c46-911473800849",
+  "path": "/free-tool-ai-brief-generator",
+  "name": "Free Tool AI Brief Generator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Other",
+  "block8": "9b14e110"
+ },
+ {
+  "pageId": "e3e0ff7b-d912-4bdd-8c46-911473800849",
+  "path": "/free-tool-ai-brief-generator",
+  "name": "Free Tool AI Brief Generator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Other",
+  "block8": "cede34dc"
+ },
+ {
+  "pageId": "0c1340d0-44fd-42bd-b42e-aea72bbf4cbf",
+  "path": "/free-tool-hook-generator",
+  "name": "Free Tool Hook Generator",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Other",
+  "block8": "5a0f3936"
+ },
+ {
+  "pageId": "b048d2fa-1220-4da9-bca4-c0376b97d1b9",
+  "path": "/ugc-creator-checklist",
+  "name": "Free Tool UGC Creator Checklist",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Other",
+  "block8": "c9722838"
+ },
+ {
+  "pageId": "e74b5c65-bcdb-4823-baa1-14a1d2969fe9",
+  "path": "/ugc-formats",
+  "name": "UGC Formats",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Other",
+  "block8": "5977704c"
+ },
+ {
+  "pageId": "e74b5c65-bcdb-4823-baa1-14a1d2969fe9",
+  "path": "/ugc-formats",
+  "name": "UGC Formats",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Other",
+  "block8": "e6863110"
+ },
+ {
+  "pageId": "e75f9370-1590-4bad-a6db-a754c2eb245b",
+  "path": "/ugc-video-examples",
+  "name": "Free Tool UGC Video Examples",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Other",
+  "block8": "0beb5ca7"
+ },
+ {
+  "pageId": "e75f9370-1590-4bad-a6db-a754c2eb245b",
+  "path": "/ugc-video-examples",
+  "name": "Free Tool UGC Video Examples",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Other",
+  "block8": "54923eac"
+ },
+ {
+  "pageId": "e75f9370-1590-4bad-a6db-a754c2eb245b",
+  "path": "/ugc-video-examples",
+  "name": "Free Tool UGC Video Examples",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Other",
+  "block8": "551c0d18"
+ },
+ {
+  "pageId": "e75f9370-1590-4bad-a6db-a754c2eb245b",
+  "path": "/ugc-video-examples",
+  "name": "Free Tool UGC Video Examples",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Other",
+  "block8": "e2b80a46"
+ },
+ {
+  "pageId": "86430d78-0363-468a-b200-3042f0911473",
+  "path": "/ugc-videos",
+  "name": "UGC Videos",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Other",
+  "block8": "4531c94d"
+ },
+ {
+  "pageId": "560600a3-3b8d-4330-a686-83a70e601cad",
+  "path": "/free-tool-facebook-ad-video-checker",
+  "name": "Free Tool Facebook Ad Video Checker",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Video Analysis",
+  "block8": "1ee3f2f1"
+ },
+ {
+  "pageId": "c13710a8-69e7-425a-9535-926c1ab3f782",
+  "path": "/free-tool-instagram-reel-analyser",
+  "name": "Free Tool Instagram Reel Analyser",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Video Analysis",
+  "block8": "34fb939c"
+ },
+ {
+  "pageId": "64756edf-c31a-473b-90ea-f7feeab96141",
+  "path": "/free-tool-tiktok-video-analyser",
+  "name": "Free Tool TikTok Video Analyser",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Video Analysis",
+  "block8": "77e77c04"
+ },
+ {
+  "pageId": "64756edf-c31a-473b-90ea-f7feeab96141",
+  "path": "/free-tool-tiktok-video-analyser",
+  "name": "Free Tool TikTok Video Analyser",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Video Analysis",
+  "block8": "ea0833d1"
+ },
+ {
+  "pageId": "7e8d49ae-1ab4-4d47-8d09-8ee5af4d2d2e",
+  "path": "/free-tool-video-breakdown",
+  "name": "Free Tool Video Breakdown",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Video Analysis",
+  "block8": "689778ad"
+ },
+ {
+  "pageId": "7e8d49ae-1ab4-4d47-8d09-8ee5af4d2d2e",
+  "path": "/free-tool-video-breakdown",
+  "name": "Free Tool Video Breakdown",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Video Analysis",
+  "block8": "dced4e46"
+ },
+ {
+  "pageId": "6a4d3bbb-555f-449f-b345-6cee3e3de8dc",
+  "path": "/free-tool-youtube-shorts-analyser",
+  "name": "Free Tool YouTube Shorts Analyser",
+  "cat": "Website",
+  "sub": "Lead Magnents",
+  "fpath": "Website / Lead Magnents / Video Analysis",
+  "block8": "524fdc47"
+ }
+]
