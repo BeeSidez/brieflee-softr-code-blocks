@@ -1,0 +1,254 @@
+// /settings · Workspace switcher (separate block)
+//
+// Sits ABOVE the tabs in the Softr page builder. Writes the selected
+// workspace's record ID into the URL as `?workspace=<id>`. The tab
+// blocks below (Quality, Workspace, Billing) read that param via a
+// Softr Source-tab filter — no code coupling between this block and
+// the tab content.
+//
+// SOFTR CONFIG REQUIRED:
+//
+//   1. THIS block's Source tab:
+//      - Bind to ACCOUNTS table.
+//      - Filter: accounts.users includes logged-in user.
+//        (Returns every workspace the user has access to.)
+//
+//   2. Each TAB block (Quality, etc.) Source tab:
+//      - Bind to ACCOUNTS table.
+//      - Filter: accounts.id equals URL parameter `workspace`,
+//        falling back to the user's first account when absent.
+//        (Returns ONE account record matching the URL.)
+//
+// "+ Add workspace" button:
+//   - Hidden by default. Flip SHOW_ADD_WORKSPACE to true once the
+//     /account/add modal page exists in Softr Studio.
+//   - Clicking it opens that page as a Softr modal via
+//     window.openSwModal.
+
+import { useState, useEffect } from "react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useRecords, q } from "@/lib/datasource";
+
+const SHOW_ADD_WORKSPACE = false;
+const ADD_WORKSPACE_PATH = "/account/add";
+const ADD_WORKSPACE_MODAL_SIZE = "lg"; // 'sm' | 'md' | 'lg' | 'xl'
+
+const select = q.select({
+  name:    "aAKkT",
+  logo:    "q1B5K", // legacy ATTACHMENT field (fallback)
+  logoUrl: "nPI65", // FORMULA: Google favicon from website, or Brieflee
+                   // approval-stamp default when website is empty
+});
+
+export default function Block() {
+  const { data, status } = useRecords({ select, count: 100 });
+  const accounts =
+    data?.pages?.flatMap((p) => p?.items ?? []) ??
+    (Array.isArray(data) ? data : []);
+
+
+  // Current selection — initialised from URL, kept in sync with it
+  const [currentId, setCurrentId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URL(window.location.href).searchParams.get("workspace") || "";
+  });
+
+  // If the URL has no workspace param yet but accounts have loaded,
+  // pick the first one and write it to the URL silently (no reload —
+  // tab blocks haven't loaded against a stale param).
+  useEffect(() => {
+    if (currentId) return;
+    if (accounts.length === 0) return;
+    const firstId = accounts[0].id;
+    setCurrentId(firstId);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("workspace", firstId);
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [accounts, currentId]);
+
+  const handleSelect = (id) => {
+    if (!id || id === currentId) return;
+    setCurrentId(id);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("workspace", id);
+      // Hard navigation so each tab block re-runs its Source-tab
+      // filter against the new param.
+      window.location.href = url.toString();
+    }
+  };
+
+  const handleAddWorkspace = () => {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.openSwModal === "function"
+    ) {
+      window.openSwModal(ADD_WORKSPACE_PATH, ADD_WORKSPACE_MODAL_SIZE);
+    } else if (typeof window !== "undefined") {
+      window.location.href = ADD_WORKSPACE_PATH;
+    }
+  };
+
+  // Render guards — don't show anything until accounts have loaded
+  if (status === "pending") return null;
+  if (status === "error") return null;
+
+  // Single-workspace users see nothing unless the Add button is
+  // enabled and they have plan headroom (handled in the future when
+  // SHOW_ADD_WORKSPACE flips on).
+  const showSelect = accounts.length > 1;
+  if (!showSelect && !SHOW_ADD_WORKSPACE) return null;
+
+  // Logo for the currently-selected workspace (if any)
+  const currentAccount =
+    accounts.find((a) => a.id === currentId) ?? accounts[0];
+  const currentLogoUrl = extractLogoUrl(currentAccount);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        gap: "12px",
+        flexWrap: "wrap",
+        padding: "16px 24px",
+        width: "100%",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          flexWrap: "wrap",
+        }}
+      >
+        {showSelect && (
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span
+              style={{
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "#879CF7",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                fontFamily: "'League Spartan', sans-serif",
+              }}
+            >
+              Workspace
+            </span>
+            {currentLogoUrl ? (
+              <img
+                src={currentLogoUrl}
+                alt=""
+                style={{
+                  height: "28px",
+                  width: "auto",
+                  maxWidth: "60px",
+                  objectFit: "contain",
+                  flexShrink: 0,
+                }}
+              />
+            ) : null}
+            <Select value={currentId} onValueChange={handleSelect}>
+              <SelectTrigger
+                style={{
+                  minWidth: "220px",
+                  fontFamily: "'League Spartan', sans-serif",
+                }}
+              >
+                <SelectValue placeholder="Select workspace" />
+              </SelectTrigger>
+              <SelectContent>
+                {accounts.map((account) => (
+                  <SelectItem key={account.id} value={account.id}>
+                    {extractName(account) || "Untitled workspace"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {SHOW_ADD_WORKSPACE && (
+          <button
+            type="button"
+            onClick={handleAddWorkspace}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "8px 14px",
+              background: "transparent",
+              color: "#879CF7",
+              border: "1px dashed rgba(135, 156, 247, 0.55)",
+              borderRadius: "999px",
+              fontSize: "13px",
+              fontWeight: 600,
+              fontFamily: "'League Spartan', sans-serif",
+              cursor: "pointer",
+            }}
+          >
+            <span aria-hidden="true">+</span> Add workspace
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Account name lookup — Softr's data layer surfaces fields under
+// account.fields.<alias>. Field aliases come from q.select.
+function extractName(account) {
+  const value = unwrap(account?.fields?.name);
+  return value || "";
+}
+
+function extractLogoUrl(account) {
+  // Prefer the FORMULA-derived logo_url (Google favicon, or Brieflee
+  // approval-stamp default when website is empty). Falls back to the
+  // legacy `logo` ATTACHMENT for older rows that have a manually
+  // uploaded image.
+  const formula = unwrap(account?.fields?.logoUrl);
+  if (formula && /^https?:\/\//i.test(formula)) return formula;
+
+  const raw = account?.fields?.logo;
+  if (!raw) return null;
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw)) {
+    const first = raw[0];
+    if (!first) return null;
+    if (typeof first === "string") return first;
+    return first.url || first.thumbnailUrl || null;
+  }
+  if (typeof raw === "object") {
+    return raw.url || raw.thumbnailUrl || null;
+  }
+  return null;
+}
+
+function unwrap(raw) {
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw.trim();
+  if (Array.isArray(raw)) {
+    const f = raw[0];
+    if (typeof f === "string") return f.trim();
+    if (f?.label) return String(f.label).trim();
+    if (f?.name) return String(f.name).trim();
+    return "";
+  }
+  if (typeof raw === "object") {
+    if (raw.label) return String(raw.label).trim();
+    if (raw.name) return String(raw.name).trim();
+    return "";
+  }
+  return String(raw).trim();
+}
