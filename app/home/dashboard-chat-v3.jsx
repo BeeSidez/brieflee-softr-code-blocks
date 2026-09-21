@@ -35,6 +35,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRecordCreate, useRecord, useUpload, useProxyFetch, q, datasource } from '@/lib/datasource';
+import { useTextSetting, useBooleanSetting } from '@/lib/editable-settings';
 
 // Every hook names its source. The five Softr tables and the three services
 // are connected on this block's Source tab; the ids below are their connection ids.
@@ -988,6 +989,24 @@ function extractFieldValues(raw) {
 // =====================================================================
 export default function Block() {
   const user = useCurrentUser();
+  // Top space above the welcome on the compose screen, editable from
+  // Content > Settings. With centring on, it scales with the viewport so the
+  // hero sits mid-screen; switch it off to use the pixel value typed below.
+  // Phones always get a small fixed space (.bc-shell.is-home in Style).
+  const heroAutoCentre = useBooleanSetting({
+    name: 'heroAutoCentre',
+    label: 'Centre the welcome on screen',
+    initialValue: true,
+  });
+  const heroTopSpace = useTextSetting({
+    name: 'heroTopSpace',
+    label: 'Top space in px (used when centring is off)',
+    initialValue: '200',
+  });
+  const typedTop = parseInt(String(heroTopSpace ?? '').replace(/[^0-9]/g, ''), 10);
+  const heroTop = heroAutoCentre
+    ? 'clamp(24px, calc(50vh - 285px), 280px)'
+    : `${Number.isFinite(typedTop) ? Math.min(typedTop, 600) : 200}px`;
   const { uploadAsync } = useUpload();
   // The engine's writes and services (see the engine section below).
   const createSubmission = useRecordCreate({ fields: submissionCreate, from: ds.submissions });
@@ -1595,11 +1614,11 @@ export default function Block() {
     // left a viewport of empty space under the chat and pushed the quick
     // links below the fold. Page background is already #FAFBFF, so the
     // block ending here leaves no seam. On the compose screen the top
-    // padding (bc-shell is-home) scales with the viewport, so the hero, the
-    // prompt box and the quick links below sit in the middle of the screen
-    // with Recent submissions peeking under them. The chat stage drops back
-    // to 24px so the 66vh chat window keeps its room.
-    <div className={stage === 'compose' ? 'bc-shell is-home' : 'bc-shell'} style={{ paddingLeft: 20, paddingRight: 20, paddingBottom: 20, background: '#FAFBFF', fontFamily: "'Inter', system-ui, sans-serif", color: '#001364' }}>
+    // padding is heroTop (the two hero settings), so the hero, the prompt
+    // box and the quick links below sit in the middle of the screen with
+    // Recent submissions peeking under them. The chat stage drops back to
+    // 24px so the 66vh chat window keeps its room.
+    <div className={stage === 'compose' ? 'bc-shell is-home' : 'bc-shell'} style={{ paddingTop: stage === 'compose' ? heroTop : 24, paddingLeft: 20, paddingRight: 20, paddingBottom: 20, background: '#FAFBFF', fontFamily: "'Inter', system-ui, sans-serif", color: '#001364' }}>
       <Style />
       <input ref={fileInputRef} type="file" accept="video/*" onChange={onFilePicked} style={{ display: 'none' }} />
 
@@ -1955,9 +1974,8 @@ function Style() {
       @keyframes bcScan { from { top: 7%; } to { top: 93%; } }
       @keyframes bcPulse { 0% { transform: scale(0.7); opacity: 0.55; } 70% { transform: scale(1.5); opacity: 0; } 100% { opacity: 0; } }
       .bc-enter { animation: bcFadeUp 0.45s cubic-bezier(0.32,0.72,0,1) both; }
-      .bc-shell { padding-top: 24px; transition: padding-top 0.45s cubic-bezier(0.32,0.72,0,1); }
-      .bc-shell.is-home { padding-top: clamp(24px, calc(50vh - 285px), 280px); }
-      @media (max-width: 640px) { .bc-shell.is-home { padding-top: clamp(24px, 6vh, 56px); } }
+      .bc-shell { transition: padding-top 0.45s cubic-bezier(0.32,0.72,0,1); }
+      @media (max-width: 640px) { .bc-shell.is-home { padding-top: clamp(24px, 6vh, 56px) !important; } }
       .bc-spin { animation: bcSpin 0.8s linear infinite; }
       .bc-bounce { animation: bcBounce 1.4s infinite; }
       .bc-pulse { animation: bcPulse 2.2s ease-out infinite; }
