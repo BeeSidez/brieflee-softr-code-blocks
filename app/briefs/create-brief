@@ -1,0 +1,1901 @@
+// =====================================================================
+// /app/briefs/create-brief — v4 MULTI-SOURCE create chat.
+//
+// Lee walks the user from workspace to a created brief in one thread:
+//
+//   1. Workspace  — the user's own accounts, scoped IN THE QUERY
+//                   (users .is current user). One auto-selects; several
+//                   show a picker. ?workspace=<accountId> (written by
+//                   /settings/workspace-switcher) wins over both.
+//   1b. PDF       — "Already have this brief written?" Upload a PDF
+//                   (useUpload), OpenRouter reads it in the writing
+//                   call itself (file content part + the free
+//                   cloudflare-ai parser plugin; base64 under 4MB,
+//                   the hosted URL for larger files) and maps it
+//                   VERBATIM into the section fields. The original file can
+//                   attach to the brief (attachment dgOkq). The
+//                   product step is skipped on this path.
+//   2. Project    — projects inside that workspace. REQUIRED: every
+//                   brief is created WITH its project linked, there is
+//                   no skip. A workspace with no projects gets sent to
+//                   create one first. When the modal URL already
+//                   carries ?recordId=<projectId> (opened from a
+//                   project page) this step is skipped.
+//   3. Product    — pick from the workspace catalog, paste a URL
+//                   (Firecrawl reads the page once and a products row
+//                   is written, so the catalog builds itself), or
+//                   "no product" for brand or organic content.
+//   4. Basics     — name, creator type, channel, optional goal.
+//   5. Write      — "Write it with AI" calls OpenRouter in THREE
+//                   parallel calls, prose + lists + visual format
+//                   (one call writing all 11 sections ran V4 Pro past
+//                   the ~120s proxy limit), V4 Pro first, V4 Flash
+//                   retry per call, and fills the per-section
+//                   HTML fields, same keys as create-brief-quick's
+//                   section model. The format leg picks two or three
+//                   from the 42-format library and writes the creator
+//                   direction for each; a name the library does not
+//                   hold is dropped rather than written, so the model
+//                   cannot invent a format. A failed write still
+//                   creates the brief so nothing is lost, and a failed
+//                   format leg leaves the other two untouched. The PDF
+//                   route picks its formats from what it extracted,
+//                   not from the file, because the mapper is told to
+//                   pull verbatim and never invent. "Open the builder"
+//                   saves the answers without writing. Both land in
+//                   /briefs/details.
+//
+// MULTI-SOURCE: six sources are wired, so EVERY hook names its source
+// via `from`. The ids below are this block's own connection ids from
+// the Source tab (they differ per block for the same table).
+//
+// SOFTR CONFIG:
+//   Source tab: briefs + accounts + products + projects + Firecrawl
+//   + OpenRouter (all wired 2026-08-26). Visibility: logged-in users.
+//   Actions: ADD_RECORD (briefs, products) registers itself from the
+//   aliases in createFields / productCreate on compile. The briefs
+//   write list grew by three on the visual-format change (format,
+//   first_format, visual_format), so re-sync the Actions tab after
+//   pasting. A recompile also resets action VISIBILITY to defaults,
+//   so re-check BOTH actions after every push.
+// =====================================================================
+
+import { useState, useRef, useEffect, useMemo } from "react";
+import { datasource, useRecords, useRecordCreate, useProxyFetch, useUpload, q } from "@/lib/datasource";
+import { useTextSetting, useBooleanSetting } from "@/lib/editable-settings";
+import { useCurrentUser } from "@/lib/user";
+import { toast } from "sonner";
+
+// ─── Datasources (ids from this block's Source tab) ───────────────
+const ds = datasource.define({
+  briefs:     "59eddd1c-60c2-47d3-a61a-91d1af15f605",
+  firecrawl:  "7c13a820-6c8b-4082-b461-9ef88c1e7cac",
+  openrouter: "4f7ba450-9ddc-4278-b283-1881b58b1429",
+  products:   "products",
+  accounts:   "accounts",
+  projects:   "4d1c60dc-5d6d-41b4-80e3-0e8868d72164",
+  members:    "members",
+});
+
+// ─── Endpoints + models ───────────────────────────────────────────
+const FIRECRAWL_URL  = "https://api.firecrawl.dev/v1/scrape";
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const WRITE_MODEL          = "deepseek/deepseek-v4-pro";   // bench decision 2026-07-30
+const WRITE_FALLBACK_MODEL = "deepseek/deepseek-v4-flash";
+const SCRAPE_TIMEOUT_MS = 30000;
+const MODEL_TIMEOUT_MS  = 115000; // Softr proxy 504s at ~120s; fail first ourselves
+const PDF_MAX_BYTES        = 10 * 1024 * 1024; // upload cap
+const PDF_BASE64_MAX_BYTES = 4 * 1024 * 1024;  // base64 fallback cap, keeps the proxy payload sane
+
+// NO post-create hook here. The legacy "BL | Brief" workflow renames
+// the brief and writes the old JSON body into description (verified
+// live 2026-08-26), and the one useful thing it did, the project
+// link, is written by this block on create.
+const DETAIL_PATH = "/briefs/details";
+const LEE_AVATAR = "https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png";
+
+// Rotating status lines for the writing scene (mirrors the original
+// chat's generating state).
+const GENERATING_MESSAGES = [
+  "Reading your brand blueprint",
+  "Studying the product",
+  "Writing your hooks",
+  "Drafting talking points",
+  "Setting the do's and don'ts",
+  "Polishing the sections",
+];
+
+const STATUS_DRAFT_ID     = "775ba6ba-5fda-4d17-bd02-53be5e9ea2ca";
+const GENERATED_MANUAL_ID = "598d6f2e-9830-4790-9d3b-c04005deb5f3";
+const GENERATED_AI_ID     = "beb6ff69-51d6-417b-abfa-c8dbac6ec760";
+const PRODUCT_TYPE_PRODUCT_ID  = "09733eb9-9e77-4e11-bbdf-4e5e9d5a445e";
+const PRODUCT_STATUS_ACTIVE_ID = "8e6bd9b0-6f7a-4d69-b23d-bb69577c1de3";
+
+const CHANNELS = [
+  { id: "ba9af748-7695-46b2-b5e3-f9c58b5b8288", label: "Organic" },
+  { id: "2c767823-7430-4f24-9fdb-69485d1ff1b3", label: "Paid" },
+];
+const CREATOR_TYPES = [
+  { id: "5a290e3b-2905-41b6-9bbb-1b98964dcbf0", label: "UGC" },
+  { id: "7adfce93-0c2f-4cec-af91-c7a4c99d64d3", label: "Influencer" },
+  { id: "34ce4bad-c106-438e-8adb-d0a862a99abb", label: "Affiliate" },
+  { id: "a06a4342-d693-4013-a4ef-26fede8289f7", label: "Customer" },
+  { id: "cf25288c-918f-444a-afbe-bc8c7b4aab82", label: "Employee Ambassador" },
+  { id: "437357f6-a391-4acd-afb2-2c6698ff87fd", label: "Founder" },
+];
+
+// The core shape a new brief opens with. Keys match the builder's
+// SECTION_DEFS; everything else waits in the rail.
+const STARTER_SECTIONS = "brand,offer,productFeature,deliverables,hook,visualFormat,guidelines,examples,submissions";
+
+// Section keys for the AI writes and the PDF mapping, split in two so
+// a single call never runs V4 Pro past the ~120s proxy limit (hit
+// live 2026-08-26).
+const KEYS_PROSE = [
+  "brand", "offer", "audience_customer", "product_feature_description", "submission_notes",
+];
+const KEYS_LISTS = [
+  "caption_hooks", "visual_action_hooks", "voiceover_hooks",
+  "talking_points", "dos", "donts",
+];
+const PROSE_NOTE = "Each value is one or two <p> blocks.";
+const LISTS_NOTE =
+  "caption_hooks, visual_action_hooks and voiceover_hooks are each a <ul> of three to five.\n" +
+  "A brief usually lumps these under one heading such as 'content hooks'. Sort them by what\n" +
+  "each one actually is: a line the viewer READS is a caption hook, something the creator DOES\n" +
+  "on camera is a visual action hook, a line the creator SAYS out loud is a voiceover hook.\n" +
+  "Keep the document's own wording for the ones it gives you, with any shooting note attached.\n" +
+  "FILL ALL THREE even when the document only supplies one kind. Where it gives you none of a\n" +
+  "kind, write them from the product, the occasion and the audience. A thin brief should come\n" +
+  "out of this stronger than it went in; that is the point of the three lists.\n" +
+  "dos and donts are each a <ul>. talking_points is a <ul>.";
+
+// ─── Field selects ────────────────────────────────────────────────
+const createFields = q.select({
+  name:          "z3lpx",
+  users:         "EdhwS",
+  projects:      "yrYvH",
+  members:       "fL2kC",
+  product_link:  "Mn8mc",
+  attachment:    "dgOkq",
+  description:   "FCBU5",
+  status:        "71Oud",
+  generated:     "n4tCi",
+  section_order: "cp3Rg",
+  creator_type:  "N1vCS",
+  channel:       "nbZAV",
+  // Visual Format links, both LINKED_RECORD -> formats
+  // (3yQSKToyjBWLSX). format holds the two or three picks;
+  // first_format holds the primary one ALONE, because 0oeqf is
+  // single-entry and /brand/index reads it with no fallback.
+  format:        "7Qmlq",
+  first_format:  "0oeqf",
+  // Section bodies, written by the AI route.
+  brand:               "FJq4K",
+  offer:               "4g59H",
+  audience_customer:   "uuHYp",
+  product_feature_description: "CSvl8",
+  caption_hooks:       "8EyqU",
+  visual_action_hooks: "4dnWx",
+  voiceover_hooks:     "3QPLK",
+  talking_points:      "YEfyw",
+  dos:                 "CSbqb",
+  donts:               "I5wOP",
+  submission_notes:    "gx4hJ",
+  visual_format:       "XwklL",
+});
+
+const accountSelect = q.select({
+  name:        "aAKkT",
+  users:       "LNSSK",
+  website:     "RaK4B",
+  blueprint:   "wGkPN",
+  brand_voice: "ybmp8",
+  logo:        "q1B5K", // ATTACHMENT, the uploaded logo
+  logoUrl:     "nPI65", // FORMULA, the website favicon or the Brieflee default
+});
+
+// Workspace logo, best source first: the UPLOADED logo, then the one
+// derived from the website, then the default.
+//
+// logo_url is a FORMULA that ALWAYS returns a url (a 128px Google favicon
+// built from the website, or the Brieflee stamp when there is no website),
+// so reading it on its own means an uploaded logo can never show and every
+// workspace wears the low-res favicon.
+function workspaceLogo(fields) {
+  const raw = fields && fields.logo;
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof first === "string" && first) return first;
+  if (first && (first.url || first.thumbnailUrl)) return first.url || first.thumbnailUrl;
+  const formula = fields && fields.logoUrl;
+  const url = Array.isArray(formula) ? formula[0] : formula;
+  return typeof url === "string" ? url : "";
+}
+
+const projectSelect = q.select({
+  name:      "bvDEj",
+  accounts:  "IBYGK",
+  createdAt: "SCgzt",
+});
+
+// The workspace's own people, for the Creators step. Attaching one
+// here is the same act as Add people on the brief workspace: the
+// member is LINKED, never duplicated, and nobody is emailed.
+const memberSelect = q.select({
+  memberName:     "qtE5x",
+  memberEmail:    "v0MOD",
+  memberAccounts: "O72qI",
+});
+
+const productSelect = q.select({
+  name:        "kNM2x",
+  accounts:    "MDPv7",
+  url:         "NpnYk",
+  description: "XGsxw",
+  price:       "DATrL",
+  scrape:      "ovQUJ",
+  status:      "Es5IA",
+});
+
+const productCreate = q.select({
+  name:        "kNM2x",
+  accounts:    "MDPv7",
+  type:        "I2vm9",
+  url:         "NpnYk",
+  description: "XGsxw",
+  image_url:   "wRahq",
+  price:       "DATrL",
+  scrape:      "ovQUJ",
+  scraped_at:  "VzmXP",
+  status:      "Es5IA",
+});
+
+// ─── Helpers ──────────────────────────────────────────────────────
+function linkIds(raw) {
+  const arr = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+  return arr.map((x) => (x && typeof x === "object" ? x.id : x)).filter(Boolean);
+}
+function selectLabel(raw) {
+  if (!raw) return "";
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw)) return raw.map(selectLabel).filter(Boolean).join(", ");
+  return raw.label || "";
+}
+// The model returns HTML per section. Strip anything that is not a
+// simple block so a bad response can never inject markup.
+function cleanHtml(v) {
+  if (typeof v !== "string") return "";
+  return v
+    .replace(/```html?/gi, "")
+    .replace(/```/g, "")
+    .replace(/<(script|style|iframe)[^>]*>[\s\S]*?<\/\1>/gi, "")
+    .replace(/\s*[—–]\s*/g, ", ")
+    .replace(/\s*&(?:mdash|ndash|#8212|#8211);\s*/gi, ", ")
+    .trim();
+}
+// Model output to an object, fences stripped, salvaging the object
+// if the model wrapped it in anything. callOnce and callPdf keep
+// their own inline copies: they are near-clones of each other and
+// editing either risks hitting the wrong one.
+function parseModelJson(text) {
+  const raw = String(text || "").trim()
+    .replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim();
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    const open = raw.indexOf("{"), close = raw.lastIndexOf("}");
+    if (open >= 0 && close > open) return JSON.parse(raw.slice(open, close + 1));
+    throw new Error("The AI response could not be read");
+  }
+}
+// No `new URL()` here on purpose: URL parsing outside an inline
+// useState initialiser stops Softr's analyzer registering the create
+// actions on this block.
+function hostnameOf(url) {
+  const m = String(url || "").replace(/^https?:\/\//i, "").split(/[/?#]/)[0];
+  return m.replace(/^www\./, "") || String(url || "");
+}
+const withTimeout = (promise, ms, label) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out`)), ms)),
+  ]);
+const readAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ""));
+    r.onerror = () => reject(new Error("Could not read the file"));
+    r.readAsDataURL(file);
+  });
+
+// ─── Palette ──────────────────────────────────────────────────────
+const NAVY = "#001364";
+const PERI = "#7A93FF";
+const CHIP_BORDER = "1px solid rgba(217, 224, 255, 0.7)";
+
+// ─── Inactive accounts ──────────────────────────────────────────
+// Inactive users see the upgrade card in place of the chat. The check
+// mirrors the "Inactive" user group (c6b2cd43): users.status (kClk9) is
+// Inactive, or the workspace status lookup (DdZZr) holds inactive,
+// suspended or cancelled. Values arrive as labels or option ids.
+const BILLING_PATH = "/billing";
+const UPGRADE_IMG = "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/ca989ee6-933c-4385-b957-6a9a6b2ca053.png";
+const USER_INACTIVE = ["inactive", "77000f9f-4208-4a23-8f45-a1786d6fc2f7"];
+const WORKSPACE_INACTIVE = [
+  "inactive", "7833a268-9a04-4031-83aa-d628627f561b",
+  "suspended", "3ae260ee-3a61-41de-ab39-562f33ffed93",
+  "cancelled", "d9d65a96-2495-42ea-812e-4a84508aeab6",
+];
+function statusValues(raw) {
+  const list = Array.isArray(raw) ? raw : raw == null || raw === "" ? [] : typeof raw === "string" ? raw.split(",") : [raw];
+  return list
+    .map((v) => (v && typeof v === "object" ? (v.label ?? v.name ?? v.id ?? "") : v))
+    .map((v) => String(v).trim().toLowerCase())
+    .filter(Boolean);
+}
+function isInactiveUser(props) {
+  const p = props || {};
+  return statusValues(p.status).some((v) => USER_INACTIVE.includes(v))
+    || statusValues(p.workspaceStatus).some((v) => WORKSPACE_INACTIVE.includes(v));
+}
+
+// ─── Small UI pieces (mirrors the original chat's presentation) ───
+function LeeMsg({ children, withAvatar }) {
+  return (
+    <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
+      <div className="flex gap-2.5 items-start">
+        {withAvatar ? (
+          <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
+        ) : (
+          <div className="w-8 h-8 flex-shrink-0" />
+        )}
+        <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+          <p className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>{children}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MeMsg({ children }) {
+  return (
+    <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
+      <div className="flex justify-end">
+        <div className="rounded-2xl rounded-tr-sm p-3 px-4 shadow-sm max-w-lg" style={{ background: PERI, color: "#fff" }}>
+          <p className="text-sm leading-relaxed" style={{ fontWeight: 500, margin: 0 }}>{children}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Typing({ withAvatar }) {
+  return (
+    <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-300">
+      <div className="flex gap-2.5 items-start">
+        {withAvatar ? (
+          <img src={LEE_AVATAR} alt="Lee" className="w-8 h-8 rounded-full flex-shrink-0" />
+        ) : (
+          <div className="w-8 h-8 flex-shrink-0" />
+        )}
+        <div className="bg-white rounded-2xl rounded-tl-sm p-3 px-5 shadow-sm" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+          <div className="flex gap-1.5">
+            <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: "#7A93FF" }} />
+            <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: "#7A93FF" }} />
+            <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: "#7A93FF" }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Chip({ on, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-xs px-3 py-2 rounded-lg shadow-sm hover:shadow-md transition-all duration-200"
+      style={{
+        background: on ? PERI : "#fff",
+        color: on ? "#fff" : NAVY,
+        border: on ? `1px solid ${PERI}` : CHIP_BORDER,
+        fontWeight: on ? 600 : 400,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function CardBtn({ onClick, title, sub, img }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center gap-3 text-left rounded-xl px-3.5 py-3 bg-white shadow-sm hover:shadow-md transition-all duration-200"
+      style={{ border: CHIP_BORDER }}
+    >
+      {img ? (
+        <img src={img} alt="" className="w-9 h-9 rounded-lg object-cover flex-shrink-0" style={{ background: "#F0F3FF" }} />
+      ) : (
+        <span
+          className="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center text-sm"
+          style={{ background: "#F0F3FF", color: NAVY, fontWeight: 600 }}
+        >
+          {String(title || "?").slice(0, 1).toUpperCase()}
+        </span>
+      )}
+      <span className="min-w-0">
+        <span className="block text-[13px] truncate" style={{ color: NAVY, fontWeight: 600 }}>{title}</span>
+        {sub ? <span className="block text-[11px] truncate" style={{ color: "#6B7A99" }}>{sub}</span> : null}
+      </span>
+    </button>
+  );
+}
+
+// The step's input area slides in under the thread.
+function StepArea({ children }) {
+  return (
+    <div className="mt-2 pl-[42px] animate-in fade-in slide-in-from-bottom-3 duration-500">
+      {children}
+    </div>
+  );
+}
+
+// Centered scene for the wait after the last pick — the original
+// chat's spinning-sparkles generating state, with a floating Lee.
+function WritingScene({ mode, genIdx, overtime }) {
+  const line = mode === "ai" ? GENERATING_MESSAGES[genIdx % GENERATING_MESSAGES.length] : "Setting up your brief";
+  return (
+    <div
+      className="animate-in fade-in duration-500"
+      style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 320, padding: "32px 24px", textAlign: "center" }}
+    >
+      <div style={{ position: "relative", marginBottom: 20, animation: "blFloat 3s ease-in-out infinite" }}>
+        <img
+          src={LEE_AVATAR}
+          alt=""
+          style={{ width: 64, height: 64, borderRadius: "50%", boxShadow: "0 8px 24px -8px rgba(135, 156, 247, 0.55)" }}
+        />
+        <div
+          style={{ position: "absolute", inset: -6, borderRadius: "50%", border: "2px solid rgba(135, 156, 247, 0.3)", borderTopColor: "#879CF7", animation: "blSpin 1.1s linear infinite" }}
+        />
+      </div>
+      <h2 style={{ fontSize: 20, fontWeight: 600, color: NAVY, margin: "0 0 8px", letterSpacing: "-0.01em" }}>
+        {mode === "ai" ? "Lee is writing your brief" : "One moment"}
+      </h2>
+      <p key={genIdx} style={{ fontSize: 14, color: "#6B7A99", margin: "0 0 6px", minHeight: 20, animation: "blFade 0.4s ease-out" }}>
+        {line}
+      </p>
+      <p style={{ fontSize: 12, color: "#9aa6c3", margin: 0 }}>
+        {mode !== "ai"
+          ? "Opening the builder."
+          : overtime
+            ? "Still working. Rich brand context takes a touch longer, hang tight."
+            : "This usually takes 30 to 60 seconds."}
+      </p>
+    </div>
+  );
+}
+
+// ─── Block ────────────────────────────────────────────────────────
+function UpgradeCard() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 14, padding: "24px 12px 8px", animation: "blFade 0.4s ease-out" }}>
+      <img src={UPGRADE_IMG} alt="" draggable={false} style={{ width: 56, height: 56, borderRadius: 12, objectFit: "cover" }} />
+      <h2 style={{ margin: "6px 0 0", fontSize: 28, fontWeight: 700, lineHeight: 1.15, letterSpacing: "-0.01em", color: NAVY }}>Upgrade your account</h2>
+      <p style={{ margin: 0, maxWidth: 460, fontSize: 15, lineHeight: 1.5, color: NAVY }}>Update your payment method to activate your account and access your videos and features.</p>
+      <a href={BILLING_PATH} target="_top" className="transition-all duration-200 hover:shadow-md" style={{ marginTop: 8, display: "inline-flex", alignItems: "center", height: 44, padding: "0 24px", borderRadius: 8, background: "#879CF7", color: "#fff", fontSize: 16, fontWeight: 500, textDecoration: "none", boxShadow: "0 8px 20px -10px rgba(0,19,100,0.35)" }}>
+        Update payment method
+      </a>
+    </div>
+  );
+}
+
+export default function Block() {
+  const user = useCurrentUser({
+    properties: {
+      status: "kClk9",          // users.status: Active / Inactive / Pending
+      workspaceStatus: "DdZZr", // status (accounts) lookup: active, trial, inactive, suspended, cancelled
+    },
+  });
+  const isInactive = isInactiveUser(user && user.properties);
+
+  // Top space above the chat, editable from Content > Settings. With
+  // centring on, it scales with the viewport so the chat opens mid-screen;
+  // switch it off to use the pixel value typed below. Phones get a small
+  // fixed space (.cbc-home in the style tag). When the page is open as the
+  // New brief side panel (parent URL carries ?modal=, or the frame sits in
+  // a dialog) the settings are skipped and the top stays at 26px.
+  const [inPanel] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      if (window.parent === window) return false;
+      if (/[?&]modal=/.test(window.parent.location.search)) return true;
+      const fe = window.frameElement;
+      return !!(fe && fe.closest && fe.closest('[role="dialog"]'));
+    } catch (e) {
+      return false;
+    }
+  });
+  const heroAutoCentre = useBooleanSetting({
+    name: "heroAutoCentre",
+    label: "Centre the chat on screen",
+    initialValue: true,
+  });
+  const heroTopSpace = useTextSetting({
+    name: "heroTopSpace",
+    label: "Top space in px (used when centring is off)",
+    initialValue: "200",
+  });
+  const typedTop = parseInt(String(heroTopSpace ?? "").replace(/[^0-9]/g, ""), 10);
+  const heroTop = inPanel
+    ? "26px"
+    : heroAutoCentre
+      ? "clamp(26px, calc(50vh - 285px), 280px)"
+      : `${Number.isFinite(typedTop) ? Math.min(typedTop, 600) : 200}px`;
+
+  // URL params are read ONCE in inline useState initialisers. URL
+  // parsing in the render body, a useMemo or a named helper stops
+  // Softr's analyzer registering the create actions.
+  const [urlWorkspaceId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      return new URL(window.location.href).searchParams.get("workspace") || "";
+    } catch (e) {
+      return "";
+    }
+  });
+  const [urlProjectId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      return new URL(window.location.href).searchParams.get("recordId") || "";
+    } catch (e) {
+      return "";
+    }
+  });
+
+  // The user's workspaces, scoped IN THE QUERY, not after it.
+  // Filtering client-side would pull other brands' rows into this
+  // browser first.
+  const accountsQ = useRecords({
+    select: accountSelect,
+    from: ds.accounts,
+    count: 20,
+    enabled: !!(user && user.id),
+    where: q.array("users").is((user && user.id) || ""),
+  });
+  const accounts = useMemo(() => {
+    const items = accountsQ.data ? accountsQ.data.pages.flatMap((p) => (p && p.items) || []) : [];
+    if (!user || !user.id) return items;
+    return items.filter((it) => linkIds(it.fields && it.fields.users).includes(user.id));
+  }, [accountsQ.data, user]);
+
+  // Conversation state
+  const [creatorIds, setCreatorIds] = useState([]);
+  const [step, setStep] = useState("boot"); // boot | workspace | source | pdfUpload | pdfAttach | project | product | productUrl | basics | mode | dead-end
+  const [msgs, setMsgs] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [workspaceId, setWorkspaceId] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [product, setProduct] = useState(null); // { id, name, url, description, price, scrape } | null
+  const [briefName, setBriefName] = useState("");
+  const [creatorType, setCreatorType] = useState(CREATOR_TYPES[0]);
+  const [channel, setChannel] = useState(CHANNELS[0]);
+  const [goalInput, setGoalInput] = useState("");
+  const [urlInput, setUrlInput] = useState("");
+  const [pdf, setPdf] = useState(null); // { filename, url, sections | null, attach }
+  const [scene, setScene] = useState(""); // "" | "ai" | "quick" — the centered writing scene
+  const [genIdx, setGenIdx] = useState(0);
+  const [overtime, setOvertime] = useState(false);
+  const endRef = useRef(null);
+  const fileRef = useRef(null);
+  const bootedRef = useRef(false);
+  // Back navigation: every forward transition snapshots the state it
+  // leaves behind; Back pops one snapshot, trims the thread to that
+  // point, and restores the picks made since.
+  const histRef = useRef([]);
+
+  const say = (node) => setMsgs((m) => [...m, { who: "lee", node }]);
+  const mine = (text) => setMsgs((m) => [...m, { who: "me", node: text }]);
+
+  const remember = () => {
+    histRef.current.push({
+      step, msgsLen: msgs.length, workspaceId, projectId, product, pdf,
+      briefName, creatorType, channel, goalInput,
+    });
+  };
+  const goBack = () => {
+    const h = histRef.current.pop();
+    if (!h) return;
+    setMsgs((m) => m.slice(0, h.msgsLen));
+    setWorkspaceId(h.workspaceId);
+    setProjectId(h.projectId);
+    setProduct(h.product);
+    setPdf(h.pdf);
+    setBriefName(h.briefName);
+    setCreatorType(h.creatorType);
+    setChannel(h.channel);
+    setGoalInput(h.goalInput);
+    setStep(h.step);
+  };
+
+  useEffect(() => {
+    const el = endRef.current;
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [msgs, busy, step]);
+
+  // Rotate the writing scene's status line; flag overtime past 45s.
+  useEffect(() => {
+    if (scene !== "ai") { setGenIdx(0); setOvertime(false); return; }
+    const rot = setInterval(() => setGenIdx((i) => i + 1), 3500);
+    const late = setTimeout(() => setOvertime(true), 45000);
+    return () => { clearInterval(rot); clearTimeout(late); };
+  }, [scene]);
+
+  const projectsQ = useRecords({
+    select: projectSelect,
+    from: ds.projects,
+    count: 100,
+    enabled: !!workspaceId,
+    where: q.array("accounts").is(workspaceId || ""),
+    orderBy: q.desc("createdAt"),
+  });
+  const projects = useMemo(
+    () => (projectsQ.data ? projectsQ.data.pages.flatMap((p) => (p && p.items) || []) : []),
+    [projectsQ.data]
+  );
+
+  const membersQ = useRecords({
+    select: memberSelect,
+    from: ds.members,
+    count: 100,
+    enabled: !!workspaceId,
+    where: q.array("memberAccounts").is(workspaceId || ""),
+  });
+  const workspaceMembers = useMemo(
+    () => (membersQ.data ? membersQ.data.pages.flatMap((p) => (p && p.items) || []) : []),
+    [membersQ.data]
+  );
+
+  const productsQ = useRecords({
+    select: productSelect,
+    from: ds.products,
+    count: 100,
+    enabled: !!workspaceId,
+    where: q.array("accounts").is(workspaceId || ""),
+  });
+  const products = useMemo(() => {
+    const items = productsQ.data ? productsQ.data.pages.flatMap((p) => (p && p.items) || []) : [];
+    return items.filter((it) => {
+      const pf = it.fields || {};
+      if (selectLabel(pf.status) === "Archived") return false;
+      const ids = linkIds(pf.accounts);
+      return !workspaceId || !ids.length || ids.includes(workspaceId);
+    });
+  }, [productsQ.data, workspaceId]);
+
+  const createRecord  = useRecordCreate({ fields: createFields, from: ds.briefs });
+  const createProduct = useRecordCreate({ fields: productCreate, from: ds.products });
+  const aiFetch       = useProxyFetch(ds.openrouter);
+  const scrapeFetch   = useProxyFetch(ds.firecrawl);
+  const upload        = useUpload();
+
+  const account = useMemo(
+    () => accounts.find((a) => a.id === workspaceId) || null,
+    [accounts, workspaceId]
+  );
+
+  // ── Boot: greet once the accounts have resolved ────────────────
+  useEffect(() => {
+    if (bootedRef.current) return;
+    if (!user) return;
+    if (accountsQ.status === "pending") return;
+    bootedRef.current = true;
+
+    const first = user.firstName ? `, ${user.firstName}` : "";
+    say(<span>Hey{first}. Let's set up a new brief. A few quick picks and I'll take it from there.</span>);
+
+    if (accounts.length === 0) {
+      say(
+        <span>
+          I can't find a workspace on your account yet. Finish setting up your workspace first, then come back
+          and I'll build the brief with your brand context.
+        </span>
+      );
+      setStep("dead-end");
+      return;
+    }
+
+    const urlMatch = urlWorkspaceId ? accounts.find((a) => a.id === urlWorkspaceId) : null;
+    if (urlMatch) {
+      pickWorkspace(urlMatch, true);
+    } else if (accounts.length === 1) {
+      pickWorkspace(accounts[0], true);
+    } else {
+      say(<span>Which workspace is this brief for?</span>);
+      setStep("workspace");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, accountsQ.status, accounts.length]);
+
+  // ── Step handlers ──────────────────────────────────────────────
+  const pickWorkspace = (acc, silent) => {
+    if (!silent) remember();
+    setWorkspaceId(acc.id);
+    const accName = String((acc.fields && acc.fields.name) || "your workspace");
+    if (!silent) mine(accName);
+    if (silent) say(<span>This brief goes in <b>{accName}</b>.</span>);
+    askSource();
+  };
+
+  const askSource = () => {
+    say(<span>Already have this brief written? Upload the PDF and I'll build the brief from it, or we can set it up from scratch.</span>);
+    setStep("source");
+  };
+
+  const chooseScratch = () => {
+    remember();
+    mine("Start from scratch");
+    if (urlProjectId) {
+      // Opened from a project page: the project is already decided.
+      askProduct();
+    } else {
+      say(<span>Which project should it live in?</span>);
+      setStep("project");
+    }
+  };
+
+  const choosePdf = () => {
+    remember();
+    mine("Upload a PDF");
+    say(<span>Drop it in. I read PDFs up to 10MB.</span>);
+    setStep("pdfUpload");
+  };
+
+  const pickProject = (proj) => {
+    if (!proj) return;
+    remember();
+    setProjectId(proj.id);
+    mine(String((proj.fields && proj.fields.name) || "Project"));
+    if (pdf) {
+      askPdfAttach();
+    } else {
+      askProduct();
+    }
+  };
+
+  // Every brief belongs to a project. With none on the workspace there
+  // is nothing to attach it to, so the chat stops here and sends the
+  // user to make one rather than writing a brief with no home.
+  const goCreateProject = () => {
+    if (typeof window === "undefined") return;
+    try {
+      if (window.parent && window.parent.closeSwModal) window.parent.closeSwModal();
+    } catch (e) { /* not in a modal */ }
+    (window.parent || window).open("/create-project", "_self");
+  };
+
+  const askProduct = () => {
+    say(<span>Is this brief for a specific product? Pick one from your catalog, paste a product link, or skip it.</span>);
+    setStep("product");
+  };
+
+  const pickCatalogProduct = (p) => {
+    remember();
+    const pf = p.fields || {};
+    mine(String(pf.name || "Product"));
+    setProduct({
+      id: p.id,
+      name: String(pf.name || ""),
+      url: String(pf.url || ""),
+      description: String(pf.description || ""),
+      price: String(pf.price || ""),
+      scrape: String(pf.scrape || ""),
+    });
+    askBasics();
+  };
+
+  const pickNoProduct = () => {
+    remember();
+    mine("No product, brand content");
+    setProduct(null);
+    askBasics();
+  };
+
+  const addProductByUrl = async () => {
+    const url = urlInput.trim();
+    if (!url) return;
+    if (!createProduct.enabled) {
+      toast.error("You don't have permission to add products.");
+      return;
+    }
+    remember();
+    mine(url);
+    setUrlInput("");
+    setBusy(true);
+    say(<span>Reading that page…</span>);
+    try {
+      let md = "", title = "", desc = "", img = "";
+      try {
+        const res = await withTimeout(
+          scrapeFetch(FIRECRAWL_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true }),
+          }),
+          SCRAPE_TIMEOUT_MS,
+          "Scrape"
+        );
+        if (res.ok) {
+          const j = await res.json();
+          const d = (j && j.data) || j || {};
+          md = d.markdown || "";
+          title = (d.metadata && (d.metadata.title || d.metadata.ogTitle)) || "";
+          desc = (d.metadata && (d.metadata.description || d.metadata.ogDescription)) || "";
+          img = (d.metadata && d.metadata.ogImage) || "";
+        }
+      } catch (e) {
+        // A failed scrape must not lose the product.
+        console.warn("Firecrawl scrape failed:", e && e.message);
+      }
+      const created = await createProduct.mutateAsync({
+        name: title || hostnameOf(url),
+        accounts: workspaceId ? [{ id: workspaceId }] : null,
+        type: PRODUCT_TYPE_PRODUCT_ID,
+        url,
+        description: desc || (md ? md.slice(0, 600) : ""),
+        image_url: img || "",
+        price: "",
+        scrape: md ? md.slice(0, 20000) : "",
+        scraped_at: md ? new Date().toISOString() : null,
+        status: PRODUCT_STATUS_ACTIVE_ID,
+      });
+      const newId = (created && (created.id || created.recordId)) || "";
+      setProduct({
+        id: newId,
+        name: title || hostnameOf(url),
+        url,
+        description: desc,
+        price: "",
+        scrape: md,
+      });
+      setBusy(false);
+      say(
+        md ? (
+          <span>Got it. <b>{title || hostnameOf(url)}</b> is saved to your catalog and I'll use the page content for the brief.</span>
+        ) : (
+          <span>I couldn't read that page, but I've saved <b>{title || hostnameOf(url)}</b> to your catalog with the link so nothing is lost.</span>
+        )
+      );
+      askBasics();
+    } catch (e) {
+      console.error("Add product failed:", e);
+      setBusy(false);
+      histRef.current.pop();
+      toast.error("Couldn't add that product", { description: (e && e.message) || "Try again." });
+      say(<span>I couldn't save that product. Pick it from the catalog, try the link again, or skip it.</span>);
+      setStep("product");
+    }
+  };
+
+  const askBasics = () => {
+    say(
+      pdf ? (
+        <span>Nearly there. Check the name and the details, I've filled what I could from the document.</span>
+      ) : (
+        <span>Nearly there. Name the brief, pick who's filming and the channel, and tell me the goal if you have one.</span>
+      )
+    );
+    setStep("basics");
+  };
+
+  // Creators is OPTIONAL and only appears when the workspace actually
+  // has people, so a first brief is exactly as short as it was.
+  const askCreators = () => {
+    say(<span>Is this brief for anyone in particular? Pick who's making it, or skip and add people later.</span>);
+    setStep("creators");
+  };
+
+  const toggleCreator = (id) => {
+    setCreatorIds((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]));
+  };
+
+  const submitCreators = () => {
+    remember();
+    if (creatorIds.length) {
+      const names = workspaceMembers
+        .filter((m) => creatorIds.includes(m.id))
+        .map((m) => String((m.fields && (m.fields.memberName || m.fields.memberEmail)) || ""))
+        .filter(Boolean);
+      mine(names.join(", "));
+    } else {
+      mine("Skip for now");
+    }
+    if (pdf) {
+      submit("pdf");
+      return;
+    }
+    say(<span>Last one. Want me to write the brief from your brand context, or go straight to the builder and write it there?</span>);
+    setStep("mode");
+  };
+
+  const submitBasics = () => {
+    const nm = briefName.trim();
+    if (!nm) return;
+    remember();
+    mine(nm);
+    if (workspaceMembers.length) {
+      askCreators();
+      return;
+    }
+    if (pdf) {
+      submit("pdf");
+      return;
+    }
+    say(<span>Last one. Want me to write the brief from your brand context, or go straight to the builder and write it there?</span>);
+    setStep("mode");
+  };
+
+  // ── Read an uploaded PDF and map it into the section fields ────
+  const mapPdf = async (fileData, filename) => {
+    const sys =
+      "You turn brand briefing documents into structured creator briefs. Pull content VERBATIM from the document wherever possible; tidy lightly, never invent. Return ONLY a JSON object, no prose, no code fences. " +
+      "Every section value is clean HTML using <p>, <ul><li> or <b>. No headings. NEVER use em dashes. " +
+      "A key the document does not cover MUST be an empty string. Never pad a key by repeating the document's " +
+      "title, its headings, or lines that belong to another key: an empty section is correct and expected.";
+    const callPdf = async (model, keys, note) => {
+      const res = await withTimeout(
+        aiFetch(OPENROUTER_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            plugins: [{ id: "file-parser", pdf: { engine: "cloudflare-ai" } }],
+            messages: [
+              { role: "system", content: sys },
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      "The attached document is an existing creator brief or campaign document.\n" +
+                      `Map its content into a JSON object with exactly these keys: ${keys.join(", ")}.\n` +
+                      note,
+                  },
+                  { type: "file", file: { filename: filename || "brief.pdf", file_data: fileData } },
+                ],
+              },
+            ],
+            temperature: 0.3,
+            max_tokens: 8000,
+          }),
+        }),
+        MODEL_TIMEOUT_MS,
+        "Reading"
+      );
+      if (!res.ok) throw new Error(`OpenRouter returned HTTP ${res.status}`);
+      const json = await res.json();
+      const raw = ((json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || "")
+        .trim()
+        .replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim();
+      let obj = {};
+      try {
+        obj = JSON.parse(raw);
+      } catch (e) {
+        // Salvage the object if the model wrapped it in anything.
+        const a = raw.indexOf("{"), b = raw.lastIndexOf("}");
+        if (a >= 0 && b > a) obj = JSON.parse(raw.slice(a, b + 1));
+        else throw new Error("The AI response could not be read");
+      }
+      return obj;
+    };
+    // Mapping a document is verbatim sorting, not writing, so the
+    // CHEAP model leads (Bev, 2026-08-27: keep the AI spend down) and
+    // the big one is only the retry. The PDF-to-text parsing itself
+    // is free either way (cloudflare-ai engine).
+    const mapSet = async (keys, note) => {
+      try {
+        return await callPdf(WRITE_FALLBACK_MODEL, keys, note);
+      } catch (e1) {
+        console.warn("PDF read failed on the fast model, retrying on the bigger one:", e1 && e1.message);
+        try {
+          return await callPdf(WRITE_MODEL, keys, note);
+        } catch (e2) {
+          console.error("PDF read failed on both models:", e2 && e2.message);
+          return {};
+        }
+      }
+    };
+    const metaNote =
+      PROSE_NOTE +
+      '\nAlso include "suggested_name" (a short 3 to 6 word title for this brief, plain text), ' +
+      '"creator_type" (exactly one of: UGC, Influencer, Affiliate, Customer, Employee Ambassador, Founder; or "") ' +
+      'and "channel" (Organic or Paid; or "").';
+    const [proseObj, listsObj] = await Promise.all([
+      mapSet(KEYS_PROSE, metaNote),
+      mapSet(KEYS_LISTS, LISTS_NOTE),
+    ]);
+    const sections = {};
+    KEYS_PROSE.forEach((k) => { const v = cleanHtml(proseObj[k]); if (v) sections[k] = v; });
+    KEYS_LISTS.forEach((k) => { const v = cleanHtml(listsObj[k]); if (v) sections[k] = v; });
+    if (Object.keys(sections).length < 2) throw new Error("The document could not be read");
+    // Formats come AFTER the mapping, off the extracted sections
+    // rather than the file. The mapper's own system prompt forbids
+    // inventing and demands an empty string for anything the
+    // document does not cover: exactly right for pulling content,
+    // exactly wrong for naming a format. One short extra call, and
+    // it reads what the document actually yielded.
+    const readBack = KEYS_PROSE.concat(KEYS_LISTS)
+      .map((k) => (sections[k] ? k + ": " + String(sections[k]).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() : ""))
+      .filter(Boolean).join("\n").slice(0, 6000);
+    Object.assign(sections, formatFields(
+      await pickFormatsWithFallback(aiFetch, readBack + "\n\n" + FORMAT_PDF_NOTE)
+    ));
+    const plain = (v) => String(v == null ? "" : v).replace(/<[^>]*>/g, "").trim();
+    const ct = CREATOR_TYPES.find((o) => o.label.toLowerCase() === plain(proseObj.creator_type).toLowerCase());
+    const ch = CHANNELS.find((o) => o.label.toLowerCase() === plain(proseObj.channel).toLowerCase());
+    return {
+      sections,
+      suggestedName: plain(proseObj.suggested_name).slice(0, 80),
+      creatorTypeId: ct ? ct.id : "",
+      channelId: ch ? ch.id : "",
+    };
+  };
+
+  const onPdfChosen = async (file) => {
+    if (!file) return;
+    if (!(file.type === "application/pdf" || /\.pdf$/i.test(file.name || ""))) {
+      toast.error("That needs to be a PDF.");
+      return;
+    }
+    if (file.size > PDF_MAX_BYTES) {
+      toast.error("That PDF is over 10MB", { description: "Export a lighter copy and try again." });
+      return;
+    }
+    if (!(upload && upload.uploadAsync)) {
+      toast.error("Uploads aren't available here.");
+      return;
+    }
+    remember();
+    mine(file.name);
+    setBusy(true);
+    say(<span>Reading your PDF. This can take a minute…</span>);
+    try {
+      const results = await upload.uploadAsync(file);
+      const first = Array.isArray(results) ? results[0] : results;
+      if (!first || (first.status && first.status !== "completed") || !first.url) {
+        throw new Error((first && first.error && first.error.message) || "Upload failed");
+      }
+      const hostedUrl = first.url;
+      const filename = (first.file && first.file.name) || file.name;
+
+      // base64 is the transport that works: OpenRouter's parser
+      // returns 400 for the Softr-hosted upload URL (verified live
+      // 2026-08-26). Files over the base64 cap still try the URL
+      // rather than giving up.
+      let mapped = null;
+      if (file.size <= PDF_BASE64_MAX_BYTES) {
+        try {
+          const dataUrl = await readAsDataUrl(file);
+          mapped = await mapPdf(dataUrl, filename);
+        } catch (e1) {
+          console.error("PDF mapping from the file data failed:", e1 && e1.message);
+        }
+      } else {
+        try {
+          mapped = await mapPdf(hostedUrl, filename);
+        } catch (e1) {
+          console.warn("PDF mapping from the hosted URL failed:", e1 && e1.message);
+        }
+      }
+
+      if (mapped) {
+        setPdf({ filename, url: hostedUrl, sections: mapped.sections, attach: true });
+        if (mapped.suggestedName) setBriefName(mapped.suggestedName);
+        const ct = CREATOR_TYPES.find((o) => o.id === mapped.creatorTypeId);
+        if (ct) setCreatorType(ct);
+        const ch = CHANNELS.find((o) => o.id === mapped.channelId);
+        if (ch) setChannel(ch);
+        say(<span>Got it. I've read <b>{filename}</b> and drafted the brief from it.</span>);
+      } else {
+        setPdf({ filename, url: hostedUrl, sections: null, attach: true });
+        say(<span>I couldn't read the text in that one, so I'll attach the file to the brief and you can write the sections in the builder.</span>);
+      }
+      setBusy(false);
+      if (urlProjectId) {
+        askPdfAttach();
+      } else {
+        say(<span>Which project should it live in?</span>);
+        setStep("project");
+      }
+    } catch (e) {
+      console.error("PDF upload failed:", e);
+      setBusy(false);
+      histRef.current.pop();
+      toast.error("Couldn't upload that PDF", { description: (e && e.message) || "Try again." });
+      say(<span>The upload didn't go through. Try again, or start from scratch.</span>);
+      setStep("pdfUpload");
+    }
+  };
+
+  const askPdfAttach = () => {
+    say(<span>Want the original PDF attached to the brief so creators can open it, or should I just use it as my source?</span>);
+    setStep("pdfAttach");
+  };
+
+  const choosePdfAttach = (attach) => {
+    remember();
+    mine(attach ? "Attach it to the brief" : "Just use it as your source");
+    setPdf((p) => (p ? { ...p, attach } : p));
+    askBasics();
+  };
+
+  // ── The AI write (same section model as create-brief-quick) ────
+  const writeBrief = async () => {
+    const af = (account && account.fields) || {};
+    const brandContext = [
+      af.name ? "Brand: " + af.name : "",
+      af.website ? "Website: " + af.website : "",
+      af.blueprint ? String(af.blueprint) : "",
+      af.brand_voice ? "Brand voice: " + af.brand_voice : "",
+    ].filter(Boolean).join("\n");
+    const productContext = product
+      ? [
+          "Product: " + (product.name || ""),
+          product.description ? "Description: " + product.description : "",
+          product.price ? "Price: " + product.price : "",
+          product.url ? "Page: " + product.url : "",
+          product.scrape ? "From the product page: " + String(product.scrape).slice(0, 4000) : "",
+        ].filter(Boolean).join("\n")
+      : "This brief is NOT about a specific product. It is brand or organic content. Do not invent a product.";
+
+    const sys =
+      "You write creator briefs. Return ONLY a JSON object, no prose, no code fences. " +
+      "Every value is clean HTML using <p>, <ul><li> or <b>. No headings. NEVER use em dashes. " +
+      "Write to the creator in second person. Be specific to the brand and product given; " +
+      "if something is not in the context, leave that field as an empty string rather than inventing it.";
+    // Two parallel calls (prose + lists), Pro first, Flash retry per
+    // call, results merged. A set that fails on both models resolves
+    // empty rather than sinking the other set.
+    const context =
+      `Brief name: ${briefName.trim()}\n` +
+      `Who is filming: ${creatorType.label}\n` +
+      `Channel: ${channel.label}\n` +
+      (goalInput.trim() ? `What the brand wants from this brief: ${goalInput.trim()}\n` : "") +
+      `\nBrand context:\n${brandContext || "(none on file)"}\n\n` +
+      `What this brief promotes:\n${productContext}\n\n`;
+
+    const callOnce = async (model, keys, note) => {
+      const usr =
+        context +
+        `Return a JSON object with exactly these keys: ${keys.join(", ")}.\n` +
+        note;
+      const res = await withTimeout(
+        aiFetch(OPENROUTER_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "system", content: sys }, { role: "user", content: usr }],
+            temperature: 0.7,
+            max_tokens: 8000,
+          }),
+        }),
+        MODEL_TIMEOUT_MS,
+        "Writing"
+      );
+      if (!res.ok) throw new Error(`OpenRouter returned HTTP ${res.status}`);
+      const json = await res.json();
+      const raw = ((json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || "")
+        .trim()
+        .replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim();
+      let obj = {};
+      try {
+        obj = JSON.parse(raw);
+      } catch (e) {
+        // Salvage the object if the model wrapped it in anything.
+        const a = raw.indexOf("{"), b = raw.lastIndexOf("}");
+        if (a >= 0 && b > a) obj = JSON.parse(raw.slice(a, b + 1));
+        else throw new Error("The AI response could not be read");
+      }
+      const out = {};
+      keys.forEach((k) => { const v = cleanHtml(obj[k]); if (v) out[k] = v; });
+      return out;
+    };
+
+    const writeSet = async (keys, note) => {
+      try {
+        return await callOnce(WRITE_MODEL, keys, note);
+      } catch (e1) {
+        console.warn("Primary model failed, retrying on fallback:", e1 && e1.message);
+        try {
+          return await callOnce(WRITE_FALLBACK_MODEL, keys, note);
+        } catch (e2) {
+          console.error("Fallback model failed too:", e2 && e2.message);
+          return {};
+        }
+      }
+    };
+
+    const [prose, lists, picks] = await Promise.all([
+      writeSet(KEYS_PROSE, PROSE_NOTE),
+      writeSet(KEYS_LISTS, LISTS_NOTE),
+      pickFormatsWithFallback(aiFetch, context + FORMAT_NOTE),
+    ]);
+    const merged = { ...prose, ...lists };
+    // The throw stays on prose+lists alone. A run where only the
+    // format leg came back is still a failed write, and the brief
+    // should open empty in the builder rather than carrying a
+    // visual format and nothing else.
+    if (!Object.keys(merged).length) throw new Error("The AI response could not be read");
+    Object.assign(merged, formatFields(picks));
+    return merged;
+  };
+
+  // ── Create ─────────────────────────────────────────────────────
+  const submit = async (route) => {
+    if (!user || !user.id) { toast.error("You need to be signed in."); return; }
+    if (!createRecord.enabled) { toast.error("You don't have permission to create briefs."); return; }
+    if (route !== "pdf") mine(route === "ai" ? "Write it with AI" : "Open the builder");
+    setScene(route === "ai" ? "ai" : "quick");
+    setBusy(true);
+    try {
+      let sections = {};
+      if (route === "ai") {
+        say(<span>Writing the brief from your brand context. This can take a minute or two.</span>);
+        try {
+          sections = await writeBrief();
+        } catch (e) {
+          console.error("AI write failed:", e);
+          toast.error("The AI couldn't write this one", {
+            description: "Creating the brief anyway so you can write it in the builder.",
+          });
+        }
+      } else if (route === "pdf" && pdf && pdf.sections) {
+        say(<span>Setting it up…</span>);
+        sections = pdf.sections;
+      } else {
+        say(<span>Setting it up…</span>);
+      }
+      const finalProjectId = projectId || urlProjectId || "";
+      const created = await createRecord.mutateAsync({
+        name: briefName.trim() || "Untitled brief",
+        users: [{ id: user.id }],
+        projects: finalProjectId ? [{ id: finalProjectId }] : null,
+        members: creatorIds.length ? creatorIds.map((id) => ({ id })) : null,
+        product_link: product && product.id ? [{ id: product.id }] : null,
+        attachment: pdf && pdf.attach && pdf.url ? [{ filename: pdf.filename, url: pdf.url }] : null,
+        description: "",
+        status: STATUS_DRAFT_ID,
+        generated: route === "ai" || (route === "pdf" && pdf && pdf.sections) ? GENERATED_AI_ID : GENERATED_MANUAL_ID,
+        section_order: STARTER_SECTIONS,
+        creator_type: creatorType.id,
+        channel: channel.id,
+        ...sections,
+      });
+      const newId = (created && (created.id || created.recordId)) || "";
+      if (!newId) throw new Error("Create returned no record id");
+
+      say(<span>Done. Opening your brief…</span>);
+      const url = `${DETAIL_PATH}/?recordId=${encodeURIComponent(newId)}`;
+      try {
+        if (window.parent && window.parent.closeSwModal) window.parent.closeSwModal();
+      } catch (e) { /* not in a modal */ }
+      (window.parent || window).open(url, "_self");
+    } catch (e) {
+      console.error("[create-brief] failed:", e);
+      toast.error("Couldn't create the brief", { description: (e && e.message) || "Try again." });
+      setBusy(false);
+      setScene("");
+      say(<span>That didn't go through. Try again?</span>);
+      setStep(route === "pdf" ? "basics" : "mode");
+    }
+  };
+
+  // ── Render ─────────────────────────────────────────────────────
+  const showLoading = !bootedRef.current;
+  const lastWho = msgs.length ? msgs[msgs.length - 1].who : "";
+
+  return (
+    <div className={inPanel ? "cbc" : "cbc cbc-home"} style={{ maxWidth: 620, margin: "0 auto", padding: `${heroTop} 20px 30px` }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+        .cbc, .cbc * { font-family: 'League Spartan', sans-serif; }
+        @keyframes bounce { 0%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-8px); } }
+        .cbc .typing-dot { animation: bounce 1.4s infinite; }
+        .cbc .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .cbc .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes blSpin { to { transform: rotate(360deg); } }
+        @keyframes blFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes blFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+        .cbc input, .cbc textarea { outline: none; }
+        @media (max-width: 640px) { .cbc.cbc-home { padding-top: clamp(26px, 6vh, 56px) !important; } }
+      `}</style>
+
+      {isInactive ? (
+        <UpgradeCard />
+      ) : scene ? (
+        <WritingScene mode={scene} genIdx={genIdx} overtime={overtime} />
+      ) : (
+        <div>
+          {msgs.map((m, i) => {
+            if (m.who === "me") return <MeMsg key={i}>{m.node}</MeMsg>;
+            const prev = msgs[i - 1];
+            return <LeeMsg key={i} withAvatar={!prev || prev.who !== "lee"}>{m.node}</LeeMsg>;
+          })}
+          {(busy || showLoading) && <Typing withAvatar={lastWho !== "lee"} />}
+
+          {!busy && step === "workspace" && (
+            <StepArea>
+              <div className="space-y-2">
+                {accounts.map((a) => (
+                  <CardBtn
+                    key={a.id}
+                    onClick={() => pickWorkspace(a, false)}
+                    title={String((a.fields && a.fields.name) || "Workspace")}
+                    sub={String((a.fields && a.fields.website) || "")}
+                    img={workspaceLogo(a.fields)}
+                  />
+                ))}
+              </div>
+            </StepArea>
+          )}
+
+          {!busy && step === "source" && (
+            <StepArea>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={choosePdf}
+                  className="rounded-xl px-4 py-3.5 text-left shadow-sm hover:shadow-md transition-all duration-200"
+                  style={{ background: "#879CF7", color: "#fff" }}
+                >
+                  <span className="block text-[13px]" style={{ fontWeight: 700 }}>Upload a PDF</span>
+                  <span className="block text-[11px] mt-0.5" style={{ opacity: 0.85 }}>I'll read it and build the brief from it</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={chooseScratch}
+                  className="rounded-xl px-4 py-3.5 text-left bg-white shadow-sm hover:shadow-md transition-all duration-200"
+                  style={{ border: CHIP_BORDER, color: NAVY }}
+                >
+                  <span className="block text-[13px]" style={{ fontWeight: 700 }}>Start from scratch</span>
+                  <span className="block text-[11px] mt-0.5" style={{ color: "#6B7A99" }}>Pick the product, then write it or have me write it</span>
+                </button>
+              </div>
+              {histRef.current.length > 0 && (
+                <div className="mt-2">
+                  <Chip on={false} onClick={goBack}>Back</Chip>
+                </div>
+              )}
+            </StepArea>
+          )}
+
+          {!busy && step === "pdfUpload" && (
+            <StepArea>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="application/pdf,.pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files && e.target.files[0];
+                  e.target.value = "";
+                  if (f) onPdfChosen(f);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => { if (fileRef.current) fileRef.current.click(); }}
+                className="w-full rounded-xl px-4 py-6 text-center bg-white shadow-sm hover:shadow-md transition-all duration-200"
+                style={{ border: "1.5px dashed rgba(122, 147, 255, 0.6)", color: NAVY }}
+              >
+                <span className="block text-[13px]" style={{ fontWeight: 700 }}>Choose the PDF</span>
+                <span className="block text-[11px] mt-1" style={{ color: "#6B7A99" }}>Up to 10MB. I'll read it and fill the brief.</span>
+              </button>
+              <div className="flex justify-between mt-2">
+                <Chip on={false} onClick={goBack}>Back</Chip>
+                <Chip on={false} onClick={chooseScratch}>Never mind, start from scratch</Chip>
+              </div>
+            </StepArea>
+          )}
+
+          {!busy && step === "pdfAttach" && (
+            <StepArea>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Chip on={false} onClick={goBack}>Back</Chip>
+                <div className="flex flex-wrap gap-2">
+                  <Chip on={false} onClick={() => choosePdfAttach(true)}>Attach it to the brief</Chip>
+                  <Chip on={false} onClick={() => choosePdfAttach(false)}>Just use it as source</Chip>
+                </div>
+              </div>
+            </StepArea>
+          )}
+
+          {!busy && step === "project" && (
+            <StepArea>
+              {projectsQ.status === "pending" && <div className="text-xs" style={{ color: "#6B7A99" }}>Loading projects…</div>}
+              {projectsQ.status !== "pending" && projects.length === 0 && (
+                <div className="text-xs mb-2" style={{ color: "#6B7A99" }}>
+                  Every brief lives inside a project, and this workspace hasn't got one yet. Create a project
+                  first and I'll build the brief inside it.
+                </div>
+              )}
+              <div className="space-y-2" style={{ maxHeight: 240, overflowY: "auto" }}>
+                {projects.map((p) => (
+                  <CardBtn key={p.id} onClick={() => pickProject(p)} title={String((p.fields && p.fields.name) || "Project")} sub="" img="" />
+                ))}
+              </div>
+              <div className="flex justify-between mt-2">
+                <Chip on={false} onClick={goBack}>Back</Chip>
+                {projectsQ.status !== "pending" && projects.length === 0 && (
+                  <Chip on={false} onClick={goCreateProject}>Create a project</Chip>
+                )}
+              </div>
+            </StepArea>
+          )}
+
+          {!busy && step === "product" && (
+            <StepArea>
+              {products.length > 0 && (
+                <div className="space-y-2 mb-2" style={{ maxHeight: 220, overflowY: "auto" }}>
+                  {products.map((p) => (
+                    <CardBtn
+                      key={p.id}
+                      onClick={() => pickCatalogProduct(p)}
+                      title={String((p.fields && p.fields.name) || "Product")}
+                      sub={String((p.fields && p.fields.url) || "")}
+                      img=""
+                    />
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Chip on={false} onClick={goBack}>Back</Chip>
+                <div className="flex flex-wrap gap-2">
+                  <Chip on={false} onClick={() => { remember(); setStep("productUrl"); }}>Paste a product link</Chip>
+                  <Chip on={false} onClick={pickNoProduct}>No product, brand content</Chip>
+                </div>
+              </div>
+            </StepArea>
+          )}
+
+          {!busy && step === "productUrl" && (
+            <StepArea>
+              <div className="flex gap-2">
+                <input
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") addProductByUrl(); }}
+                  placeholder="https://yourstore.com/products/…"
+                  autoFocus
+                  className="flex-1 rounded-xl px-3.5 py-2.5 text-sm bg-white shadow-sm"
+                  style={{ border: CHIP_BORDER, color: NAVY, fontWeight: 300 }}
+                />
+                <button
+                  type="button"
+                  onClick={addProductByUrl}
+                  className="text-xs px-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-200"
+                  style={{ background: "#879CF7", color: "#fff", fontWeight: 600 }}
+                >
+                  Read it
+                </button>
+              </div>
+              <div className="mt-2">
+                <Chip on={false} onClick={goBack}>Back</Chip>
+              </div>
+            </StepArea>
+          )}
+
+          {!busy && step === "basics" && (
+            <StepArea>
+              <div className="space-y-3 bg-white rounded-2xl p-4 shadow-sm" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+                <input
+                  value={briefName}
+                  onChange={(e) => setBriefName(e.target.value)}
+                  placeholder="Brief name, e.g. Spring launch, creator videos"
+                  autoFocus
+                  className="w-full rounded-xl px-3.5 py-2.5 text-sm"
+                  style={{ border: CHIP_BORDER, color: NAVY, background: "#fff" }}
+                />
+                <div>
+                  <div className="text-[11px] mb-1.5" style={{ color: NAVY, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Who is filming</div>
+                  <div className="flex flex-wrap gap-2">
+                    {CREATOR_TYPES.map((o) => (
+                      <Chip key={o.id} on={creatorType.id === o.id} onClick={() => setCreatorType(o)}>{o.label}</Chip>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] mb-1.5" style={{ color: NAVY, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Channel</div>
+                  <div className="flex flex-wrap gap-2">
+                    {CHANNELS.map((o) => (
+                      <Chip key={o.id} on={channel.id === o.id} onClick={() => setChannel(o)}>{o.label}</Chip>
+                    ))}
+                  </div>
+                </div>
+                <textarea
+                  value={goalInput}
+                  onChange={(e) => setGoalInput(e.target.value)}
+                  placeholder="What should this brief achieve? (optional)"
+                  rows={2}
+                  className="w-full rounded-xl px-3.5 py-2.5 text-sm resize-none"
+                  style={{ border: CHIP_BORDER, color: NAVY, background: "#fff" }}
+                />
+                <button
+                  type="button"
+                  onClick={submitBasics}
+                  disabled={!briefName.trim()}
+                  className="w-full py-2.5 rounded-xl text-sm shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50"
+                  style={{ background: "#879CF7", color: "#fff", fontWeight: 600 }}
+                >
+                  Continue
+                </button>
+              </div>
+              <div className="mt-2">
+                <Chip on={false} onClick={goBack}>Back</Chip>
+              </div>
+            </StepArea>
+          )}
+
+          {!busy && step === "creators" && (
+            <StepArea>
+              <div className="space-y-2" style={{ maxHeight: 240, overflowY: "auto" }}>
+                {workspaceMembers.map((m) => {
+                  const mf = m.fields || {};
+                  const nm = String(mf.memberName || "");
+                  const em = String(mf.memberEmail || "");
+                  const on = creatorIds.includes(m.id);
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => toggleCreator(m.id)}
+                      className="w-full rounded-xl px-4 py-3 text-left bg-white shadow-sm hover:shadow-md transition-all duration-200"
+                      style={{ border: on ? "1px solid #879CF7" : CHIP_BORDER, color: NAVY }}
+                    >
+                      <span className="block text-[13px]" style={{ fontWeight: on ? 700 : 400 }}>{nm || em}</span>
+                      {nm && em ? <span className="block text-[11px] mt-0.5" style={{ color: "#6B7A99" }}>{em}</span> : null}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between mt-2">
+                <Chip on={false} onClick={goBack}>Back</Chip>
+                <Chip on={false} onClick={submitCreators}>
+                  {creatorIds.length ? "Continue with " + creatorIds.length : "Skip for now"}
+                </Chip>
+              </div>
+            </StepArea>
+          )}
+
+          {!busy && step === "mode" && (
+            <StepArea>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => submit("ai")}
+                  className="rounded-xl px-4 py-3.5 text-left shadow-sm hover:shadow-md transition-all duration-200"
+                  style={{ background: "#879CF7", color: "#fff" }}
+                >
+                  <span className="block text-[13px]" style={{ fontWeight: 700 }}>Write it with AI</span>
+                  <span className="block text-[11px] mt-0.5" style={{ opacity: 0.85 }}>Brand context + product, every section drafted</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => submit("builder")}
+                  className="rounded-xl px-4 py-3.5 text-left bg-white shadow-sm hover:shadow-md transition-all duration-200"
+                  style={{ border: CHIP_BORDER, color: NAVY }}
+                >
+                  <span className="block text-[13px]" style={{ fontWeight: 700 }}>Open the builder</span>
+                  <span className="block text-[11px] mt-0.5" style={{ color: "#6B7A99" }}>Your picks saved, write it yourself</span>
+                </button>
+              </div>
+              <div className="mt-2">
+                <Chip on={false} onClick={goBack}>Back</Chip>
+              </div>
+            </StepArea>
+          )}
+
+          <div ref={endRef} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// =====================================================================
+// Visual Format library and the format normaliser.
+//
+// Appended below Block() the same way brief-builder and /briefs/details
+// keep their data constants, so the analyzer reaches the
+// useRecordCreate calls first. Do not move this to the top.
+//
+// Name, id and the one-line menu label only. The long FORMAT_GUIDANCE
+// paragraphs stay in the builder: sending 22KB so the model can read
+// its own library copy back to us is the opposite of direction written
+// for THIS brand. ids are formats-table (3yQSKToyjBWLSX) record ids and
+// MUST match brief-builder's copy or its picker silently drops them.
+// =====================================================================
+const FORMATS = [
+  { name: "AI Generated",           id: "43v5kKjNH6eRYR", desc: "Imagery your camera couldn't capture" },
+  { name: "ASMR",                   id: "ZvD1XsBsOHXrc7", desc: "Show your product through sound" },
+  { name: "Before and After",       id: "lXE0ppCy9bxtwT", desc: "One frame of the before" },
+  { name: "Behind The Scenes",      id: "j1mq5E7J76Uh6v", desc: "What the audience never sees" },
+  { name: "Celebrity",              id: "2tidTBu1s9sYe0", desc: "A face your audience already trusts" },
+  { name: "Cinematic B-Roll",       id: "iJ0B7DHvXSa6S7", desc: "Brand-led, beautifully shot moments" },
+  { name: "Comment Response",       id: "mNzF4jrNxdWkh9", desc: "Frame the ad as a reply" },
+  { name: "Demo",                   id: "rCVlZyOAiJjeBk", desc: "Show it working" },
+  { name: "Duet",                   id: "F5dPTsMJW0ZyRq", desc: "Splitscreen with another video" },
+  { name: "Educational",            id: "GzrEECgnGSDV9V", desc: "Teach something they didn't know" },
+  { name: "Expert Explainer",       id: "AbqxjhPiSSk2X5", desc: "An authority explains the product" },
+  { name: "Founder",                id: "yWvyuTwfxjdI8V", desc: "You, on camera" },
+  { name: "Greenscreen",            id: "k5DItljtn7egIc", desc: "You, with a screen behind you" },
+  { name: "Grid Swap",              id: "fB13Uwrof2LR2x", desc: "Same frame, one element swaps in" },
+  { name: "How To",                 id: "6wAgppyTNeGk7E", desc: "Step one, step two, result" },
+  { name: "Humour",                 id: "Tlw7jXIw8dQU8m", desc: "Lead with the laugh, land the product" },
+  { name: "Influencer Endorsement", id: "JOEyLgxuqYS8PM", desc: "A creator they already follow" },
+  { name: "Listicle",               id: "qnWiPWtmyXCenq", desc: "Numbered, snappy, easy to follow" },
+  { name: "Meme",                   id: "X4rmYeRWHlwFF6", desc: "A current meme, used right" },
+  { name: "Montage",                id: "TvjJUVblQ4U0NM", desc: "Many shots, cut fast" },
+  { name: "Pattern Interrupt",      id: "gebQfaqFGK8JR0", desc: "Opening with no obvious link" },
+  { name: "Podcast",                id: "FKeW5AssNPsamF", desc: "Two people, mics, jump cuts" },
+  { name: "Postit",                 id: "6y60WsVQSvSPrx", desc: "Sticky notes around the product" },
+  { name: "POV",                    id: "znK1otYqVFeHdP", desc: "Shot from the viewer's perspective" },
+  { name: "Press",                  id: "JBvDhmX83IXzVt", desc: "Logos, headlines, article screenshots" },
+  { name: "Problem Agitation",      id: "9HNmgZxQifJP0m", desc: "Show the problem at its worst" },
+  { name: "Reaction Video",         id: "IUMTcnn4yHmdse", desc: "Someone reacting in real time" },
+  { name: "Review",                 id: "Twlhm409ycfr0y", desc: "A real review, read or shown" },
+  { name: "Screen Recording",       id: "dJ7bOZvx1KCtUY", desc: "Phone or computer screen, straight" },
+  { name: "Skit",                   id: "F5fq0pXlaKH3rv", desc: "A mini-story with characters" },
+  { name: "Social Proof Mashup",    id: "JtHL5zDz7mee39", desc: "Many pieces of proof, cut fast" },
+  { name: "Stitch",                 id: "Wh1EFfauvrcBtT", desc: "Start with their video, cut to your reply" },
+  { name: "Stop Motion",            id: "Ff8KG7xPuKvQqB", desc: "Frame-by-frame animation" },
+  { name: "Street Interview",       id: "FPGeZ7LBgpc6ob", desc: "Man-on-the-street style" },
+  { name: "Testimonial",            id: "B02EKdR9dlAx6z", desc: "A real customer, on camera" },
+  { name: "Time Lapse",             id: "O18lIcshH8Locj", desc: "Sped-up footage of a change" },
+  { name: "Transformation",         id: "RPiqUMprAeQDRS", desc: "The change, in one tight cut" },
+  { name: "Trend",                  id: "2wbMtE3V2KPJ85", desc: "A current trend, used right" },
+  { name: "Try-On",                 id: "Q0N2XHJLH8zpvx", desc: "Trying the product on, on camera" },
+  { name: "Unboxing",               id: "82alellAfOUPLv", desc: "Opening the box on camera" },
+  { name: "Whiteboard Explainer",   id: "qe6tHLeuc7eghe", desc: "A whiteboard, a marker, an explanation" },
+  { name: "Yapper",                 id: "5l0IKGeuF1TcQH", desc: "Creator talking straight to camera" },
+];
+const FORMAT_MENU = FORMATS.map((f) => f.name + ": " + f.desc).join("\n");
+
+// Names models reach for that are not the library's. Keys are already
+// through formatKey, so they are lowercase and stripped of punctuation.
+const FORMAT_ALIASES = {
+  humor: "Humour",
+  grwm: "Try-On",
+  getreadywithme: "Try-On",
+  tryonhaul: "Try-On",
+  haul: "Try-On",
+  broll: "Cinematic B-Roll",
+  talkinghead: "Yapper",
+  piecetocamera: "Yapper",
+  vlog: "Behind The Scenes",
+  bts: "Behind The Scenes",
+  splitscreen: "Duet",
+  sidebyside: "Duet",
+  stickynotes: "Postit",
+  postit: "Postit",
+  problemsolution: "Problem Agitation",
+  painpoint: "Problem Agitation",
+  beforeafter: "Before and After",
+  greenscreen: "Greenscreen",
+  ugcreview: "Review",
+  customerreview: "Review",
+  tutorial: "How To",
+  stepbystep: "How To",
+  explainer: "Expert Explainer",
+  founderstory: "Founder",
+  trending: "Trend",
+  trendingaudio: "Trend",
+  transition: "Transformation",
+  thenvsnow: "Transformation",
+  makeover: "Transformation",
+  storytime: "Skit",
+  sketch: "Skit",
+  roleplay: "Skit",
+  unbox: "Unboxing",
+  asmrsounds: "ASMR",
+  numberedlist: "Listicle",
+  screenrecord: "Screen Recording",
+  aigenerated: "AI Generated",
+  reaction: "Reaction Video",
+  reactions: "Reaction Video",
+  reacting: "Reaction Video",
+  interview: "Street Interview",
+  vox: "Street Interview",
+  voxpop: "Street Interview",
+  timelapse: "Time Lapse",
+  stopmotion: "Stop Motion",
+  usergenerated: "Testimonial",
+  socialproof: "Social Proof Mashup",
+  comparison: "Before and After",
+  dayinthelife: "Behind The Scenes",
+};
+
+// Resolution key: lowercase, & to and, drop a leading "the", strip
+// anything that is not a letter or a digit. Over the 42 names this
+// gives 42 unique keys and no canonical key contains another, so the
+// containment step below can never fire on two library names at once.
+function formatKey(s) {
+  return String(s || "").toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/^\s*the\s+/, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+// One name to one library entry, or null. Order matters: id, exact,
+// alias, singular, then containment accepted ONLY on a single match,
+// which catches "Unboxing Video" without opening a fuzzy-match hole
+// ("Demo and Review" hits two, so it is refused).
+function resolveFormat(v) {
+  const raw = String(v == null ? "" : v).trim();
+  if (!raw) return null;
+  const byId = FORMATS.find((f) => f.id === raw);
+  if (byId) return byId;
+  const k = formatKey(raw);
+  if (!k) return null;
+  const exact = FORMATS.find((f) => formatKey(f.name) === k);
+  if (exact) return exact;
+  const aliased = FORMAT_ALIASES[k] || FORMAT_ALIASES[k.replace(/s$/, "")];
+  if (aliased) {
+    const hit = FORMATS.find((f) => f.name === aliased);
+    if (hit) return hit;
+  }
+  const singular = k.replace(/es$/, "").replace(/s$/, "");
+  const plural = FORMATS.find((f) => formatKey(f.name) === singular || formatKey(f.name) === k.replace(/s$/, ""));
+  if (plural) return plural;
+  const near = FORMATS.filter((f) => {
+    const c = formatKey(f.name);
+    return c.length > 3 && (k.includes(c) || c.includes(k));
+  });
+  return near.length === 1 ? near[0] : null;
+}
+// The direction arrives as plain text and is asked to arrive without
+// the format name on the front. cleanHtml takes the fences and the em
+// dashes; this takes the wrappers and the bold the model adds back
+// anyway, and the leading name it repeats however often it is told not
+// to. An empty direction falls back to the library's own line, because
+// a named format with no instruction under it is worse than a short one.
+function cleanFormatDirection(v, fmt) {
+  let t = cleanHtml(v).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  const lead = fmt.name.toLowerCase();
+  if (t.toLowerCase().indexOf(lead) === 0) {
+    t = t.slice(lead.length).replace(/^\s*[.:,-]\s*/, "").trim();
+  }
+  return t || (fmt.desc + ".");
+}
+// Whatever came back, into at most three real library picks. Every
+// branch is a bad-model case: the array arrives as an object, an item
+// arrives as a bare string, the name is spelled the model's way, the
+// same format comes back twice, six come back when three were asked
+// for. A name that does not resolve is DROPPED WITH ITS DIRECTION and
+// never reassigned: direction written for one format contradicts
+// another format's heading, which is worse than no direction at all.
+function normaliseFormatPicks(obj) {
+  const rawList = obj && obj.formats;
+  const items = Array.isArray(rawList)
+    ? rawList
+    : (rawList && typeof rawList === "object" ? Object.values(rawList) : []);
+  const out = [];
+  const seen = {};
+  items.forEach((item) => {
+    const it = (item && typeof item === "object") ? item : { name: item };
+    const hit = resolveFormat(it.name != null ? it.name : it.format);
+    if (!hit) { console.warn("[create-brief] format not in the library, dropped:", it && it.name); return; }
+    if (seen[hit.id]) return;
+    seen[hit.id] = 1;
+    out.push({ id: hit.id, name: hit.name, direction: cleanFormatDirection(it.direction, hit) });
+  });
+  return out.slice(0, 3);
+}
+// One paragraph per pick, the shape the builder's own format writer
+// produces: <p><b>Name.</b> direction</p>.
+function formatDirectionHtml(picks) {
+  return picks.map((p) => "<p><b>" + p.name + ".</b> " + p.direction + "</p>").join("");
+}
+// The three writable fields a set of picks turns into. Returned as
+// field aliases so both routes can merge it straight into `sections`
+// and let the existing `...sections` spread do the write.
+function formatFields(picks) {
+  if (!picks.length) return {};
+  return {
+    format: picks.map((p) => ({ id: p.id })),
+    first_format: [{ id: picks[0].id }],
+    visual_format: formatDirectionHtml(picks),
+  };
+}
+
+// ─── The format call ──────────────────────────────────────────────
+// Its OWN call, never a third key on the lists set: KEYS_LISTS and
+// LISTS_NOTE are shared with the PDF mapper, both `sys` messages demand
+// clean HTML for every value, and callOnce's key loop runs cleanHtml,
+// which returns "" for anything that is not a string, so an array of
+// picks would vanish without a sound. Output is short, so this leg is
+// never the slow one and Promise.all waits for the longest, not the sum.
+const FORMAT_SYS =
+  "You choose the visual format for a creator brief. Return ONLY a JSON object, " +
+  "no prose, no code fences. NEVER use em dashes.";
+const FORMAT_RULES =
+  'Return a JSON object with exactly one key, "formats": an ARRAY of two or three objects,\n' +
+  "most important first. The first is the format this video mainly is. The rest are what the\n" +
+  "creator could shoot instead, not extra videos.\n" +
+  "Each object has exactly two keys:\n" +
+  '  "name": plain text, copied character for character from the library below. Never an id,\n' +
+  "  never a format that is not on the list, never one you invented.\n" +
+  '  "direction": plain text, two or three sentences. No HTML, no headings, no bullets, no\n' +
+  "  bold, and do not open with the format name, that gets added for you.\n" +
+  "Write each direction to the creator in second person and make it specific to THIS brand and\n" +
+  "THIS product. Say what they actually do: the opening shot, what is in their hands, where\n" +
+  "they are, what the product does on camera, what has to be visible, how much freedom they\n" +
+  "have with the rest. Use the real details you were given, the product's own parts, its\n" +
+  "price, the occasion, who buys it.\n" +
+  "The short line after each format below is a menu label, not copy. Never repeat it and never\n" +
+  "write the generic explanation of what the format is. If a direction would read the same for\n" +
+  "a different brand, it is wrong; rewrite it.\n" +
+  "Choose only from this library:\n";
+const FORMAT_NOTE = FORMAT_RULES + FORMAT_MENU;
+// The document route. A brief that lists "content hooks" or "video
+// ideas" is usually describing FORMATS without naming them, which is
+// the one thing the extraction pass cannot do: it is told to pull
+// verbatim and never invent, and naming the format is a judgement.
+const FORMAT_PDF_NOTE =
+  "The brief below was read out of the brand's own document.\n" +
+  "Whatever it calls them, its hooks, ideas and references usually DESCRIBE a format without\n" +
+  "naming one: a nostalgic cut is Transformation, getting ready on camera is Try-On, two\n" +
+  "people playing a scene is Skit. Name what the document is already asking for, first.\n" +
+  "Only where it describes nothing shootable, choose from the product and the occasion.\n" +
+  FORMAT_RULES + FORMAT_MENU;
+
+// aiFetch is the component's useProxyFetch handle, passed in so both
+// routes share one implementation.
+async function requestFormatPicks(fetcher, model, userContent) {
+  const res = await withTimeout(
+    fetcher(OPENROUTER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: FORMAT_SYS },
+          { role: "user", content: userContent },
+        ],
+        temperature: 0.7,
+        max_tokens: 1200,
+      }),
+    }),
+    MODEL_TIMEOUT_MS,
+    "Picking the format"
+  );
+  if (!res.ok) throw new Error(`OpenRouter returned HTTP ${res.status}`);
+  const json = await res.json();
+  const picks = normaliseFormatPicks(parseModelJson(
+    (json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || ""
+  ));
+  // Nothing resolved against the library. Throw so the fallback model
+  // gets its turn rather than settling for no format at all.
+  if (!picks.length) throw new Error("No format on the list came back");
+  return picks;
+}
+// Pro first, Flash retry, then give up quietly. A brief with no visual
+// format is fine; a brief that failed to create is not.
+async function pickFormatsWithFallback(fetcher, userContent) {
+  try {
+    return await requestFormatPicks(fetcher, WRITE_MODEL, userContent);
+  } catch (e1) {
+    console.warn("Format pick failed, retrying on the fallback model:", e1 && e1.message);
+    try {
+      return await requestFormatPicks(fetcher, WRITE_FALLBACK_MODEL, userContent);
+    } catch (e2) {
+      console.error("Format pick failed on both models:", e2 && e2.message);
+      return [];
+    }
+  }
+}
