@@ -568,32 +568,20 @@ function openBriefComments(briefId) {
   setSearchParam("blockId", COMMENT_ANCHOR_BLOCK_ID);
 }
 
-// Public brief URL — SEO-friendly slug, points at the live creator page.
-// /brief/<slug> is configured in Softr Studio with "Find record by → slug".
-function creatorUrlFor(slug) {
-  if (!slug) return "";
-  return `https://brieflee.co/brief/${encodeURIComponent(slug)}`;
+// Public brief URL, the creator-facing page.
+// The pretty /brief/<slug>/r/<id> shape that the live_link formula
+// builds once a brief is indexed is NOT routed in Studio: it 404s live,
+// which is why an invite's button went nowhere. Every share and every
+// invite uses the recordId form, which always resolves.
+function creatorUrlFor(briefId) {
+  if (!briefId) return "";
+  return `https://www.brieflee.co/brief/details/live?recordId=${encodeURIComponent(briefId)}`;
 }
 // Editor URL — for team members. Includes the recordId since the editor
 // page is filtered by recordId-in-page-URL.
 function teamUrlFor(briefId) {
   if (!briefId) return "";
-  return `https://brieflee.co/briefs/details?recordId=${encodeURIComponent(briefId)}`;
-}
-// kebab-case the name + append a 6-char briefId suffix for uniqueness.
-// Same shape as the backfill script that ran when the slug field was added.
-function generateSlug(name, briefId) {
-  if (!briefId) return "";
-  const base = String(name || "untitled")
-    .toLowerCase()
-    .replace(/['‘’“”]/g, "")
-    .replace(/[^\w\s-]/g, " ")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 60);
-  const suffix = briefId.slice(-6).toLowerCase();
-  return base ? `${base}-${suffix}` : suffix;
+  return `https://www.brieflee.co/briefs/details?recordId=${encodeURIComponent(briefId)}`;
 }
 async function copyToClipboard(text) {
   if (!text) return false;
@@ -1347,7 +1335,7 @@ export default function Block() {
     const res = await emailitFetch("https://api.emailit.com/v2/emails", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Idempotency-Key": idemKey },
-      body: JSON.stringify({ from: "Brieflee <bev@brieflee.co>", to, subject, template, variables }),
+      body: JSON.stringify({ from: "Brieflee <support@brieflee.co>", to, subject, template, variables }),
     });
     if (!res.ok) throw new Error("Saved, but the email failed to send (" + res.status + "). Invite again to resend.");
   };
@@ -1400,7 +1388,7 @@ export default function Block() {
           account: account?.fields?.accountName || "",
           inviter: inviteUser?.fullName || "",
           brief_name: unwrap(f.name) || "",
-          link: unwrap(f.live_link) || "",
+          link: creatorUrlFor(briefId),
         };
         const invMsg = String(message || "").trim();
         if (invMsg) invVars.message = invMsg;
@@ -1435,7 +1423,7 @@ export default function Block() {
       account: account?.fields?.accountName || "",
       inviter: inviteUser?.fullName || "",
       brief_name: unwrap(f.name) || "",
-      link: unwrap(f.live_link) || "",
+      link: creatorUrlFor(briefId),
     };
     const rowMsg = String(unwrap(fl.member_message) || "").trim();
     if (rowMsg) rowVars.message = rowMsg;
@@ -1778,9 +1766,8 @@ export default function Block() {
   };
 
   // ─── Share + publish ──────────────────────────────────────
-  const existingSlug = typeof f.slug === "string" ? f.slug.trim() : "";
   const [shareOpen, setShareOpen] = useState(false);
-  const creatorUrl = creatorUrlFor(existingSlug || generateSlug(unwrap(f.name), briefId));
+  const creatorUrl = creatorUrlFor(briefId);
   const teamUrl = teamUrlFor(briefId);
   const [publishSaving, setPublishSaving] = useState(false);
   const publish = async () => {
