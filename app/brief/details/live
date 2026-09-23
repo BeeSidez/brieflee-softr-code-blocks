@@ -1464,7 +1464,7 @@ export default function Block() {
   // ── The pipeline, one video at a time ────────────────────────
   async function runPipeline(item, myRun, ui, ctx) {
     // Per-submission settings from the panel.
-    const { agents, briefId, brief, notes, pdf, creatorName, creatorEmail, creatorMobile, creatorSocials, whatsappOptIn } = ctx;
+    const { agents, briefId, brief, notes, pdf, creatorName, creatorEmail, creatorMobile, creatorSocials } = ctx;
     const aiModeLabel = unwrapE(brief?.aiMode) || unwrapE(af?.aiMode) || "Hybrid";
     const alive = () => runRef.current === myRun;
     const isFile = item.kind === "file";
@@ -1692,9 +1692,11 @@ export default function Block() {
       // Kept as typed, one per line. The structured set lives on the
       // member row; this is the receipt for this video.
       creatorSocials: (creatorSocials || []).map((v) => (socialUrl(v) || {}).url).filter(Boolean).join("\n"),
-      // Consent to be messaged on WhatsApp, as the creator gave it.
-      // Never defaulted true: a pre-ticked box is not consent.
-      whatsappOptIn: !!whatsappOptIn,
+      // A creator typing their own number into this form, on a brief
+      // they were invited to, is giving it for exactly this. The row
+      // itself is the record: their number, their submission, the
+      // timestamp. A separate tick asked them to agree twice.
+      whatsappOptIn: !!String(creatorMobile || "").trim(),
       submissionType: context === "submission" ? OPT.subTypeRevision : (STEPPER && kind === "analyse" ? OPT.subTypeAnalyse : STEPPER && kind === "remix" ? OPT.subTypeSwipe : briefId ? OPT.subTypeBrief : OPT.subTypeContentReview),
       status: OPT.statusReviewed,
       userValidation: OPT.userValidationProceed,
@@ -1818,7 +1820,7 @@ export default function Block() {
     if (unwrapE(briefE.status) !== "Active") throw new Error("This brief is closed to new submissions.");
     if (lookupStatus && lookupStatus !== "Active") throw new Error("This brief isn't taking submissions right now. Check back later or contact the brand.");
     if (!uploaded?.url) throw new Error("The upload did not finish. Try again.");
-    const ctx = { agents: [], briefId, brief: briefE, notes: note || "", pdf: null, pdfUploaded: null, creatorName: name, creatorEmail: email, creatorMobile: mobile, creatorSocials: Object.values(socialVals), whatsappOptIn: whatsappOk };
+    const ctx = { agents: [], briefId, brief: briefE, notes: note || "", pdf: null, pdfUploaded: null, creatorName: name, creatorEmail: email, creatorMobile: mobile, creatorSocials: Object.values(socialVals) };
     const item = { kind: "file", file: file || null, label: uploaded.filename, uploaded };
     const r = await runPipeline(item, runRef.current, { stage: () => {}, preview: () => {} }, ctx);
     if (!r) throw new Error("The review did not finish.");
@@ -2536,7 +2538,6 @@ function UploadPanel({
   // Socials are a row of logos, not a stack of inputs: tap one, fill
   // it, it closes. Nothing is asked for that the creator did not ask
   // to give.
-  const [whatsappOk, setWhatsappOk] = useState(false);
   const [socialVals, setSocialVals] = useState({});
   const [socialOpen, setSocialOpen] = useState("");
   const [socialDraft, setSocialDraft] = useState("");
@@ -2574,7 +2575,6 @@ function UploadPanel({
 
   const reset = () => {
     setStep(1); setVideo(null); setName(""); setEmail(""); setMobile("");
-    setWhatsappOk(false);
     setSocialVals({}); setSocialOpen(""); setSocialDraft("");
     setDone(false); setResult(null); setError("");
   };
@@ -2716,11 +2716,7 @@ function UploadPanel({
                   id="bl-up-mobile" className="bl-up-input" type="tel" placeholder="+44 7700 900000"
                   value={mobile} onChange={(e) => setMobile(e.target.value)}
                 />
-<label className="bl-up-consent">
-                  <input type="checkbox" checked={whatsappOk} onChange={(e) => setWhatsappOk(e.target.checked)} />
-                  <span>Send me WhatsApp updates about this brief</span>
-                </label>
-                <label className="bl-up-label">Share your socials <span style={{ opacity: 0.6, fontWeight: 400 }}>(optional)</span></label>
+<label className="bl-up-label">Share your socials <span style={{ opacity: 0.6, fontWeight: 400 }}>(optional)</span></label>
                 <div className="bl-up-socials">
                   {SOCIAL_HOSTS.map((h) => (
                     <button
