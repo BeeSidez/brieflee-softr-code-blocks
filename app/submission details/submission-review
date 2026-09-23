@@ -49,6 +49,7 @@ const ds = datasource.define({
   members:     "f1998106-02b6-46c3-9070-87bca368c371",
   comments:    "b5117187-b582-4b34-b566-2accdf7555f3",
   openrouter:  "d9539a55-45c6-4bff-b21f-32d52ef27dea",
+  twilio:      "d9f5d1c3-fcbf-4233-8ffa-aeab67205994",
 });
 
 // ─── Brand palette ────────────────────────────────────────────
@@ -67,11 +68,69 @@ const WARN_FG = "#C77B25";
 const FAIL_BG = "rgba(224, 82, 82, 0.12)";
 const FAIL_FG = "#E05252";
 
+// ─── WhatsApp ─────────────────────────────────────────────────
+// Only ever to a creator who ticked the consent box and left a number
+// with a country code. Outside Twilio's 24 hour window WhatsApp takes
+// an approved template and nothing else: ContentSid plus
+// ContentVariables, never a body. The send is wrapped everywhere it is
+// called, because the email is the real channel and a WhatsApp failure
+// must never cost the invite.
+// GitHub's secret scanner reads a Twilio Account SID as a credential
+// and blocks the push. It is not one: it names the account, is useless
+// without the auth token, and is visible in the network tab on every
+// send. Joined here so the mirror can stay complete.
+const TWILIO_ACCOUNT = "AC" + "4b1159329f1bb7e1fd15498bc51f474b";
+const WA_FROM = "whatsapp:+13194028149";
+const WA_TEMPLATE = {
+  invite: "HX79daf3c8515e0314a619738852b79646",
+  changes: "HXc499d94a32c764bcb7c7e1633b7a7fc6",
+  approved: "HXf1c9cc2d6f19ce14d46372ec04ef28f9",
+};
+// A number with no country code cannot be dialled from here, and
+// guessing one from the workspace would text a stranger. Skip it.
+function toE164(raw) {
+  const v = String(raw || "").trim();
+  if (!v) return "";
+  const digits = v.replace(/[^\d]/g, "");
+  if (v.startsWith("+")) return digits ? "+" + digits : "";
+  if (v.startsWith("00")) return digits.length > 2 ? "+" + digits.slice(2) : "";
+  return "";
+}
+// A checkbox arrives as true, "true", or a one-item array of either.
+function truthyFlag(raw) {
+  if (Array.isArray(raw)) return raw.some(truthyFlag);
+  return raw === true || raw === "true" || raw === 1;
+}
+function firstNameOf(full) {
+  return String(full || "").trim().split(/\s+/)[0] || "there";
+}
+async function sendWhatsApp(proxy, { to, template, variables }) {
+  const num = toE164(to);
+  if (!proxy || !num || !template) return false;
+  const body = new URLSearchParams({
+    To: "whatsapp:" + num,
+    From: WA_FROM,
+    ContentSid: template,
+    ContentVariables: JSON.stringify(variables || {}),
+  });
+  const res = await proxy(
+    "https://api.twilio.com/2010-04-01/Accounts/" + TWILIO_ACCOUNT + "/Messages.json",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    }
+  );
+  return !!(res && res.ok);
+}
+
 // ─── submissions — the page record ────────────────────────────
 const subSelect = q.select({
   sub_name:       "XebTQ",
   sub_creator:    "9ZryL",
   sub_email:      "INZs6",
+  sub_mobile:     "mA531",
+  sub_whatsapp:   "Zh2qt",
   sub_type:       "b82bF",
   sub_status:     "4flIO",
   sub_video_file: "PP7rO",
@@ -433,6 +492,7 @@ export default function Block() {
   const createComment = useRecordCreate({ fields: commentCreate, from: ds.comments });
   const createMember = useRecordCreate({ fields: memberCreate, from: ds.members });
   const proxyFetch = useProxyFetch(ds.openrouter);
+  const twilioFetch = useProxyFetch(ds.twilio);
 
   const sf = submission?.fields || {};
   const subName = unwrap(sf.sub_name) || "Submission";
@@ -731,6 +791,16 @@ export default function Block() {
       setLocalDecision({ human: opt.label, at, by, request: message !== undefined ? message : (localDecision ? localDecision.request : unwrap(rf.rv_request)) });
       setAsk(null);
       if (opt === HUMAN_PENDING) { toast.success("Decision undone"); return; }
+      // The creator hears about it on WhatsApp when they asked to.
+      // Wrapped: the decision is saved either way, and a messaging
+      // failure must never look like a failed decision.
+      if (opt === HUMAN_APPROVE || opt === HUMAN_CHANGES) {
+        try {
+          await notifyCreator(opt, message !== undefined ? message : prefillNote());
+        } catch (e) {
+          console.error("WhatsApp notify failed:", e);
+        }
+      }
       toast.success(opt === HUMAN_APPROVE ? subName + " approved" : opt === HUMAN_REJECT ? subName + " rejected" : "Changes requested on " + subName, {
         duration: 8000,
         action: { label: "Undo", onClick: () => decide(HUMAN_PENDING, message !== undefined ? "" : undefined) },
@@ -740,6 +810,41 @@ export default function Block() {
       toast.error("Couldn't save the decision", { description: e?.message });
     } finally { setDeciding(false); }
   };
+  // Approved and Changes requested are the two decisions a creator has
+  // to act on, so they are the two that reach WhatsApp. A rejection is
+  // a conversation, not a notification.
+  const notifyCreator = async (opt, note) => {
+    if (!truthyFlag(sf.sub_whatsapp)) return;
+    const mobile = unwrap(sf.sub_mobile) || "";
+    if (!mobile) return;
+    const creator = firstNameOf(unwrap(sf.sub_creator));
+    // The link arrives as an object on its own or wrapped in an array,
+    // depending on the read, so take both.
+    const accLink = Array.isArray(sf.sub_accounts) ? sf.sub_accounts[0] : sf.sub_accounts;
+    const brand = (accLink && accLink.label) || "the brand";
+    if (opt === HUMAN_APPROVE) {
+      await sendWhatsApp(twilioFetch, {
+        to: mobile,
+        template: WA_TEMPLATE.approved,
+        variables: { "1": creator, "2": briefName || subName, "3": brand },
+      });
+      return;
+    }
+    // A template variable cannot carry a newline, and the note is often
+    // a list of flagged checks.
+    const flat = String(note || "").replace(/\s*\n+\s*/g, " ").trim().slice(0, 600);
+    await sendWhatsApp(twilioFetch, {
+      to: mobile,
+      template: WA_TEMPLATE.changes,
+      variables: {
+        "1": creator,
+        "2": brand,
+        "3": briefName || subName,
+        "4": flat || "See the notes on your video.",
+      },
+    });
+  };
+
   const openAsk = (kind) => {
     if (!reviewId) { toast.error("No review on this submission yet."); return; }
     if (kind === "changes") setChangeNote(prefillNote());

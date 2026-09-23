@@ -90,6 +90,7 @@ const memberCreateFields = q.select({
   instagramUrl: "WAzGk",
   youtubeUrl: "zxGHW",
   facebookUrl: "Xy9eN",
+  whatsappOptIn: "9LIQx",
   status: "ZjtKB",
   accessLevel: "8B5e8",
   briefs: "S8k72",
@@ -166,6 +167,7 @@ const memberUpdateFields = q.select({
   instagramUrl: "WAzGk",
   youtubeUrl: "zxGHW",
   facebookUrl: "Xy9eN",
+  whatsappOptIn: "9LIQx",
   status: "ZjtKB",
   briefs: "S8k72",
   submissions: "WmfhK",
@@ -356,6 +358,7 @@ const submissionCreate = q.select({
   creatorEmail:    "INZs6",
   creatorMobile:   "mA531",
   creatorSocials:  "dWUnp",
+  whatsappOptIn:   "Zh2qt",
   submissionType:  "b82bF",
   status:          "4flIO",
   userValidation:  "QqS0I",
@@ -1220,6 +1223,9 @@ function Style() {
         padding: 0 13px; font-size: 13.5px; font-weight: 600; color: #001364;
         transition: border-color 160ms ease, box-shadow 160ms ease;
       }
+      .bl-up-consent { display: flex; align-items: flex-start; gap: 9px; margin-top: 12px; cursor: pointer; }
+      .bl-up-consent input { width: 16px; height: 16px; margin: 1px 0 0; accent-color: #879CF7; flex-shrink: 0; cursor: pointer; }
+      .bl-up-consent span { font-size: 12.5px; color: #6B7A99; line-height: 1.45; }
       .bl-up-socials { display: flex; gap: 10px; margin-top: 8px; }
       .bl-up-socialbtn { width: 44px; height: 44px; padding: 6px; border-radius: 12px; border: 1px solid rgba(217,224,255,0.7); background: #FFFFFF; cursor: pointer; opacity: 0.45; filter: grayscale(1); transition: opacity 0.15s, filter 0.15s, border-color 0.15s, transform 0.15s; }
       .bl-up-socialbtn:hover { opacity: 0.85; filter: grayscale(0.2); transform: translateY(-1px); }
@@ -1453,6 +1459,7 @@ export default function Block() {
   // Socials are a row of logos, not a stack of inputs: tap one, fill
   // it, it closes. Nothing is asked for that the creator did not ask
   // to give.
+  const [whatsappOk, setWhatsappOk] = useState(false);
   const [socialVals, setSocialVals] = useState({});
   const [socialOpen, setSocialOpen] = useState("");
   const [socialDraft, setSocialDraft] = useState("");
@@ -1590,7 +1597,7 @@ export default function Block() {
   // ── The pipeline, one video at a time ────────────────────────
   async function runPipeline(item, myRun, ui, ctx) {
     // Per-video settings from the submit queue.
-    const { agents, briefId, brief, notes, pdf, creatorName, creatorEmail, creatorMobile, creatorSocials } = ctx;
+    const { agents, briefId, brief, notes, pdf, creatorName, creatorEmail, creatorMobile, creatorSocials, whatsappOptIn } = ctx;
     const aiModeLabel = unwrapE(brief?.aiMode) || unwrapE(af?.aiMode) || "Hybrid";
     const alive = () => runRef.current === myRun;
     const isFile = item.kind === "file";
@@ -1818,6 +1825,9 @@ export default function Block() {
       // Kept as typed, one per line. The structured set lives on the
       // member row; this is the receipt for this video.
       creatorSocials: (creatorSocials || []).map((v) => (socialUrl(v) || {}).url).filter(Boolean).join("\n"),
+      // Consent to be messaged on WhatsApp, as the creator gave it.
+      // Never defaulted true: a pre-ticked box is not consent.
+      whatsappOptIn: !!whatsappOptIn,
       submissionType: context === "submission" ? OPT.subTypeRevision : (STEPPER && kind === "analyse" ? OPT.subTypeAnalyse : STEPPER && kind === "remix" ? OPT.subTypeSwipe : briefId ? OPT.subTypeBrief : OPT.subTypeContentReview),
       status: OPT.statusReviewed,
       userValidation: OPT.userValidationProceed,
@@ -2003,6 +2013,7 @@ export default function Block() {
             creatorEmail: cleanEmail,
             creatorMobile: cleanMobile,
             creatorSocials: Object.values(socialVals),
+            whatsappOptIn: whatsappOk,
             // One confirmation for the batch, not one per video. This is
             // what the `logic = Bulk upload` field used to buy from n8n.
             bulk: readyVideos.length > 1 && i > 0,
@@ -2037,6 +2048,9 @@ export default function Block() {
           if (cleanName) fields.fullName = cleanName;
           if (cleanMobile) fields.mobile = cleanMobile;
           Object.assign(fields, socialVals);
+          // Consent is only ever raised by the creator, never withdrawn
+          // by a later upload where they left the box alone.
+          if (whatsappOk) fields.whatsappOptIn = true;
           await updateMember.mutateAsync({ recordId: existing.id, fields });
         } else if (!existing && createMember.enabled) {
           await createMember.mutateAsync({
@@ -2049,6 +2063,7 @@ export default function Block() {
             submissions: createdIds.length ? createdIds.map((id) => ({ id })) : null,
             accounts: [{ id: accountId }],
             ...socialVals,
+            whatsappOptIn: whatsappOk,
           });
         }
       } catch (e) {
@@ -2254,7 +2269,12 @@ export default function Block() {
                   </div>
                 </div>
 
-<div style={{ marginTop: 14 }}>
+<label className="bl-up-consent">
+                  <input type="checkbox" checked={whatsappOk} disabled={submitting}
+                    onChange={(e) => setWhatsappOk(e.target.checked)} />
+                  <span>Send me WhatsApp updates about this upload</span>
+                </label>
+                <div style={{ marginTop: 14 }}>
                   <label className="bl-up-label">Share your socials <span style={{ opacity: 0.6, fontWeight: 400 }}>(optional)</span></label>
                 <div className="bl-up-socials">
                   {SOCIAL_HOSTS.map((h) => (

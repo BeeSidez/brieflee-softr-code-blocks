@@ -58,6 +58,7 @@ const memberSelect = q.select({
   instagramUrl: "WAzGk",
   youtubeUrl: "zxGHW",
   facebookUrl: "Xy9eN",
+  whatsappOptIn: "9LIQx", // CHECKBOX, the creator's own consent
   profileImage: "oYgpj", // URL, dormant until something fills it
 });
 
@@ -77,6 +78,7 @@ const createFields = q.select({
   instagramUrl: "WAzGk",
   youtubeUrl: "zxGHW",
   facebookUrl: "Xy9eN",
+  whatsappOptIn: "9LIQx",
   status: "ZjtKB",
   accounts: "O72qI",
   users: "C0WMG",
@@ -105,6 +107,7 @@ const updateFields = q.select({
   instagramUrl: "WAzGk",
   youtubeUrl: "zxGHW",
   facebookUrl: "Xy9eN",
+  whatsappOptIn: "9LIQx",
 });
 
 const INACTIVE_STATUS = { id: "03c13765-2663-4362-819f-098ef8e2a701", label: "Inactive" };
@@ -274,6 +277,14 @@ function initials(name) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+// Consent is the difference between a number you may use and one you
+// may only look at, so the card says which it is.
+function consentStyle(ok) {
+  return ok
+    ? { background: "rgba(32,149,111,0.12)", color: "#1B7A5C" }
+    : { background: "rgba(107,122,153,0.14)", color: MUTED };
+}
+
 function statusStyle(status) {
   if (status === "Active") return { background: "rgba(32,149,111,0.12)", color: "#1B7A5C" };
   if (status === "Invited") return { background: "rgba(135,156,247,0.16)", color: NAVY_DEEP };
@@ -379,6 +390,10 @@ function Style() {
       .bl-members-card-rows { display: flex; flex-direction: column; gap: 6px; }
       .bl-members-card-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: ${NAVY_DEEP}; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .bl-members-card-row svg { flex-shrink: 0; color: ${PERIWINKLE}; }
+      .bl-members-consent { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+      .bl-members-consent input { width: 15px; height: 15px; margin: 0; accent-color: ${PERIWINKLE}; cursor: pointer; }
+      .bl-members-consent span { font-size: 12.5px; color: ${MUTED}; }
+      .bl-members-consent-tag { font-size: 10.5px; font-weight: 600; border-radius: 999px; padding: 2px 8px; margin-left: 2px; white-space: nowrap; }
       .bl-members-socials { display: flex; gap: 8px; margin-top: 4px; }
       .bl-members-socialbtn { width: 38px; height: 38px; padding: 5px; border-radius: 10px; border: 1px solid ${BORDER}; background: #FFFFFF; cursor: pointer; opacity: 0.45; filter: grayscale(1); transition: opacity 0.15s, filter 0.15s, border-color 0.15s, transform 0.15s; display: inline-block; }
       .bl-members-socialbtn:hover { opacity: 0.9; filter: grayscale(0.2); transform: translateY(-1px); }
@@ -645,7 +660,7 @@ function ImportModal({ open, existingEmails, canWrite, onImport, onClose, onDone
 // member's briefs or their status.
 function ContactCard({ member, canUpdate, onSave }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({ name: "", email: "", mobile: "" });
+  const [draft, setDraft] = useState({ name: "", email: "", mobile: "", whatsapp: false });
   // Socials are a row of logos, tapped one at a time, so the card
   // never turns into a column of four empty boxes.
   const [socialVals, setSocialVals] = useState({});
@@ -675,7 +690,7 @@ function ContactCard({ member, canUpdate, onSave }) {
   }, [member.id]);
 
   const start = () => {
-    setDraft({ name: member.name || "", email: member.email || "", mobile: member.mobile || "" });
+    setDraft({ name: member.name || "", email: member.email || "", mobile: member.mobile || "", whatsapp: !!member.whatsappOptIn });
     setSocialVals((member.socials || []).reduce((m, l) => { m[l.field] = l.url; return m; }, {}));
     setSocialOpen("");
     setSocialDraft("");
@@ -696,6 +711,7 @@ function ContactCard({ member, canUpdate, onSave }) {
         fullName: draft.name.trim(),
         email,
         mobile: draft.mobile.trim(),
+        whatsappOptIn: !!draft.whatsapp,
         ...socialPatch,
       });
       setEditing(false);
@@ -726,6 +742,11 @@ function ContactCard({ member, canUpdate, onSave }) {
             onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))} />
           <input className="bl-members-input" value={draft.mobile} placeholder="Mobile, with the country code" disabled={saving}
             onChange={(e) => setDraft((d) => ({ ...d, mobile: e.target.value }))} />
+          <label className="bl-members-consent">
+            <input type="checkbox" checked={draft.whatsapp} disabled={saving}
+              onChange={(e) => setDraft((d) => ({ ...d, whatsapp: e.target.checked }))} />
+            <span>Agreed to WhatsApp updates</span>
+          </label>
           <div className="bl-members-socials">
             {SOCIAL_HOSTS.map((h) => (
               <button
@@ -758,7 +779,15 @@ function ContactCard({ member, canUpdate, onSave }) {
       ) : (
         <div className="bl-members-card-rows">
           <p className="bl-members-card-row"><Mail size={13} />{member.email || "No email"}</p>
-          <p className="bl-members-card-row"><Phone size={13} />{member.mobile || "No mobile yet"}</p>
+          <p className="bl-members-card-row">
+            <Phone size={13} />
+            {member.mobile || "No mobile yet"}
+            {member.mobile && (
+              <span className="bl-members-consent-tag" style={consentStyle(member.whatsappOptIn)}>
+                {member.whatsappOptIn ? "WhatsApp ok" : "No WhatsApp consent"}
+              </span>
+            )}
+          </p>
           {(member.socials || []).length > 0 && (
             <div className="bl-members-socials">
               {member.socials.map((l) => (
@@ -952,6 +981,7 @@ export default function Block() {
         message: text(f.message),
         mobile: text(f.mobile),
         profileImage: text(f.profileImage),
+        whatsappOptIn: truthy(f.whatsappOptIn),
         socials: SOCIAL_HOSTS
           .map((h) => ({ field: h.field, label: h.label, url: text(f[h.field]) }))
           .filter((x) => x.url),

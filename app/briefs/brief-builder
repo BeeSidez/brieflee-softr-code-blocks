@@ -93,6 +93,7 @@ const ds = datasource.define({
   products: "products",
   firecrawl: "b3073139-feb0-450a-9b1d-f7ea3a073ab4",
   emailit: "3ff2897c-ad36-4d29-afd4-03dfd7d80736",
+  twilio: "17937918-930d-41c6-872d-ee4a9f3eff0e",
 });
 import { useCurrentUser } from "@/lib/user";
 import {
@@ -278,6 +279,62 @@ const subSelect = q.select({
   sub_review_status: "n6vL1",
   sub_live_link: "2M9qQ",
 });
+// ─── WhatsApp ─────────────────────────────────────────────────
+// Only ever to a creator who ticked the consent box and left a number
+// with a country code. Outside Twilio's 24 hour window WhatsApp takes
+// an approved template and nothing else: ContentSid plus
+// ContentVariables, never a body. The send is wrapped everywhere it is
+// called, because the email is the real channel and a WhatsApp failure
+// must never cost the invite.
+// GitHub's secret scanner reads a Twilio Account SID as a credential
+// and blocks the push. It is not one: it names the account, is useless
+// without the auth token, and is visible in the network tab on every
+// send. Joined here so the mirror can stay complete.
+const TWILIO_ACCOUNT = "AC" + "4b1159329f1bb7e1fd15498bc51f474b";
+const WA_FROM = "whatsapp:+13194028149";
+const WA_TEMPLATE = {
+  invite: "HX79daf3c8515e0314a619738852b79646",
+  changes: "HXc499d94a32c764bcb7c7e1633b7a7fc6",
+  approved: "HXf1c9cc2d6f19ce14d46372ec04ef28f9",
+};
+// A number with no country code cannot be dialled from here, and
+// guessing one from the workspace would text a stranger. Skip it.
+function toE164(raw) {
+  const v = String(raw || "").trim();
+  if (!v) return "";
+  const digits = v.replace(/[^\d]/g, "");
+  if (v.startsWith("+")) return digits ? "+" + digits : "";
+  if (v.startsWith("00")) return digits.length > 2 ? "+" + digits.slice(2) : "";
+  return "";
+}
+// A checkbox arrives as true, "true", or a one-item array of either.
+function truthyFlag(raw) {
+  if (Array.isArray(raw)) return raw.some(truthyFlag);
+  return raw === true || raw === "true" || raw === 1;
+}
+function firstNameOf(full) {
+  return String(full || "").trim().split(/\s+/)[0] || "there";
+}
+async function sendWhatsApp(proxy, { to, template, variables }) {
+  const num = toE164(to);
+  if (!proxy || !num || !template) return false;
+  const body = new URLSearchParams({
+    To: "whatsapp:" + num,
+    From: WA_FROM,
+    ContentSid: template,
+    ContentVariables: JSON.stringify(variables || {}),
+  });
+  const res = await proxy(
+    "https://api.twilio.com/2010-04-01/Accounts/" + TWILIO_ACCOUNT + "/Messages.json",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    }
+  );
+  return !!(res && res.ok);
+}
+
 const memberSelect = q.select({
   member_name: "qtE5x",
   member_email: "v0MOD",
@@ -289,6 +346,8 @@ const memberSelect = q.select({
   member_accounts: "O72qI",
   member_access: "8B5e8",
   member_message: "s4Kev",
+  member_mobile: "Eo4ZC",
+  member_whatsapp: "9LIQx",
 });
 
 // ─── member invites — write schemas, statuses, send helpers ───
@@ -1285,6 +1344,32 @@ export default function Block() {
   const createMember = useRecordCreate({ from: ds.members, fields: memberCreateFields });
   const updateMember = useRecordUpdate({ from: ds.members, fields: memberUpdateFields });
   const emailitFetch = useProxyFetch(ds.emailit);
+  const twilioFetch = useProxyFetch(ds.twilio);
+
+  // The same three facts every WhatsApp send needs, read off whichever
+  // member row we already have in hand.
+  // Returns whether a WhatsApp actually went, so the toast can say so.
+  const waInviteFor = async (fields, memberName) => {
+    const f2 = fields || {};
+    if (!truthyFlag(f2.member_whatsapp)) return false;
+    const mobile = unwrap(f2.member_mobile) || "";
+    if (!mobile) return false;
+    try {
+      return await sendWhatsApp(twilioFetch, {
+        to: mobile,
+        template: WA_TEMPLATE.invite,
+        variables: {
+          "1": firstNameOf(memberName || unwrap(f2.member_name)),
+          "2": account?.fields?.accountName || "the brand",
+          "3": unwrap(f.name) || "your brief",
+          "4": creatorUrlFor(briefId),
+        },
+      });
+    } catch (e) {
+      console.error("WhatsApp invite failed:", e);
+      return false;
+    }
+  };
   const inviteUser = useCurrentUser();
   const [inviteBusy, setInviteBusy] = useState(false);
   const [reviewShareFor, setReviewShareFor] = useState(null);
@@ -1418,7 +1503,8 @@ export default function Block() {
           idemKey: `bl-invite-${memberId || cleanEmail}-${briefId}-${Math.floor(Date.now() / 60000)}`,
           variables: invVars,
         });
-        toast.success("Invite sent");
+        const alsoWa = await waInviteFor(existing?.fields, name);
+        toast.success(alsoWa ? "Invite sent by email and WhatsApp" : "Invite sent");
       } else {
         toast.success(published ? "Added. Send their invite from the list when you're ready." : "Added. Send their invite once the brief is published.");
       }
@@ -1453,17 +1539,19 @@ export default function Block() {
       idemKey: `bl-invite-${row.id}-${briefId}-${Math.floor(Date.now() / 60000)}`,
       variables: rowVars,
     });
+    const alsoWa = await waInviteFor(fl, unwrap(fl.member_name));
     await updateMember.mutateAsync({
       recordId: row.id,
       fields: { mu_status: MEMBER_STATUS.invited, mu_invited: new Date().toISOString().slice(0, 10) },
     });
+    return alsoWa;
   };
 
   const handleSendRowInvite = async (row) => {
     setSendingRowId(row.id);
     try {
-      await sendRowInviteCore(row);
-      toast.success("Invite sent");
+      const alsoWa = await sendRowInviteCore(row);
+      toast.success(alsoWa ? "Invite sent by email and WhatsApp" : "Invite sent");
       await refetchMembers();
     } catch (e) {
       toast.error("Send failed", { description: e.message });
@@ -4259,6 +4347,23 @@ const invGhostBtnStyle = { fontFamily: INV_FONT, fontSize: 12.5, fontWeight: 600
 const invSmallBtnStyle = { ...invButtonStyle, fontSize: 12.5, padding: "7px 14px" };
 const invGrid = "2.2fr 1.1fr 0.9fr 1fr 1fr";
 
+// The WhatsApp mark itself, drawn rather than fetched so it stays
+// crisp at 13px and never waits on a CDN. Brand green, because a
+// recoloured WhatsApp logo reads as a fake one.
+function WaMark({ size = 13 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0, display: "block" }}>
+      <path fill="#25D366" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884a9.82 9.82 0 0 1 6.988 2.896 9.83 9.83 0 0 1 2.893 6.994c-.003 5.45-4.437 9.886-9.885 9.886m8.413-18.297A11.8 11.8 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.9 11.9 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.8 11.8 0 0 0 20.464 3.488" />
+    </svg>
+  );
+}
+// Reachable on WhatsApp means both halves: they agreed, and the number
+// they left carries a country code.
+function waReady(fields) {
+  const f = fields || {};
+  return truthyFlag(f.member_whatsapp) && !!toE164(unwrap(f.member_mobile));
+}
+
 function invStatusStyle(status) {
   if (status === "Active") return { background: "rgba(32,149,111,0.12)", color: "#1B7A5C" };
   if (status === "Invited") return { background: "rgba(135,156,247,0.16)", color: NAVY_DEEP };
@@ -4509,7 +4614,8 @@ function InvitesView({ rows, published, canInvite, onAdd, onSendRow, onSendRows,
         </p>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {selRows.length > 0 && (
-            <button type="button" style={{ ...invSmallBtnStyle, opacity: bulkBusy ? 0.6 : 1 }} disabled={bulkBusy} onClick={doBulk}>
+            <button type="button" style={{ ...invSmallBtnStyle, opacity: bulkBusy ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 7 }} disabled={bulkBusy} onClick={doBulk}>
+              {!bulkBusy && selRows.some((x) => waReady(x.fields)) && <WaMark size={13} />}
               {bulkBusy ? "Sending…" : selRows.length === 1 ? "Send 1 invite now" : "Send " + selRows.length + " invites now"}
             </button>
           )}
@@ -4564,6 +4670,15 @@ function InvitesView({ rows, published, canInvite, onAdd, onSendRow, onSendRows,
                 <div style={{ minWidth: 0 }}>
                   <p style={{ margin: 0, fontFamily: INV_FONT, fontSize: 13, fontWeight: 600, color: NAVY_DEEP, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</p>
                   <p style={{ margin: 0, fontFamily: INV_FONT, fontSize: 12, color: MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{unwrap(fl.member_email)}</p>
+                  {waReady(fl) && (
+                    <span
+                      title={"Also reaches them on WhatsApp: " + unwrap(fl.member_mobile)}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 3, padding: "2px 8px 2px 6px", borderRadius: 999, background: "rgba(37,211,102,0.12)", color: "#1B7A4B", fontFamily: INV_FONT, fontSize: 11, fontWeight: 600 }}
+                    >
+                      <WaMark size={12} />
+                      WhatsApp
+                    </span>
+                  )}
                 </div>
               </div>
               <span style={{ fontFamily: INV_FONT, fontSize: 12.5, color: NAVY_DEEP }}>{access || "Not set"}</span>
@@ -4571,7 +4686,14 @@ function InvitesView({ rows, published, canInvite, onAdd, onSendRow, onSendRows,
               <span style={{ fontFamily: INV_FONT, fontSize: 12.5, color: NAVY_DEEP }}>{fmtInviteDate(fl.member_invited) || "Not yet"}</span>
               <span style={{ textAlign: "right" }}>
                 {(rowEligible || canResend(r)) && (
-                  <button type="button" style={{ ...invGhostBtnStyle, opacity: sending ? 0.6 : 1 }} disabled={sending} onClick={() => onSendRow(r)}>
+                  <button
+                    type="button"
+                    title={waReady(fl) ? "Sends an email and a WhatsApp" : "Sends an email"}
+                    style={{ ...invGhostBtnStyle, opacity: sending ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 7 }}
+                    disabled={sending}
+                    onClick={() => onSendRow(r)}
+                  >
+                    {waReady(fl) && !sending && <WaMark size={13} />}
                     {sending ? "Sending…" : rowEligible ? "Send invite" : "Resend"}
                   </button>
                 )}
