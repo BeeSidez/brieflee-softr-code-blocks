@@ -1,0 +1,2115 @@
+// =====================================================================
+// Project details (Vibe Code block) — Source: brieflee beta → briefs.
+// Page: /projects/details, a CHILD of the project index, so the
+// project arrives as ?recordId=<projectId> and everything here keys
+// off it (pageProjectId, read once inline).
+//
+// THIS BLOCK IS THE WHOLE PAGE. Everything the page used to spread
+// across separate blocks lives here:
+//   • Back to Projects  — same behaviour the standalone back-button
+//     block had, with the route corrected: the project index lives at
+//     /project, so a same-origin referrer wins and /project is the
+//     fallback (the standalone block fell back to /projects, a 404)
+//   • the project name  — read straight from the projects source by the
+//     recordId in the URL, so it resolves on a project with no briefs
+//   • Comments          — Softr's own Comments panel, opened the way
+//     the native block did it: write the search param, then fire
+//     @softr/url-search-param-change/<param>, one per param, no
+//     reload. THIS BLOCK is the thread anchor (verified in preview: a
+//     vibe block id anchors threads exactly like a native block id).
+//   • the brief list, its tabs, search, filters and card actions
+//
+// Every page action sits in ONE row, to the right of search and the
+// filters, so nothing floats a level above anything else:
+//   • Comments      → the panel above (icon only, it is a quiet control)
+//   • Import PDFs   → /pdf         (side panel, carries ?recordId=<projectId>)
+//   • Upload briefs → /bulk-briefs (side panel, CSV importer)
+//   • New brief     → /new-brief   (side panel, carries the project so
+//                                   the chat skips its project step)
+//
+// TWO data sources are wired here, briefs and projects, so every hook
+// carries `from:`. Softr throws the moment one is missing.
+// =====================================================================
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  datasource, useRecords, useRecord, useRecordCreate, useRecordUpdate,
+  useRecordDelete, useUpload, q,
+} from "@/lib/datasource";
+import { useCurrentUser } from "@/lib/user";
+import {
+  Archive, ArrowLeft, Inbox, Grid as GridIcon, List as ListIcon,
+  Lock, LockOpen, MessageSquare, Plus, Search, X,
+  MoreHorizontal, UserPlus, Copy as CopyIcon, Link2 as LinkIcon,
+  Settings, Trash2, Upload as UploadIcon,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
+
+// ─── Brand palette ────────────────────────────────────────────
+const NAVY = "#000F4D";
+// This block's own id. Softr's Comments panel namespaces threads by
+// blockId, so this is the anchor every project comment is written
+// against. Changing it orphans existing threads.
+const COMMENT_ANCHOR_BLOCK_ID = "ffd9bc49-31a5-49b1-8ea0-620f8f32aa7d";
+const NAVY_DEEP = "#001364";
+const PERIWINKLE = "#879CF7";
+const PERIWINKLE_HOVER = "#294FF6";
+const MUTED = "#6B7A99";
+const BORDER = "rgba(217, 224, 255, 0.55)";
+const TRACK = "rgba(217, 224, 255, 0.6)";
+
+// ─── Data sources ─────────────────────────────────────────────
+// Two sources are wired to this block, so every hook has to name the
+// one it means. Leaving `from` off throws at runtime, not at compile.
+const ds = datasource.define({
+  briefs:   "86873560-190b-44bf-8303-c4714fb5acbb",
+  projects: "94a6aad4-9677-4005-9bfe-f3b6c176fa00",
+});
+
+// ─── briefs table field aliases (brieflee beta · RpoBGPxrsEOnmj) ───
+const select = q.select({
+  name: "z3lpx",            // SINGLE_LINE_TEXT (primary)
+  description: "FCBU5",     // LONG_TEXT
+  status: "71Oud",          // SELECT — Draft / Active / Closed / Archive
+  projects: "yrYvH",        // LINKED_RECORD → projects
+  accounts: "EhzVx",        // LOOKUP (via projects) → accounts (read-only)
+  thumbnail: "BHWP7",       // ATTACHMENT — brief's own thumbnail
+  image_url: "FVDgz",       // URL — AI-scraped product image
+  productImage: "qovS7",    // LOOKUP — linked product's uploaded image
+  productImageUrl: "FBKYG", // LOOKUP — linked product's image URL (has a default)
+  projectThumbnail: "8SR2k",// LOOKUP — parent project's thumbnail
+  logo_file: "jdtgI",       // LOOKUP — account logo file
+  logo_url: "CBKVE",        // LOOKUP — account favicon URL
+  privateMode: "umIL6",     // CHECKBOX
+  submissions: "uAfas",     // LINKED_RECORD → submissions
+  reviews: "hYvUf",         // LINKED_RECORD → reviews
+  createdAt: "GWyAv",       // CREATED_AT
+  updatedAt: "wLFKg",       // UPDATED_AT
+  users: "EdhwS",           // LINKED_RECORD → users
+});
+
+// Fields written by the per-card actions (Settings, Duplicate).
+// Duplicate uses useRecordCreate locally so we keep createFields.
+// `accounts` is a LOOKUP on briefs (read-only) so it's excluded from writes.
+const createFields = q.select({
+  name: "z3lpx",
+  description: "FCBU5",
+  projects: "yrYvH",
+  users: "EdhwS",
+});
+const updateFields = q.select({
+  name: "z3lpx",
+  status: "71Oud",
+  thumbnail: "BHWP7",
+  privateMode: "umIL6",
+});
+
+// ─── projects table field aliases (brieflee beta · hne0kugPrigIMs) ───
+// The page's own project, read from the projects source Bev wired up.
+const projectSelect = q.select({
+  projectName: "bvDEj",     // LONG_TEXT (primary)
+});
+
+// Status SELECT option ids (from schema, pinned so we don't fetch).
+const STATUS_OPTIONS = [
+  { id: "775ba6ba-5fda-4d17-bd02-53be5e9ea2ca", label: "Draft", color: "#c2e9d7" },
+  { id: "8a32a8b7-097d-469b-ab14-d8898d9beaeb", label: "Active", color: "#c9e4ff" },
+  { id: "f33070b8-805b-4f70-a47d-58fafc0ab772", label: "Closed", color: "#ffbcb3" },
+  { id: "7aa751f6-9a0f-456e-87c8-ad0e02d6dc49", label: "Archive", color: "#cccfd4" },
+];
+// "Archive" is the briefs equivalent of the projects "Inactive" status.
+// Kept the variable named ARCHIVE_ID; UI label still normalises to "Inactive".
+const ARCHIVE_ID = "7aa751f6-9a0f-456e-87c8-ad0e02d6dc49";
+
+// Default thumbnail when neither the brief nor its parent project has one.
+const DEFAULT_THUMB =
+  "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_brand_isometric-smiley-face-tilted-disc-blue-outline-cream-mark_2026-03.png";
+
+// ─── Helpers ──────────────────────────────────────────────────
+function unwrap(raw) {
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw.trim();
+  if (Array.isArray(raw)) return raw.map(unwrap).filter(Boolean).join(", ");
+  if (typeof raw === "object") return raw.label || raw.value || raw.name || "";
+  return String(raw);
+}
+function extractThumbUrl(raw) {
+  if (!raw) return null;
+  if (typeof raw === "string") return raw;
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  if (!first) return null;
+  if (typeof first === "string") return first;
+  return first.thumbnailUrl || first.url || null;
+}
+// Brief card thumbnail priority chain, the same order on every brief
+// surface (Bev, 22 Sep 2026):
+//   1. User-uploaded thumbnail on the brief         (BHWP7 attachment)
+//   2. The linked product's image                   (qovS7 / FBKYG LOOKUPs)
+//   3. Legacy AI-scraped product image              (FVDgz URL)
+//   4. Account logo file                            (jdtgI LOOKUP)
+//   5. Account favicon URL                          (CBKVE LOOKUP)
+//   6. Brieflee default mascot                      (DEFAULT_THUMB)
+// The product image is read live through the brief's product link, so
+// changing the product changes the thumbnail unless the user uploaded one.
+// products.image_url has a DEFAULT (a stock sample picture), so it only
+// counts when it is not that sample.
+const PRODUCT_SAMPLE_MARK = "product_sample_";
+function resolveProductThumb(image, imageUrl) {
+  const uploaded = extractThumbUrl(image);
+  if (uploaded) return uploaded;
+  const url = extractThumbUrl(imageUrl) || "";
+  return url && !url.includes(PRODUCT_SAMPLE_MARK) ? url : "";
+}
+function resolveBriefThumb(fields) {
+  // Returns { src, mark }. `mark: true` means the image is a brand
+  // mark rather than imagery, so the card centres it small on the
+  // tinted panel instead of filling the frame. The favicon comes back
+  // from Google at 128px and visibly blurs when stretched to card
+  // size, so it renders that way; everything else fills as before.
+  const own = extractThumbUrl(fields?.thumbnail);
+  if (own) return { src: own, mark: false };
+  const product = resolveProductThumb(fields?.productImage, fields?.productImageUrl);
+  if (product) return { src: product, mark: false };
+  if (typeof fields?.image_url === "string" && fields.image_url) {
+    return { src: fields.image_url, mark: false };
+  }
+  const logoFile = extractThumbUrl(fields?.logo_file);
+  if (logoFile) return { src: logoFile, mark: false };
+  const logoUrl = Array.isArray(fields?.logo_url) ? fields.logo_url[0] : fields?.logo_url;
+  if (typeof logoUrl === "string" && logoUrl) return { src: logoUrl, mark: true };
+  return { src: DEFAULT_THUMB, mark: false };
+}
+function statusFor(record) {
+  const raw = record?.fields?.status;
+  if (!raw) return null;
+  if (Array.isArray(raw)) return raw[0] || null;
+  return raw;
+}
+function accountIdsFor(record) {
+  const raw = record?.fields?.accounts;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((a) => (a?.id || a)).filter(Boolean);
+}
+function projectIdsFor(record) {
+  const raw = record?.fields?.projects;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((p) => (p?.id || p)).filter(Boolean);
+}
+function linkedCount(record, key) {
+  const raw = record?.fields?.[key];
+  return Array.isArray(raw) ? raw.length : 0;
+}
+function getInternalLink(record) {
+  // Constructed locally so the link is always `/briefs/details/...`,
+  // regardless of what the brief's `internal_link` FORMULA resolves to
+  // on the Softr side (the formula still points at the legacy
+  // `/brief/details` slug for historic reasons).
+  return `/briefs/details/?recordId=${record?.id || ""}`;
+}
+
+// =====================================================================
+// MAIN BLOCK
+// =====================================================================
+export default function Block() {
+  const user = useCurrentUser();
+
+  // Pull briefs — Softr scopes via Source binding; we additionally
+  // filter client-side based on tab + search + dropdowns.
+  const { data, status: loadStatus, refetch } = useRecords({ from: ds.briefs, select });
+  const briefs = useMemo(() => {
+    const pages = data?.pages;
+    if (Array.isArray(pages)) return pages.flatMap((p) => p?.items ?? []);
+    return Array.isArray(data) ? data : [];
+  }, [data]);
+
+  // ─── View + filter state ──────────────────────────────────
+  const [view, setView] = useState("grid"); // 'grid' | 'list' | 'inactive'
+  const [sortBy, setSortBy] = useState("updated"); // 'updated' | 'name' | 'created'
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState(""); // option id or ""
+  // workspaceFilter reads from the URL `?workspace=` param. For
+  // single-workspace users the param is almost always empty, but we
+  // honor it so deep links from elsewhere still work.
+  const [workspaceFilter] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URL(window.location.href).searchParams.get("workspace") || "";
+  });
+  const workspaceFilterSet = useMemo(() => {
+    if (!workspaceFilter) return null;
+    const ids = workspaceFilter.split(",").map((s) => s.trim()).filter(Boolean);
+    return ids.length ? new Set(ids) : null;
+  }, [workspaceFilter]);
+
+  // ─── Top-bar action handoffs ──────────────────────────────
+  // Two buttons, each opens a different Softr modal page.
+  // The project this page shows, read ONCE inline (URL parsing
+  // anywhere else stops the analyzer registering record actions).
+  const [pageProjectId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      return new URL(window.location.href).searchParams.get("recordId") || "";
+    } catch (e) {
+      return "";
+    }
+  });
+
+  // The page's project, read straight from the projects source. Empty
+  // until it lands; the heading holds its height so nothing jumps.
+  const projectQ = useRecord({
+    from: ds.projects,
+    select: projectSelect,
+    recordId: pageProjectId || null,
+  });
+  const projectName = useMemo(() => {
+    const f = projectQ?.data?.fields || {};
+    return unwrap(f.projectName ?? f.name ?? f.bvDEj);
+  }, [projectQ?.data]);
+
+  // Back navigation, rolled in from the standalone back-button block.
+  // Softr's iframe makes history.back() unreliable (it can bounce to a
+  // studio URL), so a same-origin referrer wins and the project index
+  // is the fallback for a cold deep link. The index page is /project,
+  // singular — /projects is not a page in this app.
+  const goBack = () => {
+    if (typeof window === "undefined") return;
+    const ref = document.referrer || "";
+    if (ref && ref.startsWith(window.location.origin) && ref !== window.location.href) {
+      window.location.href = ref;
+      return;
+    }
+    window.location.href = "/project";
+  };
+  const openModal = (path, size) => {
+    if (typeof window === "undefined") return;
+    if (typeof window.openSwModal === "function") {
+      window.openSwModal(path, size);
+    } else {
+      window.location.href = path;
+    }
+  };
+  // Softr's page dialog, anchored to the right edge. The renderer
+  // exposes it imperatively, so the panel slides in with no reload and
+  // browser Back closes it; setting the same modal params by hand is
+  // the fallback, and the centred modal above is the last resort.
+  // Every modal opened from an index page goes through here.
+  const openSidePanel = (path) => {
+    if (typeof window === "undefined") return;
+    const renderer = window.SoftrPageRenderer;
+    if (renderer && typeof renderer.setOpenPageModal === "function") {
+      renderer.setOpenPageModal({ src: path, size: "M", placement: "end" });
+      return;
+    }
+    try {
+      const next = new URL(window.location.href);
+      next.searchParams.set("modal", path);
+      next.searchParams.set("modalSize", "M");
+      next.searchParams.set("modalPlacement", "end");
+      window.location.href = next.toString();
+      return;
+    } catch (e) {
+      console.error("Side panel URL failed:", e);
+    }
+    openModal(path, "xl");
+  };
+
+  const openUploadBriefs = () => openSidePanel("/bulk-briefs");
+  const openBulkPdf      = () => openSidePanel(pageProjectId ? `/pdf?recordId=${pageProjectId}` : "/pdf");
+  // The chat skips its project step when the project rides in the URL.
+  const openNewBrief     = () => openSidePanel(
+    pageProjectId ? `/new-brief?recordId=${encodeURIComponent(pageProjectId)}` : "/new-brief"
+  );
+
+  // Softr's Comments panel. Setting a search param and firing
+  // @softr/url-search-param-change/<param> is exactly what the native
+  // Item details block did, so the panel slides in with no reload.
+  const setSearchParam = (key, value) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set(key, value);
+    window.history.replaceState(null, "", url.toString());
+    window.dispatchEvent(new CustomEvent(`@softr/url-search-param-change/${key}`));
+  };
+  const openComments = () => {
+    if (typeof window === "undefined" || !pageProjectId) return;
+    setSearchParam("commentRecordId", pageProjectId);
+    setSearchParam("blockId", COMMENT_ANCHOR_BLOCK_ID);
+  };
+
+  const createRecord = useRecordCreate({ from: ds.briefs, fields: createFields }); // for Duplicate
+  const updateRecord = useRecordUpdate({ from: ds.briefs, fields: updateFields });
+  const deleteRecord = useRecordDelete({ from: ds.briefs });
+  const upload = useUpload();
+
+  // ─── Per-card menu + per-card modal state ────────────────
+  const [cardMenuOpenId, setCardMenuOpenId] = useState(null);
+  const menuRef = useRef(null);
+  useEffect(() => {
+    if (!cardMenuOpenId) return;
+    const onDown = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setCardMenuOpenId(null);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [cardMenuOpenId]);
+
+  const [activeModal, setActiveModal] = useState(null); // 'settings' | 'delete'
+  const [activeProjectId, setActiveProjectId] = useState(null);
+  const activeProject = useMemo(
+    () => briefs.find((p) => p.id === activeProjectId) || null,
+    [briefs, activeProjectId],
+  );
+
+  // Settings form state
+  const [stName, setStName] = useState("");
+  const [stPrivate, setStPrivate] = useState(false);
+  const [stStatus, setStStatus] = useState("");
+  const [stThumbSaved, setStThumbSaved] = useState(null);
+  const [stThumbPending, setStThumbPending] = useState(null);
+  const [stThumbCleared, setStThumbCleared] = useState(false);
+  const stThumbInputRef = useRef(null);
+
+  const [actionSubmitting, setActionSubmitting] = useState(false);
+
+  const openCardMenu = (id) => setCardMenuOpenId((cur) => (cur === id ? null : id));
+
+  const openModalForProject = (type, project) => {
+    if (!project) return;
+    setCardMenuOpenId(null);
+    setActiveProjectId(project.id);
+    setActiveModal(type);
+    const f = project?.fields || {};
+    if (type === "settings") {
+      setStName(unwrap(f.name));
+      setStPrivate(f.privateMode === true);
+      const s = statusFor(project);
+      setStStatus(s?.id || "");
+      setStThumbSaved(Array.isArray(f.thumbnail) ? f.thumbnail : null);
+      setStThumbPending(null);
+      setStThumbCleared(false);
+    }
+  };
+  const closeAnyModal = () => {
+    setActiveModal(null);
+    setActiveProjectId(null);
+    setStName("");
+    setStPrivate(false);
+    setStStatus("");
+    setStThumbSaved(null);
+    setStThumbPending(null);
+    setStThumbCleared(false);
+    if (stThumbInputRef.current) stThumbInputRef.current.value = "";
+  };
+
+  // ─── Per-card action handlers ────────────────────────────
+  const handleAddPeople = (project) => {
+    setCardMenuOpenId(null);
+    if (typeof window === "undefined") return;
+    window.location.href = `/briefs/details?recordId=${encodeURIComponent(project.id)}&view=invites`;
+  };
+
+  // ─── Copy Link ─────────────────────────────────────────────
+  const handleCopyLink = async (project) => {
+    setCardMenuOpenId(null);
+    if (!project?.id) return;
+    const href = getInternalLink(project);
+    const absolute = typeof window !== "undefined" && href.startsWith("/")
+      ? `${window.location.origin}${href}`
+      : href;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(absolute);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = absolute;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      toast.success("Link copied");
+    } catch (e) {
+      console.error("Copy link failed:", e);
+      toast.error("Couldn't copy link", { description: e?.message || "Try again." });
+    }
+  };
+
+  // ─── Duplicate Brief ──────────────────────────────────────
+  const handleDuplicate = async (project) => {
+    setCardMenuOpenId(null);
+    if (!project?.id || !user?.id) return;
+    if (!createRecord.enabled) {
+      toast.error("Cannot create records right now");
+      return;
+    }
+    const f = project?.fields || {};
+    const originalName = unwrap(f.name) || "Untitled brief";
+    try {
+      await createRecord.mutateAsync({
+        name: `Copy of ${originalName}`,
+        description: unwrap(f.description) || "",
+        projects: projectIdsFor(project).map((id) => ({ id })),
+        users: [{ id: user.id }],
+      });
+      toast.success(`Duplicated ${originalName}`);
+      await refetch?.();
+    } catch (e) {
+      console.error("Duplicate failed:", e);
+      toast.error("Couldn't duplicate", { description: e?.message || "Try again." });
+    }
+  };
+
+  const handleSettingsSubmit = async () => {
+    if (!activeProjectId) return;
+    if (!stName.trim()) {
+      toast.error("Name can't be empty");
+      return;
+    }
+    setActionSubmitting(true);
+    try {
+      let thumbnailForWrite;
+      if (stThumbPending) {
+        const uploaded = await upload.mutateAsync(stThumbPending);
+        thumbnailForWrite = Array.isArray(uploaded) ? uploaded : [uploaded];
+      } else if (stThumbCleared) {
+        thumbnailForWrite = null;
+      }
+      const fields = {
+        name: stName.trim(),
+        privateMode: stPrivate,
+      };
+      if (stStatus) {
+        const opt = STATUS_OPTIONS.find((o) => o.id === stStatus);
+        if (opt) fields.status = { id: opt.id, label: opt.label };
+      }
+      if (thumbnailForWrite !== undefined) fields.thumbnail = thumbnailForWrite;
+
+      await updateRecord.mutateAsync({
+        recordId: activeProjectId,
+        fields,
+      });
+      toast.success("Brief settings updated");
+      closeAnyModal();
+      await refetch?.();
+    } catch (e) {
+      console.error("Settings save failed:", e);
+      toast.error("Couldn't save settings", { description: e?.message || "Try again." });
+    } finally {
+      setActionSubmitting(false);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!activeProjectId) return;
+    setActionSubmitting(true);
+    try {
+      // useRecordDelete takes the record id DIRECTLY, not { recordId }.
+      // (useRecordUpdate is the one that takes an object — easy to mix up.)
+      // Passing an object here is what produced "Failed to delete record: 400".
+      await deleteRecord.mutateAsync(activeProjectId);
+      const name = unwrap(activeProject?.fields?.name) || "Brief";
+      toast.success(`${name} deleted`);
+      closeAnyModal();
+      await refetch?.();
+    } catch (e) {
+      console.error("Delete failed:", e);
+      // A bare status code tells the user nothing, so swap it for the
+      // likeliest cause. Anything with a real message shows as-is.
+      const raw = (e?.message || "").trim();
+      const bareStatus = !raw || /^failed to delete record:?\s*\d+$/i.test(raw);
+      toast.error("Couldn't delete", {
+        description: bareStatus
+          ? "This brief couldn't be removed. It may still have submissions or invited creators linked to it — open the brief and clear those first."
+          : raw,
+      });
+    } finally {
+      setActionSubmitting(false);
+    }
+  };
+
+  const handleThumbnailFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setStThumbPending(file);
+    setStThumbCleared(false);
+  };
+  const handleThumbnailRemove = () => {
+    setStThumbPending(null);
+    setStThumbCleared(true);
+    if (stThumbInputRef.current) stThumbInputRef.current.value = "";
+  };
+  const previewThumbnailUrl = useMemo(() => {
+    if (stThumbCleared) return null;
+    if (stThumbPending) return URL.createObjectURL(stThumbPending);
+    return extractThumbUrl(stThumbSaved);
+  }, [stThumbCleared, stThumbPending, stThumbSaved]);
+
+  // Single dispatcher the card menus call into.
+  const dispatchAction = (action, project) => {
+    if (!project) return;
+    switch (action) {
+      case "copy-link": return handleCopyLink(project);
+      case "duplicate": return handleDuplicate(project);
+      case "settings": return openModalForProject("settings", project);
+      case "add-people": return handleAddPeople(project);
+      case "delete": return openModalForProject("delete", project);
+      case "toggle-privacy": return handleTogglePrivacy(project);
+      default: return;
+    }
+  };
+
+  // ─── Toggle private_mode from the privacy overlay on each card ──
+  const handleTogglePrivacy = async (project) => {
+    if (!project?.id) return;
+    const next = !(project.fields?.privateMode === true);
+    try {
+      await updateRecord.mutateAsync({
+        recordId: project.id,
+        fields: { privateMode: next },
+      });
+      toast.success(next ? "Set to Private" : "Set to Public");
+      await refetch?.();
+    } catch (e) {
+      console.error("Privacy toggle failed:", e);
+      toast.error("Couldn't update privacy", { description: e?.message || "Try again." });
+    }
+  };
+
+  // ─── Filtered list ────────────────────────────────────────
+  const filtered = useMemo(() => {
+    const list = briefs.filter((p) => {
+      const s = statusFor(p);
+      const sid = s?.id;
+      const accIds = accountIdsFor(p);
+
+      // The page shows ONE project, so the list holds one project's
+      // briefs. The source filter is meant to do this server-side;
+      // repeating it here means a brief from another project can never
+      // reach the grid whatever the source returns.
+      if (pageProjectId) {
+        const projIds = projectIdsFor(p);
+        if (projIds.length && !projIds.includes(pageProjectId)) return false;
+      }
+
+      if (view === "inactive") {
+        if (sid !== ARCHIVE_ID) return false;
+      } else {
+        if (sid === ARCHIVE_ID) return false;
+      }
+
+      if ((view === "grid" || view === "list") && statusFilter) {
+        if (sid !== statusFilter) return false;
+      }
+
+      if (workspaceFilterSet) {
+        const matches = accIds.some((id) => workspaceFilterSet.has(id));
+        if (!matches) return false;
+      }
+
+      if (search.trim()) {
+        const needle = search.trim().toLowerCase();
+        const haystack = [
+          unwrap(p?.fields?.name),
+          unwrap(p?.fields?.description),
+        ].join(" ").toLowerCase();
+        if (!haystack.includes(needle)) return false;
+      }
+
+      return true;
+    });
+
+    const getDate = (p, key) => {
+      const raw = p?.fields?.[key];
+      if (!raw) return 0;
+      const t = new Date(raw).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+    const cmp = (() => {
+      if (sortBy === "name") {
+        return (a, b) => unwrap(a?.fields?.name).localeCompare(unwrap(b?.fields?.name));
+      }
+      if (sortBy === "created") {
+        return (a, b) => getDate(b, "createdAt") - getDate(a, "createdAt");
+      }
+      return (a, b) => getDate(b, "updatedAt") - getDate(a, "updatedAt");
+    })();
+    return [...list].sort(cmp);
+  }, [briefs, view, statusFilter, workspaceFilterSet, search, sortBy, pageProjectId]);
+
+  // ─── Render ───────────────────────────────────────────────
+  const isLoading = loadStatus === "pending";
+  const isEmpty = !isLoading && filtered.length === 0;
+
+  return (
+    <>
+      <Style />
+      <div className="bl-projects">
+        <div className="bl-projects-inner container mx-auto px-4 w-full">
+
+          {/* Back to the project index — rolled in from the standalone
+              back-button block so this page runs on one block. */}
+          <button type="button" className="bl-projects-back" onClick={goBack}>
+            <ArrowLeft size={14} strokeWidth={2.25} />
+            Projects
+          </button>
+
+          {/* Project header. Same wording the native Item details block
+              used: the project's own name with "Briefs" after it. Every
+              action lives in the controls row below. */}
+          <header className="bl-projects-head">
+            <h1 className="bl-projects-title">{projectName ? `${projectName} Briefs` : ""}</h1>
+          </header>
+
+          {/* View tabs */}
+          <nav className="bl-projects-tabs" role="tablist" aria-label="Project views">
+            <TabButton
+              icon={GridIcon}
+              label="Grid"
+              active={view === "grid"}
+              onClick={() => setView("grid")}
+            />
+            <TabButton
+              icon={ListIcon}
+              label="List"
+              active={view === "list"}
+              onClick={() => setView("list")}
+            />
+            <TabButton
+              icon={Archive}
+              label="Inactive"
+              active={view === "inactive"}
+              onClick={() => setView("inactive")}
+            />
+          </nav>
+
+          {/* Controls row: search · filters · top-bar actions */}
+          <div className="bl-projects-controls">
+            <div className="bl-projects-search">
+              <Search className="bl-projects-search-icon" size={14} />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search briefs"
+                className="bl-projects-search-input"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="bl-projects-search-clear"
+                  aria-label="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            <div className="bl-projects-filters">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="bl-projects-select"
+                aria-label="Status filter"
+                disabled={view === "inactive"}
+              >
+                <option value="">Status</option>
+                {STATUS_OPTIONS
+                  .filter((o) => o.id !== ARCHIVE_ID)
+                  .map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+              </select>
+
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="bl-projects-select"
+                aria-label="Sort briefs"
+              >
+                <option value="updated">Recently updated</option>
+                <option value="created">Recently created</option>
+                <option value="name">Name (A → Z)</option>
+              </select>
+            </div>
+
+            <div className="bl-projects-actions">
+              <button
+                type="button"
+                onClick={openComments}
+                disabled={!pageProjectId}
+                className="bl-btn bl-btn-neutral"
+                title="Comments"
+              >
+                <MessageSquare size={14} strokeWidth={2} />
+                Comments
+              </button>
+              <button
+                type="button"
+                onClick={openBulkPdf}
+                className="bl-btn bl-btn-neutral"
+              >
+                Import PDFs
+              </button>
+              <button
+                type="button"
+                onClick={openUploadBriefs}
+                className="bl-btn bl-btn-neutral"
+              >
+                <UploadIcon size={14} strokeWidth={2} />
+                Upload briefs
+              </button>
+              <button
+                type="button"
+                onClick={openNewBrief}
+                className="bl-btn bl-btn-primary"
+              >
+                <Plus size={14} strokeWidth={2} />
+                New brief
+              </button>
+            </div>
+          </div>
+
+          {/* Body */}
+          {isLoading ? (
+            <div className="bl-projects-loading">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="bl-projects-skeleton" />
+              ))}
+            </div>
+          ) : isEmpty ? (
+            <EmptyState view={view} />
+          ) : view === "list" ? (
+            <ListView
+              projects={filtered}
+              menuOpenId={cardMenuOpenId}
+              onOpenMenu={openCardMenu}
+              onAction={dispatchAction}
+              menuRef={menuRef}
+            />
+          ) : (
+            <GridView
+              projects={filtered}
+              menuOpenId={cardMenuOpenId}
+              onOpenMenu={openCardMenu}
+              onAction={dispatchAction}
+              menuRef={menuRef}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* ============ Brief Settings Modal ============ */}
+      {activeModal === "settings" && activeProject && (
+        <div className="bl-modal-backdrop" onClick={closeAnyModal}>
+          <div
+            className="bl-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="st-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 520 }}
+          >
+            <header className="bl-modal-header">
+              <div>
+                <h3 id="st-title" className="bl-modal-title">Brief settings</h3>
+                <p className="bl-modal-sub">Visibility, status, thumbnail.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeAnyModal}
+                className="bl-modal-close"
+                aria-label="Close"
+              ><X size={18} /></button>
+            </header>
+
+            <div className="bl-modal-body">
+              {/* Name (Rename folded into Settings) */}
+              <div className="bl-modal-field">
+                <label className="bl-modal-label" htmlFor="st-name">
+                  Name <span style={{ color: "#d92626" }}>*</span>
+                </label>
+                <Input
+                  id="st-name"
+                  value={stName}
+                  onChange={(e) => setStName(e.target.value)}
+                  disabled={actionSubmitting}
+                  autoFocus
+                />
+              </div>
+
+              {/* Brief access (private toggle) */}
+              <div className="bl-modal-field">
+                <label className="bl-toggle-row">
+                  <input
+                    type="checkbox"
+                    checked={stPrivate}
+                    onChange={(e) => setStPrivate(e.target.checked)}
+                    disabled={actionSubmitting}
+                  />
+                  <span>
+                    <span className="bl-toggle-label">
+                      {stPrivate ? "Private" : "Public"}
+                    </span>
+                    <span className="bl-toggle-hint">
+                      {stPrivate
+                        ? "Only people you add can see this brief."
+                        : "Anyone with the link can view this brief."}
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              {/* Status */}
+              <div className="bl-modal-field">
+                <label className="bl-modal-label" htmlFor="st-status">Status</label>
+                <select
+                  id="st-status"
+                  value={stStatus}
+                  onChange={(e) => setStStatus(e.target.value)}
+                  className="bl-projects-select"
+                  disabled={actionSubmitting}
+                >
+                  <option value="">Select…</option>
+                  {STATUS_OPTIONS.map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Thumbnail */}
+              <div className="bl-modal-field">
+                <label className="bl-modal-label">Thumbnail</label>
+                <div className="bl-thumb-row">
+                  <div className="bl-thumb-preview">
+                    {previewThumbnailUrl ? (
+                      <img src={previewThumbnailUrl} alt="Brief thumbnail" />
+                    ) : (
+                      <span className="bl-thumb-empty">No thumbnail</span>
+                    )}
+                  </div>
+                  <div className="bl-thumb-actions">
+                    <input
+                      ref={stThumbInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleThumbnailFile}
+                      style={{ display: "none" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => stThumbInputRef.current?.click()}
+                      disabled={actionSubmitting}
+                      className="bl-thumb-btn"
+                    >
+                      <UploadIcon size={14} />
+                      {previewThumbnailUrl ? "Change" : "Upload"}
+                    </button>
+                    {previewThumbnailUrl && (
+                      <button
+                        type="button"
+                        onClick={handleThumbnailRemove}
+                        disabled={actionSubmitting}
+                        className="bl-thumb-btn bl-thumb-btn-ghost"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <footer className="bl-modal-footer">
+              <button
+                type="button"
+                onClick={closeAnyModal}
+                disabled={actionSubmitting}
+                className="bl-modal-cancel"
+              >Cancel</button>
+              <Button
+                onClick={handleSettingsSubmit}
+                disabled={actionSubmitting || !stName.trim()}
+                style={{ backgroundColor: PERIWINKLE, color: "#fff" }}
+              >
+                {actionSubmitting ? "Saving…" : "Save"}
+              </Button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {/* ============ Delete Confirmation Modal ============ */}
+      {activeModal === "delete" && activeProject && (
+        <div className="bl-modal-backdrop" onClick={closeAnyModal}>
+          <div
+            className="bl-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dl-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 420 }}
+          >
+            <header className="bl-modal-header">
+              <div>
+                <h3 id="dl-title" className="bl-modal-title">Delete this brief?</h3>
+                <p className="bl-modal-sub">
+                  This permanently removes <strong>{unwrap(activeProject?.fields?.name)}</strong> and all submissions and reviews under it. This can't be undone.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeAnyModal}
+                className="bl-modal-close"
+                aria-label="Close"
+              ><X size={18} /></button>
+            </header>
+            <footer className="bl-modal-footer">
+              <button
+                type="button"
+                onClick={closeAnyModal}
+                disabled={actionSubmitting}
+                className="bl-modal-cancel"
+              >Cancel</button>
+              <Button
+                onClick={handleDeleteConfirm}
+                disabled={actionSubmitting}
+                style={{ backgroundColor: "#d92626", color: "#fff" }}
+              >
+                {actionSubmitting ? "Deleting…" : "Delete"}
+              </Button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+    </>
+  );
+}
+
+// =====================================================================
+// Subcomponents
+// =====================================================================
+
+function TabButton({ icon: Icon, label, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`bl-projects-tab ${active ? "is-active" : ""}`}
+      role="tab"
+      aria-selected={active}
+    >
+      <Icon size={14} />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function normalizeStatusLabel(raw) {
+  if (!raw) return "";
+  return raw === "Archive" ? "Inactive" : raw;
+}
+
+function StatusPill({ status }) {
+  if (!status) return null;
+  const label = normalizeStatusLabel(status.label || "");
+  const bg = (status.color || "#cccfd4") + "33";
+  const border = (status.color || "#cccfd4") + "66";
+  return (
+    <span
+      className="bl-status-pill"
+      style={{ backgroundColor: bg, border: `1px solid ${border}`, color: NAVY }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function PrivacyOverlay({ isPrivate, onToggle }) {
+  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+  return (
+    <button
+      type="button"
+      className="bl-privacy-overlay"
+      title={isPrivate ? "Private — click to make public" : "Public — click to make private"}
+      onMouseDown={stop}
+      onClick={(e) => { stop(e); onToggle?.(); }}
+    >
+      {isPrivate ? <Lock size={11} /> : <LockOpen size={11} />}
+      {isPrivate ? "Private" : "Public"}
+    </button>
+  );
+}
+
+function ProjectCard({
+  project, menuOpen, onOpenMenu, onAction, menuRef,
+}) {
+  const f = project?.fields || {};
+  const thumb = resolveBriefThumb(f);
+  const status = statusFor(project);
+  const name = unwrap(f.name) || "Untitled brief";
+  const submissions = linkedCount(project, "submissions");
+  const reviews = linkedCount(project, "reviews");
+  const isPrivate = f.privateMode === true;
+  const href = getInternalLink(project);
+  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+
+  return (
+    <a href={href} className={`bl-card ${menuOpen ? "is-menu-open" : ""}`}>
+      <div className={`bl-card-thumb ${thumb.mark ? "is-mark" : ""}`}>
+        <img src={thumb.src} alt={name} draggable={false} />
+        <PrivacyOverlay
+          isPrivate={isPrivate}
+          onToggle={() => onAction("toggle-privacy", project)}
+        />
+        {status && <span className="bl-card-status"><StatusPill status={status} /></span>}
+      </div>
+      <div className="bl-card-body">
+        <div className="bl-card-name">{name}</div>
+        <div className="bl-card-meta">
+          {submissions === 0 ? (
+            <button
+              type="button"
+              className="bl-card-invite"
+              onClick={(e) => { stop(e); onAction("add-people", project); }}
+            >
+              <UserPlus size={11} />
+              <span>Invite creators</span>
+            </button>
+          ) : (
+            <span>{submissions} {submissions === 1 ? "submission" : "submissions"}</span>
+          )}
+          {reviews > 0 && (
+            <span className="bl-card-pending">{reviews} {reviews === 1 ? "review" : "reviews"}</span>
+          )}
+          <div className="bl-card-meta-actions">
+            <CardMenu
+              project={project}
+              isOpen={menuOpen}
+              onOpenMenu={onOpenMenu}
+              onAction={onAction}
+              menuRef={menuRef}
+            />
+          </div>
+        </div>
+      </div>
+    </a>
+  );
+}
+
+function CardMenu({ project, isOpen, onOpenMenu, onAction, menuRef }) {
+  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+  return (
+    <div
+      className="bl-card-menu-wrap"
+      ref={isOpen ? menuRef : undefined}
+      onMouseDown={stop}
+      onClick={stop}
+    >
+      <button
+        type="button"
+        className={`bl-card-menu-trigger ${isOpen ? "is-open" : ""}`}
+        aria-label="Brief actions"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        onClick={(e) => { stop(e); onOpenMenu(project.id); }}
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {isOpen && (
+        <div className="bl-card-menu" role="menu">
+          <MenuItem
+            icon={LinkIcon}
+            label="Copy link"
+            onClick={(e) => { stop(e); onAction("copy-link", project); }}
+          />
+          <MenuItem
+            icon={CopyIcon}
+            label="Duplicate"
+            onClick={(e) => { stop(e); onAction("duplicate", project); }}
+          />
+          <MenuItem
+            icon={Settings}
+            label="Brief settings"
+            onClick={(e) => { stop(e); onAction("settings", project); }}
+          />
+          <MenuItem
+            icon={UserPlus}
+            label="Add people"
+            onClick={(e) => { stop(e); onAction("add-people", project); }}
+          />
+          <div className="bl-menu-divider" role="separator" />
+          <MenuItem
+            icon={Trash2}
+            label="Delete"
+            danger
+            onClick={(e) => { stop(e); onAction("delete", project); }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuItem({ icon: Icon, label, danger, onClick }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className={`bl-menu-item ${danger ? "is-danger" : ""}`}
+      onClick={onClick}
+    >
+      <Icon size={14} />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function GridView({ projects, menuOpenId, onOpenMenu, onAction, menuRef }) {
+  return (
+    <div className="bl-projects-grid">
+      {projects.map((p) => (
+        <ProjectCard
+          key={p.id}
+          project={p}
+          menuOpen={menuOpenId === p.id}
+          onOpenMenu={onOpenMenu}
+          onAction={onAction}
+          menuRef={menuRef}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ListView({ projects, menuOpenId, onOpenMenu, onAction, menuRef }) {
+  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+  return (
+    <div className="bl-projects-list">
+      <div className="bl-projects-list-head">
+        <div>Name</div>
+        <div>Status</div>
+        <div>Submissions</div>
+        <div>Reviews</div>
+        <div>Visibility</div>
+        <div></div>
+      </div>
+      {projects.map((p) => {
+        const f = p?.fields || {};
+        const thumb = resolveBriefThumb(f);
+        const status = statusFor(p);
+        const name = unwrap(f.name) || "Untitled brief";
+        const submissions = linkedCount(p, "submissions");
+        const reviews = linkedCount(p, "reviews");
+        const isPrivate = f.privateMode === true;
+        const href = getInternalLink(p);
+        const isMenuOpen = menuOpenId === p.id;
+        return (
+          <a
+            key={p.id}
+            href={href}
+            className={`bl-projects-list-row ${isMenuOpen ? "is-menu-open" : ""}`}
+          >
+            <div className="bl-projects-list-name">
+              <img src={thumb.src} alt="" className="bl-projects-list-thumb" />
+              <span>{name}</span>
+            </div>
+            <div><StatusPill status={status} /></div>
+            <div>{submissions}</div>
+            <div>{reviews > 0 ? <span className="bl-card-pending">{reviews}</span> : "—"}</div>
+            <button
+              type="button"
+              className="bl-projects-list-priv"
+              title={isPrivate ? "Private — click to make public" : "Public — click to make private"}
+              onMouseDown={stop}
+              onClick={(e) => { stop(e); onAction("toggle-privacy", p); }}
+            >
+              {isPrivate ? <Lock size={12} /> : <LockOpen size={12} />}
+              <span>{isPrivate ? "Private" : "Public"}</span>
+            </button>
+            <div className="bl-projects-list-actions">
+              <CardMenu
+                project={p}
+                isOpen={isMenuOpen}
+                onOpenMenu={onOpenMenu}
+                onAction={onAction}
+                menuRef={menuRef}
+              />
+            </div>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+function EmptyState({ view }) {
+  const messages = {
+    grid: { title: "No briefs yet", body: "Create your first brief to start collecting submissions and reviews." },
+    list: { title: "No briefs yet", body: "Create your first brief to start collecting submissions and reviews." },
+    inactive: { title: "Nothing archived", body: "Archived briefs will show up here." },
+  };
+  const m = messages[view] || messages.grid;
+  return (
+    <div className="bl-projects-empty">
+      <div className="bl-projects-empty-icon">
+        <Inbox size={28} strokeWidth={1.5} />
+      </div>
+      <h3 className="bl-projects-empty-title">{m.title}</h3>
+      <p className="bl-projects-empty-body">{m.body}</p>
+    </div>
+  );
+}
+
+// =====================================================================
+// Style
+// =====================================================================
+function Style() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+
+      .bl-projects,
+      .bl-projects * { font-family: 'League Spartan', sans-serif; box-sizing: border-box; }
+
+      /* ---- Softr's own button, matched exactly -------------------
+         Inter 13/20, label weight 600, 6px 12px, 32px tall, radius 8,
+         and a calm .15s background darken on hover.
+           primary  #879CF7 → #6C7CC5 → #515D94
+           navy     #001364 → #192A73 → #334283
+           neutral  #FFFFFF → #F2F2F2 → #E5E5E5 */
+      .bl-projects .bl-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        gap: 4px;
+        height: 32px;
+        padding: 6px 12px;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        font-family: 'Inter', sans-serif;
+        font-size: 13px;
+        line-height: 20px;
+        font-weight: 600;
+        white-space: nowrap;
+        text-decoration: none;
+        cursor: pointer;
+        transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, color 0.15s ease-in-out;
+      }
+      .bl-projects .bl-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .bl-projects .bl-btn svg { flex-shrink: 0; }
+      .bl-projects .bl-btn-end { margin-left: auto; }
+      /* Icon-only: square at the same 32px, so it sits level with the
+         labelled buttons instead of reading as a different control. */
+      .bl-projects .bl-btn-icon { width: 32px; padding: 0; }
+      .bl-projects .bl-btn-primary {
+        background: ${PERIWINKLE}; color: #FFFFFF; border-color: ${PERIWINKLE};
+      }
+      .bl-projects .bl-btn-primary:hover:not(:disabled) { background: #6C7CC5; border-color: #6C7CC5; }
+      .bl-projects .bl-btn-primary:active:not(:disabled) { background: #515D94; border-color: #515D94; }
+      .bl-projects .bl-btn-navy {
+        background: ${NAVY_DEEP}; color: #FBFBFB; border-color: rgba(0, 0, 0, 0.1);
+      }
+      .bl-projects .bl-btn-navy:hover:not(:disabled) { background: #192A73; }
+      .bl-projects .bl-btn-navy:active:not(:disabled) { background: #334283; }
+      .bl-projects .bl-btn-neutral {
+        background: #FFFFFF; color: ${NAVY_DEEP}; border-color: rgba(0, 0, 0, 0.1);
+      }
+      .bl-projects .bl-btn-neutral:hover:not(:disabled) { background: #F2F2F2; }
+      .bl-projects .bl-btn-neutral:active:not(:disabled) { background: #E5E5E5; }
+
+      .bl-projects {
+        background: #FAFBFF;
+        min-height: 100vh;
+        padding: 24px 0 64px;
+      }
+
+      /* Back to the project index — quiet, sits above the title */
+      .bl-projects-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 28px;
+        margin: 0 0 10px -8px;
+        padding: 4px 8px;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        color: ${MUTED};
+        font-family: 'Inter', sans-serif;
+        font-size: 13px;
+        line-height: 20px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.15s ease-in-out, color 0.15s ease-in-out;
+      }
+      .bl-projects-back:hover { background: #F2F2F2; color: ${NAVY_DEEP}; }
+      .bl-projects-back:active { background: #E5E5E5; }
+      .bl-projects-back svg { flex-shrink: 0; }
+
+      /* Project header */
+      .bl-projects-head {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 16px; flex-wrap: wrap;
+        margin-bottom: 18px;
+      }
+      .bl-projects-title {
+        font-size: 24px;
+        font-weight: 600;
+        color: ${NAVY_DEEP};
+        letter-spacing: -0.01em;
+        margin: 0;
+        line-height: 1.2;
+        min-width: 0;
+        min-height: 29px;
+      }
+      .bl-projects-inner {
+        width: 100%;
+        max-width: 1140px;
+        margin: 0 auto;
+        /* horizontal padding handled by Tailwind's px-4 on the className */
+      }
+
+      /* Tabs */
+      .bl-projects-tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 18px;
+        padding: 4px;
+        background: #FFFFFF;
+        border: 1px solid ${BORDER};
+        border-radius: 12px;
+        width: fit-content;
+      }
+      .bl-projects-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 14px;
+        background: transparent;
+        color: ${MUTED};
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+      }
+      .bl-projects-tab:hover:not(.is-active) {
+        background: rgba(135, 156, 247, 0.08);
+        color: ${NAVY};
+      }
+      .bl-projects-tab.is-active {
+        background: rgba(135, 156, 247, 0.12);
+        color: ${NAVY_DEEP};
+        font-weight: 500;
+      }
+
+      /* Controls row */
+      .bl-projects-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+      }
+      .bl-projects-search {
+        position: relative;
+        flex: 1 1 280px;
+        min-width: 200px;
+      }
+      .bl-projects-search-icon {
+        position: absolute;
+        left: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: ${MUTED};
+      }
+      .bl-projects-search-input {
+        width: 100%;
+        height: 32px;
+        padding: 0 32px;
+        font-family: 'Inter', sans-serif;
+        font-size: 13px;
+        background: #FFFFFF;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+        color: ${NAVY_DEEP};
+        outline: none;
+        transition: border-color 0.15s;
+      }
+      .bl-projects-search-input:focus { border-color: ${PERIWINKLE}; }
+      .bl-projects-search-clear {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: ${TRACK};
+        color: ${MUTED};
+        border: none;
+        border-radius: 999px;
+        width: 22px;
+        height: 22px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .bl-projects-search-clear:hover { color: ${NAVY}; }
+
+      .bl-projects-filters {
+        display: inline-flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .bl-projects-select {
+        height: 32px;
+        padding: 0 30px 0 10px;
+        font-family: 'Inter', sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        background: #FFFFFF url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7A99' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>") no-repeat right 9px center / 13px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+        color: ${NAVY_DEEP};
+        outline: none;
+        appearance: none;
+        cursor: pointer;
+        transition: background-color 0.15s ease-in-out;
+      }
+      .bl-projects-select:hover { background-color: #F2F2F2; }
+      .bl-projects-select:focus { border-color: ${PERIWINKLE}; }
+      .bl-projects-select:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      .bl-projects-actions {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .bl-projects-cta {
+        height: 38px;
+        border-radius: 10px;
+        font-weight: 500;
+        font-size: 13px;
+        padding: 0 16px;
+      }
+      .bl-projects-cta:hover:not(:disabled) {
+        background-color: ${PERIWINKLE_HOVER} !important;
+      }
+      .bl-projects-cta-secondary {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 38px;
+        padding: 0 14px;
+        background: #FFFFFF;
+        border: 1px solid ${BORDER};
+        border-radius: 10px;
+        color: ${NAVY_DEEP};
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s, color 0.15s;
+      }
+      .bl-projects-cta-secondary:hover {
+        border-color: ${PERIWINKLE};
+        color: ${PERIWINKLE};
+        background: #FFFFFF;
+      }
+
+      /* Status pill */
+      .bl-status-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+      }
+
+      /* Privacy overlay on card — clickable to toggle private_mode */
+      .bl-privacy-overlay {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        background: rgba(0, 15, 77, 0.72);
+        color: #FFFFFF;
+        font-size: 10px;
+        font-weight: 500;
+        padding: 3px 8px;
+        border: none;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        backdrop-filter: blur(8px);
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .bl-privacy-overlay:hover { background: rgba(0, 15, 77, 0.9); }
+
+      /* Grid view */
+      .bl-projects-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 16px;
+      }
+      .bl-card {
+        display: flex;
+        flex-direction: column;
+        background: #FFFFFF;
+        border: 1px solid ${BORDER};
+        border-radius: 14px;
+        overflow: visible;
+        text-decoration: none;
+        color: inherit;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        cursor: pointer;
+        position: relative;
+      }
+      .bl-card:hover {
+        transform: translateY(-2px);
+        border-color: rgba(135, 156, 247, 0.7);
+        box-shadow: 0 12px 28px -16px rgba(0, 15, 77, 0.25);
+      }
+      .bl-card-thumb {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        background: linear-gradient(135deg, rgba(135, 156, 247, 0.10), rgba(135, 156, 247, 0.02));
+        overflow: hidden;
+        border-radius: 14px 14px 0 0;
+      }
+      /* Brand-mark fallback: the account favicon is only 128px, so it
+         sits centred at its own size on the tinted panel rather than
+         being stretched to fill the card. */
+      .bl-card-thumb.is-mark {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .bl-card-thumb.is-mark img {
+        width: 56px;
+        height: 56px;
+        object-fit: contain;
+        border-radius: 12px;
+        background: #FFFFFF;
+        padding: 8px;
+        box-shadow: 0 2px 10px rgba(0, 19, 100, 0.06);
+      }
+      .bl-card-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .bl-card-status {
+        position: absolute;
+        bottom: 8px;
+        right: 8px;
+      }
+      .bl-card-body {
+        padding: 12px 14px 14px;
+      }
+      .bl-card-name {
+        font-size: 14px;
+        font-weight: 500;
+        color: ${NAVY_DEEP};
+        line-height: 1.3;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        margin-bottom: 6px;
+      }
+      .bl-card-meta {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 11px;
+        color: ${MUTED};
+      }
+      .bl-card-pending {
+        color: #C97D3F;
+        font-weight: 500;
+      }
+      .bl-card-invite {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        background: transparent;
+        color: ${PERIWINKLE};
+        border: 1px dashed rgba(135, 156, 247, 0.55);
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s, color 0.15s;
+      }
+      .bl-card-invite:hover {
+        background: rgba(135, 156, 247, 0.10);
+        border-color: ${PERIWINKLE};
+        color: ${PERIWINKLE_HOVER};
+      }
+
+      /* List view */
+      .bl-projects-list {
+        background: #FFFFFF;
+        border: 1px solid ${BORDER};
+        border-radius: 14px;
+        overflow: visible;
+      }
+      .bl-projects-list-head,
+      .bl-projects-list-row {
+        display: grid;
+        grid-template-columns: 1.8fr 0.8fr 0.6fr 0.7fr 0.7fr 44px;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 18px;
+        font-size: 13px;
+      }
+      .bl-projects-list-head {
+        background: rgba(135, 156, 247, 0.05);
+        color: ${MUTED};
+        font-weight: 500;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        border-bottom: 1px solid ${BORDER};
+      }
+      .bl-projects-list-row {
+        text-decoration: none;
+        color: ${NAVY_DEEP};
+        border-bottom: 1px solid ${BORDER};
+        transition: background 0.15s;
+      }
+      .bl-projects-list-row:last-child { border-bottom: none; }
+      .bl-projects-list-row:hover {
+        background: rgba(135, 156, 247, 0.05);
+      }
+      .bl-projects-list-name {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 500;
+      }
+      .bl-projects-list-thumb {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        object-fit: cover;
+        background: ${TRACK};
+      }
+      .bl-projects-list-priv {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        color: ${MUTED};
+        font-size: 12px;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s, color 0.15s;
+      }
+      .bl-projects-list-priv:hover {
+        background: rgba(135, 156, 247, 0.10);
+        border-color: ${BORDER};
+        color: ${NAVY_DEEP};
+      }
+
+      /* Loading skeleton */
+      .bl-projects-loading {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 16px;
+      }
+      .bl-projects-skeleton {
+        aspect-ratio: 1 / 1.3;
+        background: linear-gradient(120deg, ${TRACK} 30%, #f0f4ff 50%, ${TRACK} 70%);
+        background-size: 200% 100%;
+        animation: blShimmer 1.2s ease-in-out infinite;
+        border-radius: 14px;
+      }
+      @keyframes blShimmer {
+        0%   { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+
+      /* Empty state */
+      .bl-projects-empty {
+        text-align: center;
+        padding: 64px 20px;
+        background: #FFFFFF;
+        border: 1px dashed ${BORDER};
+        border-radius: 14px;
+      }
+      .bl-projects-empty-icon {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 12px;
+        background: rgba(135, 156, 247, 0.10);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: ${PERIWINKLE};
+      }
+      .bl-projects-empty-title {
+        font-size: 16px;
+        font-weight: 500;
+        color: ${NAVY_DEEP};
+        margin: 0 0 4px;
+      }
+      .bl-projects-empty-body {
+        font-size: 13px;
+        color: ${MUTED};
+        margin: 0;
+      }
+
+      /* Modal */
+      @keyframes blBackdropFade { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes blModalRise    { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+      .bl-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        /* Softr's own modals dim with neutral black at 60%. Matching it
+           stops these in-block modals reading as a different app. */
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        padding: 20px;
+        animation: blBackdropFade 0.16s ease-out;
+      }
+      .bl-modal {
+        width: 100%;
+        max-width: 480px;
+        background: #FAFBFF;
+        border: 1px solid ${BORDER};
+        border-radius: 16px;
+        padding: 22px 24px 18px;
+        box-shadow: 0 24px 60px -20px rgba(0, 15, 77, 0.30);
+        animation: blModalRise 0.18s ease-out;
+        max-height: calc(100vh - 40px);
+        overflow-y: auto;
+      }
+      .bl-modal-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+      .bl-modal-title {
+        font-size: 18px;
+        font-weight: 500;
+        color: ${NAVY_DEEP};
+        margin: 0;
+      }
+      .bl-modal-sub {
+        font-size: 12px;
+        color: ${MUTED};
+        margin: 4px 0 0;
+      }
+      .bl-modal-close {
+        width: 30px;
+        height: 30px;
+        background: transparent;
+        color: ${MUTED};
+        border: none;
+        border-radius: 999px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        transition: background 0.15s;
+      }
+      .bl-modal-close:hover { background: rgba(135, 156, 247, 0.10); color: ${NAVY_DEEP}; }
+
+      .bl-modal-body { display: flex; flex-direction: column; gap: 14px; }
+      .bl-modal-field { display: flex; flex-direction: column; gap: 6px; }
+      .bl-modal-label {
+        font-size: 12px;
+        font-weight: 500;
+        color: ${NAVY_DEEP};
+        letter-spacing: 0.01em;
+      }
+      .bl-modal-optional {
+        color: ${MUTED};
+        font-weight: 400;
+      }
+      .bl-modal-static {
+        padding: 9px 12px;
+        background: #F7F9FF;
+        border: 1px solid ${BORDER};
+        border-radius: 10px;
+        font-size: 13px;
+        color: ${NAVY_DEEP};
+        line-height: 1.3;
+      }
+      .bl-modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 8px;
+        margin-top: 22px;
+        padding-top: 16px;
+        border-top: 1px solid ${BORDER};
+      }
+      .bl-modal-cancel {
+        background: transparent;
+        color: ${MUTED};
+        border: none;
+        font-size: 13px;
+        font-weight: 500;
+        padding: 8px 14px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: color 0.15s;
+      }
+      .bl-modal-cancel:hover:not(:disabled) { color: ${NAVY_DEEP}; }
+      .bl-modal-cancel:disabled { color: #C5CFE8; cursor: not-allowed; }
+
+      /* ===== Card actions menu trigger + dropdown ===== */
+      .bl-card-menu-wrap {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        z-index: 5;
+      }
+      .bl-card-menu-trigger {
+        width: 28px;
+        height: 28px;
+        border: none;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.92);
+        color: ${NAVY_DEEP};
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px -2px rgba(0, 15, 77, 0.18);
+        opacity: 0;
+        transition: opacity 0.15s, background 0.15s, color 0.15s;
+      }
+      .bl-card:hover .bl-card-menu-trigger,
+      .bl-card-menu-trigger:focus,
+      .bl-card-menu-trigger.is-open,
+      .bl-projects-list-row:hover .bl-card-menu-trigger,
+      .bl-projects-list-row.is-menu-open .bl-card-menu-trigger {
+        opacity: 1;
+      }
+      .bl-card-menu-trigger:hover {
+        background: #FFFFFF;
+      }
+      @media (hover: none) {
+        .bl-card-menu-trigger { opacity: 1; }
+      }
+      .bl-card-menu {
+        position: absolute;
+        top: 32px;
+        right: 0;
+        min-width: 200px;
+        background: #FFFFFF;
+        border: 1px solid ${BORDER};
+        border-radius: 12px;
+        box-shadow: 0 16px 36px -16px rgba(0, 15, 77, 0.30);
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        animation: blModalRise 0.14s ease-out;
+        z-index: 20;
+      }
+      .bl-menu-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        background: transparent;
+        color: ${NAVY_DEEP};
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        text-align: left;
+        cursor: pointer;
+        transition: background 0.12s;
+      }
+      .bl-menu-item:hover {
+        background: rgba(135, 156, 247, 0.10);
+      }
+      .bl-menu-item.is-danger {
+        color: #d92626;
+      }
+      .bl-menu-item.is-danger:hover {
+        background: rgba(217, 38, 38, 0.08);
+      }
+      .bl-menu-divider {
+        height: 1px;
+        background: ${BORDER};
+        margin: 4px 2px;
+      }
+
+      /* ===== Card-body meta-row actions (Grid view) ===== */
+      .bl-card-meta-actions {
+        margin-left: auto;
+        position: relative;
+        display: inline-flex;
+      }
+      .bl-card-meta-actions .bl-card-menu-wrap {
+        position: relative;
+        top: auto;
+        right: auto;
+        z-index: 5;
+      }
+      .bl-card-meta-actions .bl-card-menu-trigger {
+        width: 24px;
+        height: 24px;
+        background: transparent;
+        color: ${MUTED};
+        box-shadow: none;
+        border-radius: 6px;
+      }
+      .bl-card:hover .bl-card-meta-actions .bl-card-menu-trigger,
+      .bl-card-meta-actions .bl-card-menu-trigger.is-open {
+        background: rgba(135, 156, 247, 0.10);
+        color: ${NAVY_DEEP};
+      }
+      .bl-card-meta-actions .bl-card-menu {
+        top: 28px;
+        bottom: auto;
+        right: 0;
+      }
+
+      /* List row actions cell */
+      .bl-projects-list-row { position: relative; }
+      .bl-projects-list-actions {
+        position: relative;
+        display: flex;
+        justify-content: flex-end;
+      }
+      .bl-projects-list-actions .bl-card-menu-wrap {
+        position: relative;
+        top: auto;
+        right: auto;
+      }
+
+      /* ===== Settings modal: privacy toggle row ===== */
+      .bl-toggle-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px;
+        background: #F7F9FF;
+        border: 1px solid ${BORDER};
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .bl-toggle-row input[type="checkbox"] {
+        margin-top: 2px;
+        width: 18px;
+        height: 18px;
+        accent-color: ${PERIWINKLE};
+        cursor: pointer;
+      }
+      .bl-toggle-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 500;
+        color: ${NAVY_DEEP};
+      }
+      .bl-toggle-hint {
+        display: block;
+        font-size: 12px;
+        color: ${MUTED};
+        margin-top: 2px;
+      }
+
+      /* ===== Settings modal: thumbnail uploader ===== */
+      .bl-thumb-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .bl-thumb-preview {
+        width: 64px;
+        height: 64px;
+        border-radius: 12px;
+        background: #F2F4FB url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23BFC6E0' stroke-width='1.5'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='9' cy='9' r='2'/><path d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/></svg>") center / 24px no-repeat;
+        border: 1px solid ${BORDER};
+        overflow: hidden;
+        flex-shrink: 0;
+      }
+      .bl-thumb-preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .bl-thumb-empty {
+        display: none;
+      }
+      .bl-thumb-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .bl-thumb-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 32px;
+        padding: 0 12px;
+        background: #FFFFFF;
+        color: ${NAVY_DEEP};
+        border: 1px solid ${BORDER};
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: border-color 0.15s;
+      }
+      .bl-thumb-btn:hover:not(:disabled) {
+        border-color: ${PERIWINKLE};
+      }
+      .bl-thumb-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+      .bl-thumb-btn-ghost {
+        background: transparent;
+        color: ${MUTED};
+        border-color: transparent;
+      }
+      .bl-thumb-btn-ghost:hover:not(:disabled) {
+        color: ${NAVY_DEEP};
+        background: rgba(135, 156, 247, 0.08);
+        border-color: transparent;
+      }
+
+      /* Responsive tweaks */
+      @media (max-width: 640px) {
+        .bl-projects-controls { gap: 8px; }
+        .bl-projects-cta { margin-left: 0; width: 100%; justify-content: center; }
+        .bl-projects-list-head { display: none; }
+        .bl-projects-list-row {
+          grid-template-columns: 1fr;
+          gap: 6px;
+        }
+        .bl-card-menu { right: -4px; }
+      }
+    `}</style>
+  );
+}

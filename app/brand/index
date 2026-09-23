@@ -1,0 +1,688 @@
+// =====================================================================
+// /briefs-page — Public brief index for one brand.
+//
+// The page a brand shares when they want creators to see everything
+// they have open, rather than one brief at a time. Reached from the
+// creator brief page ("View all {Brand} briefs") and shareable on its
+// own.
+//
+// Scoped to ONE account, resolved from the page's current record, so
+// the URL carries the brand: /briefs-page?recordId=<accountId>.
+//
+// PRIVACY. Three things keep a brief off this page:
+//   1. a record filter on the briefs source (set in the Source tab,
+//      the hard boundary — a filtered-out brief never reaches the
+//      browser at all): status is Active AND private_mode is false
+//   2. the `where` below, which scopes to this brand
+//   3. the render guard, which drops anything that slipped through
+// Private briefs keep working by direct link. They are unlisted here,
+// which is what private_mode has always meant on the brand side.
+//
+// ── DESIGN, Aug 2026 ────────────────────────────────────────────────
+// Aurora shell from the Claude Design pass (project ff3b0704,
+// `Brieflee Creator Briefs Index.dc.html`, states 2a and 2b). Cards
+// float on the aurora as glass rather than sitting in bordered white
+// boxes. Brand pill top left, actions top right, brand block on glass,
+// closed campaigns kept but dropped to half weight, Brieflee lockup in
+// the footer.
+//
+// Shares its shell with /upload and /brief/details/live so a creator
+// moving index -> brief -> upload never changes worlds.
+//
+// Answering Bev's four notes on the old design: icons are gone from the
+// headings, the multi-colour chip palette is down to one periwinkle
+// accent, dividers are hairlines rather than card shadows, and the only
+// visual richness is the brand's own imagery.
+//
+// Presentation only. Every field id, filter and route below is exactly
+// as it was.
+// =====================================================================
+
+import { useMemo } from "react";
+import { datasource, useRecord, useRecords, useCurrentRecordId, q } from "@/lib/datasource";
+import { ArrowRight, Globe, UploadCloud } from "lucide-react";
+
+// ─── Datasources (connection ids from this block's Source tab) ─
+// Connection ids from this block's Source tab. `briefs` was wired by
+// Studio and carries a UUID; `accounts` was added later and kept the
+// readable id. Both are literal, so never "tidy" them into names.
+const ds = datasource.define({
+  accounts: "accounts",
+  briefs:   "6fcffb23-99b6-4385-8286-c84d20f186b1",
+});
+
+const BRIEFLEE_MASCOT = "https://res.cloudinary.com/dchroynzv/image/upload/v1778589398/brieflee_icon_lee-smile-mascot-glass-3d-transparent_2026-05.png";
+const BRIEFLEE_LOCKUP = "https://res.cloudinary.com/dchroynzv/image/upload/v1777622988/brieflee_logo_powered-by-brieflee-lockup-blue_2025-03.svg";
+
+// briefs.status — "Active" option id
+const STATUS_ACTIVE = "8a32a8b7-097d-469b-ab14-d8898d9beaeb";
+
+// ─── accounts — read schema ───────────────────────────────────
+const accountSelect = q.select({
+  name:        "aAKkT",
+  logo:        "q1B5K", // ATTACHMENT — uploaded brand logo
+  logo_url:    "nPI65", // FORMULA — favicon fallback
+  brand_bio:   "iVPat",
+  description: "RQcNB",
+  website:     "RaK4B",
+  community:   "oHBT3", // free text — WhatsApp / Discord invite links
+});
+
+// ─── Community links ──────────────────────────────────────────
+// `community_links` is free text on the account, so URLs are pulled out
+// and matched to a platform we can render. Anything unrecognised is
+// left alone rather than shown as a bare link.
+const WHATSAPP_RE = /(?:wa\.me|(?:chat\.)?whatsapp\.com)/i;
+const DISCORD_RE  = /(?:discord\.gg|discord(?:app)?\.com)/i;
+
+function extractCommunityLinks(raw) {
+  const text = typeof raw === "string" ? raw : Array.isArray(raw) ? raw.join(" ") : "";
+  if (!text) return [];
+  const urls = text.match(/https?:\/\/[^\s"'<>)]+/gi) || [];
+  const seen = new Set();
+  const out = [];
+  for (const url of urls) {
+    const clean = url.replace(/[.,;]+$/, "");
+    let key = "";
+    if (WHATSAPP_RE.test(clean)) key = "whatsapp";
+    else if (DISCORD_RE.test(clean)) key = "discord";
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, url: clean, label: key === "whatsapp" ? "WhatsApp" : "Discord", dot: key === "whatsapp" ? "#25D366" : "#5865F2" });
+  }
+  return out;
+}
+
+// ─── briefs — read schema ─────────────────────────────────────
+const briefSelect = q.select({
+  name:                  "z3lpx",
+  status:                "71Oud",
+  private_mode:          "umIL6",
+  accounts:              "EhzVx", // LOOKUP — the brand this brief belongs to
+  created_at:            "GWyAv",
+  // Hero image chain, same order the brief page resolves
+  thumbnail:             "BHWP7",
+  image_url:             "FVDgz",
+  project_thumbnail:     "8SR2k",
+  logo_file:             "jdtgI",
+  logo_url:              "CBKVE", // LOOKUP — account favicon URL
+  product_image:         "qovS7", // LOOKUP — linked product's uploaded image
+  product_image_url:     "FBKYG", // LOOKUP — linked product's image URL (has a default)
+  // Card meta
+  first_format:          "0oeqf",
+  platform:              "1lPXC",
+  duration:              "SleHY",
+  creator_type:          "N1vCS",
+  product_feature_description: "CSvl8",
+  submission_close_date: "M4hMa",
+  closed:                "C69h0",
+});
+
+// ─── Helpers ──────────────────────────────────────────────────
+function selectLabel(raw) {
+  if (!raw) return "";
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw)) return raw.map(selectLabel).filter(Boolean).join(" · ");
+  return raw.label || "";
+}
+function asArray(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (raw == null) return [];
+  return [raw];
+}
+function extractThumbUrl(raw) {
+  if (!raw) return null;
+  if (typeof raw === "string") return raw;
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  if (!first) return null;
+  if (typeof first === "string") return first;
+  return first.thumbnailUrl || first.url || null;
+}
+
+// products.image_url has a DEFAULT (a stock sample picture), so it only
+// counts when it is not that sample.
+const PRODUCT_SAMPLE_MARK = "product_sample_";
+function resolveProductThumb(image, imageUrl) {
+  const uploaded = extractThumbUrl(image);
+  if (uploaded) return uploaded;
+  const url = extractThumbUrl(imageUrl) || "";
+  return url && !url.includes(PRODUCT_SAMPLE_MARK) ? url : "";
+}
+function stripTags(html) {
+  if (typeof html !== "string" || !html) return "";
+  return html.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+}
+function formatDate(raw) {
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (!Number.isFinite(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+// A brief is closed when its close date has passed. `closed` is a text
+// formula on the table ('true' / 'false'), so read it as a string.
+function isBriefClosed(f) {
+  if (typeof f.closed === "string" && f.closed.toLowerCase() === "true") return true;
+  const t = f.submission_close_date ? new Date(f.submission_close_date).getTime() : 0;
+  return Number.isFinite(t) && t !== 0 && t < Date.now();
+}
+// Brand mark falls back to initials so a workspace with no logo never
+// looks broken. Same rule as the upload page.
+function initialsOf(name) {
+  const words = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return "•";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+// =====================================================================
+// MAIN BLOCK
+// =====================================================================
+export default function Block() {
+  const accountId = useCurrentRecordId() || "";
+  const { data: accountRec, status: accountStatus } = useRecord({
+    recordId: accountId,
+    select: accountSelect,
+    from: ds.accounts,
+    enabled: !!accountId,
+  });
+  const a = accountRec?.fields || {};
+
+  const { data, status, hasNextPage, fetchNextPage, isFetching } = useRecords({
+    select: briefSelect,
+    from: ds.briefs,
+    count: 100,
+    enabled: !!accountId,
+    where: q.and(
+      q.array("accounts").is(accountId),
+      q.text("status").is(STATUS_ACTIVE),
+      q.boolean("private_mode").is(false),
+    ),
+    orderBy: q.desc("created_at"),
+  });
+
+  const brandName = typeof a.name === "string" ? a.name : "";
+  const brandLogo = extractThumbUrl(a.logo)
+    || (Array.isArray(a.logo_url) ? a.logo_url[0] : a.logo_url)
+    || "";
+  const brandBio = stripTags(a.brand_bio) || stripTags(a.description) || "";
+  const website  = typeof a.website === "string" ? a.website.trim() : "";
+  const community = useMemo(() => extractCommunityLinks(a.community), [a.community]);
+
+  // Belt and braces: the source filter and the `where` should both have
+  // handled this, but nothing private or off-brand renders even if one
+  // of them is misconfigured.
+  const briefs = useMemo(() => {
+    const items = data?.pages.flatMap((p) => p.items) ?? [];
+    return items.filter((it) => {
+      const f = it.fields || {};
+      if (f.private_mode === true) return false;
+      const ids = asArray(f.accounts).map((x) => (x && typeof x === "object" ? x.id : x));
+      if (accountId && ids.length && !ids.includes(accountId)) return false;
+      return true;
+    });
+  }, [data, accountId]);
+
+  const open   = briefs.filter((it) => !isBriefClosed(it.fields || {}));
+  const closed = briefs.filter((it) => isBriefClosed(it.fields || {}));
+  const loading = accountStatus === "pending" || status === "pending";
+  const uploadHref = accountId ? "/upload?recordId=" + encodeURIComponent(accountId) : "";
+
+  return (
+    <>
+      <Style />
+      <div className="bl-idx">
+        <span className="bl-idx-bloom" aria-hidden="true" />
+        <span className="bl-idx-dots" aria-hidden="true" />
+
+        <div className="bl-idx-inner">
+
+          {/* ============ Top rail: brand pill + actions ============ */}
+          <div className="bl-idx-rail">
+            <span className="bl-idx-pill">
+              <span className="bl-idx-pill-mark">
+                {brandLogo ? <img src={brandLogo} alt="" draggable={false} /> : initialsOf(brandName)}
+              </span>
+              <span className="bl-idx-pill-name">{brandName || "Creator briefs"}</span>
+            </span>
+            <div className="bl-idx-rail-actions">
+              {website && (
+                <a className="bl-idx-btn-glass" href={website} target="_blank" rel="noopener noreferrer">
+                  <Globe size={14} /> Visit site
+                </a>
+              )}
+              {uploadHref && (
+                <a className="bl-idx-btn" href={uploadHref}>
+                  <UploadCloud size={14} /> Upload content
+                </a>
+              )}
+            </div>
+          </div>
+
+          {/* ============ Brand block ============ */}
+          <header className="bl-idx-hero">
+            <span className="bl-idx-hero-mark">
+              {brandLogo ? <img src={brandLogo} alt={brandName || "Brand"} draggable={false} /> : initialsOf(brandName)}
+            </span>
+            <div className="bl-idx-hero-text">
+              <span className="bl-idx-eyebrow">Creator briefs</span>
+              <h1 className="bl-idx-title">{brandName || "Open briefs"}</h1>
+              {brandBio && <p className="bl-idx-bio">{brandBio}</p>}
+              <div className="bl-idx-chips">
+                {!loading && (
+                  <span className="bl-idx-chip is-accent">
+                    {open.length === 0
+                      ? "No briefs open right now"
+                      : open.length + " brief" + (open.length === 1 ? "" : "s") + " open"}
+                  </span>
+                )}
+                {community.map((c) => (
+                  <a key={c.key} className="bl-idx-chip is-link" href={c.url} target="_blank" rel="noopener noreferrer">
+                    <span className="bl-idx-dot" style={{ background: c.dot }} />
+                    {c.label}
+                  </a>
+                ))}
+              </div>
+            </div>
+          </header>
+
+          {loading && <div className="bl-idx-state">Loading briefs…</div>}
+          {status === "error" && (
+            <div className="bl-idx-state">These briefs could not be loaded. Refresh the page to try again.</div>
+          )}
+
+          {/* ============ Open briefs ============ */}
+          {!loading && open.length > 0 && (
+            <section className="bl-idx-section">
+              <div className="bl-idx-grid">
+                {open.map((it) => <BriefCard key={it.id} id={it.id} f={it.fields || {}} />)}
+              </div>
+            </section>
+          )}
+
+          {/* ============ Nothing open ============ */}
+          {!loading && open.length === 0 && closed.length === 0 && (
+            <section className="bl-idx-empty">
+              <span className="bl-idx-empty-halo">
+                <img src={BRIEFLEE_MASCOT} alt="" draggable={false} />
+              </span>
+              <h2>Nothing open at the moment</h2>
+              <p>
+                {brandName ? brandName + " isn't" : "This brand isn't"} accepting new videos right now.
+                Check back when the next campaign opens, or send content over for review anyway.
+              </p>
+              <div className="bl-idx-empty-actions">
+                {uploadHref && (
+                  <a className="bl-idx-btn" href={uploadHref}><UploadCloud size={15} /> Upload content</a>
+                )}
+                {website && (
+                  <a className="bl-idx-btn-glass" href={website} target="_blank" rel="noopener noreferrer">
+                    Visit {brandName || "the brand"}
+                  </a>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* ============ Closed briefs ============ */}
+          {!loading && closed.length > 0 && (
+            <section className="bl-idx-section">
+              <h2 className="bl-idx-section-title">Closed campaigns</h2>
+              <div className="bl-idx-grid">
+                {closed.map((it) => <BriefCard key={it.id} id={it.id} f={it.fields || {}} closed />)}
+              </div>
+            </section>
+          )}
+
+          {hasNextPage && (
+            <div className="bl-idx-more">
+              <button type="button" onClick={() => fetchNextPage()} disabled={isFetching}>
+                {isFetching ? "Loading…" : "Show more briefs"}
+              </button>
+            </div>
+          )}
+
+          <footer className="bl-idx-footer">
+            <a href="https://www.brieflee.co" target="_blank" rel="noopener noreferrer">
+              <img src={BRIEFLEE_LOCKUP} alt="Powered by Brieflee" />
+            </a>
+          </footer>
+
+        </div>
+      </div>
+    </>
+  );
+}
+
+// =====================================================================
+// Brief card
+// =====================================================================
+function BriefCard({ id, f, closed }) {
+  // The brand's own imagery is the only visual richness on this page, so
+  // a real thumbnail fills the frame. Only when a brief has none does the
+  // mascot appear, and then it sits contained on the gradient panel as a
+  // mark rather than being stretched to fill.
+  // Order (Bev, 22 Sep 2026): own upload, the linked product, legacy
+  // scraped image, the brand's logo. The favicon and the mascot are marks.
+  const real = extractThumbUrl(f.thumbnail)
+    || resolveProductThumb(f.product_image, f.product_image_url)
+    || (typeof f.image_url === "string" && f.image_url)
+    || extractThumbUrl(f.logo_file)
+    || "";
+  const favicon = Array.isArray(f.logo_url) ? f.logo_url[0] : f.logo_url;
+  const image = real || (typeof favicon === "string" && favicon) || BRIEFLEE_MASCOT;
+
+  const format    = selectLabel(f.first_format);
+  const platform  = selectLabel(f.platform);
+  const duration  = selectLabel(f.duration);
+  const creator   = selectLabel(f.creator_type);
+  const summary   = stripTags(f.product_feature_description);
+  const closeDate = formatDate(f.submission_close_date);
+  const href      = "/brief/details/live?recordId=" + encodeURIComponent(id);
+
+  return (
+    <a className={"bl-idx-card" + (closed ? " is-closed" : "")} href={href}>
+      <div className={"bl-idx-card-media" + (real ? "" : " is-mark")}>
+        <img src={image} alt="" draggable={false} loading="lazy" />
+        {closed && <span className="bl-idx-card-closed">Closed</span>}
+      </div>
+      <div className="bl-idx-card-body">
+        <h3 className="bl-idx-card-title">{typeof f.name === "string" ? f.name : "Untitled brief"}</h3>
+        {summary && <p className="bl-idx-card-summary">{summary}</p>}
+        {!closed && (
+          <div className="bl-idx-card-chips">
+            {format   && <span className="bl-idx-chip">{format}</span>}
+            {creator  && <span className="bl-idx-chip">{creator}</span>}
+            {platform && <span className="bl-idx-chip">{platform}</span>}
+            {duration && <span className="bl-idx-chip">{duration}</span>}
+          </div>
+        )}
+        <div className="bl-idx-card-foot">
+          {closeDate ? (
+            <span className="bl-idx-card-date">{closed ? "Ended " + closeDate : "Closes " + closeDate}</span>
+          ) : <span />}
+          <span className="bl-idx-card-go">
+            {closed ? "View brief" : "Read the brief"} <ArrowRight size={13} />
+          </span>
+        </div>
+      </div>
+    </a>
+  );
+}
+
+// =====================================================================
+// Style
+// =====================================================================
+function Style() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+      .bl-idx, .bl-idx * { font-family: 'Inter', system-ui, sans-serif; box-sizing: border-box; }
+
+      /* ── The aurora shell, shared with /upload and the brief page ── */
+      .bl-idx {
+        position: relative;
+        overflow: hidden;
+        min-height: 100vh;
+        padding: 30px 0 56px;
+        background: linear-gradient(180deg, #F2F5FF 0%, #FAFBFF 55%);
+      }
+      .bl-idx-bloom {
+        position: absolute; top: -8%; left: -10%; right: -10%; height: 900px;
+        background:
+          radial-gradient(ellipse 40% 44% at 16% 12%, rgba(135,156,247,0.6) 0%, rgba(135,156,247,0) 68%),
+          radial-gradient(ellipse 44% 42% at 82% 6%, rgba(217,224,255,0.95) 0%, rgba(217,224,255,0) 70%),
+          radial-gradient(ellipse 34% 34% at 92% 60%, rgba(41,79,246,0.22) 0%, rgba(41,79,246,0) 70%);
+        animation: blBloom 20s ease-in-out infinite;
+        pointer-events: none;
+      }
+      .bl-idx-dots {
+        position: absolute; inset: 0;
+        background-image: radial-gradient(rgba(135,156,247,0.28) 1px, transparent 1.2px);
+        background-size: 22px 22px;
+        opacity: 0.4;
+        mask-image: linear-gradient(180deg, #000 0%, transparent 60%);
+        -webkit-mask-image: linear-gradient(180deg, #000 0%, transparent 60%);
+        pointer-events: none;
+      }
+      @keyframes blBloom {
+        0%, 100% { transform: translate3d(0,0,0) scale(1); }
+        50% { transform: translate3d(2%,-2%,0) scale(1.08); }
+      }
+
+      .bl-idx-inner {
+        position: relative;
+        max-width: 1140px; margin: 0 auto; width: 100%;
+        padding: 0 clamp(18px, 4vw, 44px);
+        display: flex; flex-direction: column; gap: 24px;
+      }
+
+      /* ── Top rail ── */
+      .bl-idx-rail { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+      .bl-idx-pill {
+        display: inline-flex; align-items: center; gap: 11px;
+        padding: 8px 17px 8px 9px; border-radius: 999px;
+        background: linear-gradient(135deg, rgba(255,255,255,0.88) 0%, rgba(244,246,255,0.62) 100%);
+        backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(255,255,255,0.85);
+        box-shadow: 0 12px 26px -16px rgba(0,19,100,0.38);
+      }
+      .bl-idx-pill-mark {
+        width: 30px; height: 30px; border-radius: 9px; flex: none;
+        background: #0E1B3D; color: #fff; overflow: hidden;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 11.5px; font-weight: 800;
+      }
+      .bl-idx-pill-mark img { width: 100%; height: 100%; object-fit: contain; background: #fff; display: block; }
+      .bl-idx-pill-name { font-size: 14px; font-weight: 700; color: #001364; letter-spacing: -0.01em; }
+      .bl-idx-rail-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+
+      .bl-idx-btn {
+        display: inline-flex; align-items: center; gap: 7px;
+        padding: 10px 17px; border-radius: 11px;
+        background: linear-gradient(180deg, #98ABFA 0%, #7B92F6 100%);
+        color: #fff; font-size: 12.5px; font-weight: 700; text-decoration: none;
+        box-shadow: 0 11px 22px -14px rgba(41,79,246,0.32);
+        transition: transform 160ms ease, filter 160ms ease;
+      }
+      .bl-idx-btn:hover { transform: translateY(-1px); filter: brightness(1.03); }
+      .bl-idx-btn-glass {
+        display: inline-flex; align-items: center; gap: 7px;
+        padding: 10px 16px; border-radius: 11px;
+        background: rgba(255,255,255,0.85);
+        border: 1px solid rgba(255,255,255,0.9);
+        box-shadow: 0 10px 22px -16px rgba(0,19,100,0.35);
+        font-size: 12.5px; font-weight: 700; color: #001364; text-decoration: none;
+        transition: background 160ms ease;
+      }
+      .bl-idx-btn-glass:hover { background: #fff; }
+
+      /* ── Brand block ── */
+      .bl-idx-hero {
+        display: flex; align-items: center; gap: 26px;
+        border-radius: 26px; padding: 30px 34px;
+        background: linear-gradient(135deg, rgba(255,255,255,0.86) 0%, rgba(246,248,255,0.6) 55%, rgba(236,240,255,0.5) 100%);
+        backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
+        border: 1px solid rgba(255,255,255,0.85);
+        box-shadow: 0 40px 80px -40px rgba(0,19,100,0.38), 0 1px 0 0 rgba(255,255,255,0.9) inset;
+      }
+      .bl-idx-hero-mark {
+        width: 88px; height: 88px; border-radius: 26px; flex: none;
+        background: #fff; border: 1px solid rgba(214,222,252,0.9);
+        box-shadow: 0 18px 34px -20px rgba(0,19,100,0.4);
+        display: flex; align-items: center; justify-content: center; overflow: hidden;
+        font-size: 26px; font-weight: 800; color: #0E1B3D; letter-spacing: 0.01em;
+      }
+      .bl-idx-hero-mark img { width: 100%; height: 100%; object-fit: contain; padding: 10px; display: block; }
+      .bl-idx-hero-text { flex: 1; min-width: 0; }
+      .bl-idx-eyebrow {
+        display: inline-block;
+        font-size: 10.5px; font-weight: 800; letter-spacing: 0.1em;
+        text-transform: uppercase; color: #294ff6;
+      }
+      .bl-idx-title {
+        margin: 8px 0 0; font-size: clamp(28px, 3.4vw, 38px); font-weight: 700;
+        letter-spacing: -0.032em; line-height: 1.04; color: #001364;
+      }
+      .bl-idx-bio {
+        margin: 10px 0 0; font-size: 15px; line-height: 1.6; color: #3A4770;
+        max-width: 620px; text-wrap: pretty;
+      }
+      .bl-idx-chips { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+      .bl-idx-chip {
+        display: inline-flex; align-items: center; gap: 7px;
+        padding: 7px 13px; border-radius: 999px;
+        background: rgba(135,156,247,0.16);
+        font-size: 11.5px; font-weight: 700; color: #001364;
+        text-decoration: none;
+      }
+      .bl-idx-chip.is-accent { background: rgba(135,156,247,0.2); font-size: 12px; }
+      .bl-idx-chip.is-link {
+        background: rgba(255,255,255,0.9);
+        border: 1px solid rgba(214,222,252,0.9);
+        font-size: 12px;
+        transition: border-color 140ms ease;
+      }
+      .bl-idx-chip.is-link:hover { border-color: #879CF7; }
+      .bl-idx-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+
+      /* ── Sections ── */
+      .bl-idx-section { display: flex; flex-direction: column; gap: 14px; }
+      .bl-idx-section-title {
+        margin: 20px 0 0; font-size: 13px; font-weight: 800;
+        letter-spacing: 0.09em; text-transform: uppercase; color: #8390B5;
+      }
+      .bl-idx-state {
+        padding: 34px; text-align: center; font-size: 14px; color: #5A6790;
+        border-radius: 22px;
+        background: rgba(255,255,255,0.86);
+        border: 1px solid rgba(255,255,255,0.9);
+      }
+
+      /* ── Card grid ── */
+      .bl-idx-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+      .bl-idx-card {
+        display: flex; flex-direction: column;
+        border-radius: 22px; overflow: hidden; text-decoration: none;
+        background: rgba(255,255,255,0.92);
+        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255,255,255,0.9);
+        box-shadow: 0 26px 54px -30px rgba(0,19,100,0.4);
+        transition: transform 180ms ease, box-shadow 180ms ease;
+      }
+      .bl-idx-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 34px 64px -30px rgba(0,19,100,0.46);
+      }
+      .bl-idx-card.is-closed { opacity: 0.72; }
+      .bl-idx-card.is-closed:hover { opacity: 1; }
+
+      .bl-idx-card-media {
+        position: relative; height: 150px; flex: none;
+        background:
+          radial-gradient(circle at 50% 45%, rgba(135,156,247,0.42) 0%, rgba(135,156,247,0.08) 60%, rgba(255,255,255,0) 100%),
+          linear-gradient(160deg, #EEF1FF, #DCE3FF);
+        display: flex; align-items: center; justify-content: center;
+        overflow: hidden;
+      }
+      .bl-idx-card-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      /* No brand image on this brief: the mark sits on the panel rather
+         than being stretched across it. */
+      .bl-idx-card-media.is-mark img {
+        width: auto; height: 82px; object-fit: contain;
+        filter: drop-shadow(0 14px 22px rgba(0,19,100,0.28));
+      }
+      .bl-idx-card.is-closed .bl-idx-card-media { background: linear-gradient(160deg, #F1F3FA, #E3E8F6); }
+      .bl-idx-card.is-closed .bl-idx-card-media img { filter: grayscale(0.35); }
+      .bl-idx-card-closed {
+        position: absolute; top: 12px; right: 12px;
+        padding: 5px 10px; border-radius: 999px;
+        background: rgba(0,19,100,0.72); color: #fff;
+        font-size: 10.5px; font-weight: 800; letter-spacing: 0.04em;
+      }
+
+      .bl-idx-card-body { display: flex; flex-direction: column; padding: 18px 18px 16px; flex: 1 1 auto; }
+      .bl-idx-card-title {
+        margin: 0; font-size: 16.5px; font-weight: 700;
+        letter-spacing: -0.015em; line-height: 1.25; color: #001364;
+      }
+      .bl-idx-card-summary {
+        margin: 8px 0 0; font-size: 13px; line-height: 1.55; color: #5A6790;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+      }
+      .bl-idx-card-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+      .bl-idx-card-chips .bl-idx-chip { padding: 6px 10px; font-size: 11px; }
+      .bl-idx-card-foot {
+        display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        margin-top: 16px; padding-top: 14px;
+        border-top: 1px solid rgba(214,222,252,0.85);
+      }
+      .bl-idx-card-date { font-size: 11.5px; font-weight: 600; color: #5A6790; }
+      .bl-idx-card-go {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 12.5px; font-weight: 700; color: #294ff6;
+      }
+
+      /* ── Empty state ── */
+      .bl-idx-empty {
+        display: flex; flex-direction: column; align-items: center; text-align: center;
+        gap: 0; padding: 56px 24px 60px;
+      }
+      .bl-idx-empty-halo {
+        width: 150px; height: 150px; border-radius: 50%;
+        background: rgba(135,156,247,0.2);
+        display: flex; align-items: center; justify-content: center;
+      }
+      .bl-idx-empty-halo img { height: 104px; width: auto; filter: drop-shadow(0 18px 28px rgba(0,19,100,0.3)); }
+      .bl-idx-empty h2 {
+        margin: 26px 0 0; font-size: clamp(26px, 3vw, 36px); font-weight: 700;
+        letter-spacing: -0.03em; line-height: 1.06; color: #001364;
+      }
+      .bl-idx-empty p {
+        margin: 14px 0 0; font-size: 16px; line-height: 1.62; color: #3A4770;
+        max-width: 460px; text-wrap: pretty;
+      }
+      .bl-idx-empty-actions { display: flex; gap: 10px; margin-top: 26px; flex-wrap: wrap; justify-content: center; }
+      .bl-idx-empty-actions .bl-idx-btn,
+      .bl-idx-empty-actions .bl-idx-btn-glass { padding: 12px 22px; font-size: 14px; border-radius: 12px; }
+
+      /* ── Load more ── */
+      .bl-idx-more { display: flex; justify-content: center; margin-top: 6px; }
+      .bl-idx-more button {
+        padding: 12px 22px; border-radius: 12px;
+        background: rgba(255,255,255,0.9);
+        border: 1px solid rgba(214,222,252,0.9);
+        color: #001364; font-size: 13.5px; font-weight: 700;
+        cursor: pointer; font-family: inherit;
+        transition: background 140ms ease;
+      }
+      .bl-idx-more button:hover:not(:disabled) { background: #fff; }
+      .bl-idx-more button:disabled { opacity: 0.5; cursor: default; }
+
+      /* ── Footer ── */
+      .bl-idx-footer { display: flex; justify-content: center; margin-top: 20px; }
+      .bl-idx-footer img { display: block; height: 34px; width: auto; opacity: 0.9; }
+
+      @media (prefers-reduced-motion: reduce) {
+        .bl-idx-bloom { animation: none; }
+        .bl-idx-card, .bl-idx-btn { transition: none; }
+      }
+
+      /* ── Responsive ── */
+      @media (max-width: 980px) {
+        .bl-idx-grid { grid-template-columns: repeat(2, 1fr); }
+      }
+      @media (max-width: 640px) {
+        .bl-idx { padding: 20px 0 44px; }
+        .bl-idx-rail { flex-direction: column; align-items: stretch; gap: 12px; }
+        .bl-idx-rail-actions { justify-content: stretch; }
+        .bl-idx-rail-actions a { flex: 1; justify-content: center; }
+        .bl-idx-hero { flex-direction: column; align-items: flex-start; gap: 18px; padding: 22px 20px; border-radius: 22px; }
+        .bl-idx-hero-mark { width: 64px; height: 64px; border-radius: 20px; font-size: 20px; }
+        .bl-idx-grid { grid-template-columns: 1fr; }
+        .bl-idx-card-media { height: 128px; }
+        .bl-idx-empty-halo { width: 120px; height: 120px; }
+        .bl-idx-empty-halo img { height: 84px; }
+      }
+    `}</style>
+  );
+}

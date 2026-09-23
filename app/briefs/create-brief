@@ -25,7 +25,20 @@
 //                   (Firecrawl reads the page once and a products row
 //                   is written, so the catalog builds itself), or
 //                   "no product" for brand or organic content.
-//   4. Basics     — name, creator type, channel, optional goal.
+//   4. Basics     — name, creator type, channel.
+//   4b. Offer.    The brief's goals first (pick any, or "I'm not
+//                 sure"), then the optional Offer Builder: what the
+//                 creator receives (Fee, Commission, Gift, Sample,
+//                 Performance bonus, Competition), how generous the
+//                 offer is (asked only when something is left to
+//                 Lee), and per module the exact details, a range or
+//                 "help me decide". Its own OpenRouter leg writes
+//                 ONE offer: the deal plus a part per module in The
+//                 Offer, Rights and restrictions in usage_rights, and
+//                 offer_notes, Lee's note to the brand (why this offer,
+//                 which figures are estimates) that the builder shows
+//                 and the live brief never reads. Skippable. The PDF
+//                 route skips it: the document carries its own offer.
 //   5. Write      — "Write it with AI" calls OpenRouter in THREE
 //                   parallel calls, prose + lists + visual format
 //                   (one call writing all 11 sections ran V4 Pro past
@@ -57,7 +70,10 @@
 //   write list grew by three on the visual-format change (format,
 //   first_format, visual_format), so re-sync the Actions tab after
 //   pasting. A recompile also resets action VISIBILITY to defaults,
-//   so re-check BOTH actions after every push.
+//   so re-check BOTH actions after every push. The Offer Builder
+//   added eight more (offer_fee, offer_commission, offer_gift,
+//   offer_sample, offer_bonus, offer_competition, offer_notes,
+//   usage_rights).
 // =====================================================================
 
 import { useState, useRef, useEffect, useMemo } from "react";
@@ -124,6 +140,339 @@ const CREATOR_TYPES = [
   { id: "437357f6-a391-4acd-afb2-2c6698ff87fd", label: "Founder" },
 ];
 
+// ─── Offer Builder ────────────────────────────────────────────────
+// Retainer is not a module: it can only appear as a prize or a
+// performance reward. Cash is a reward type inside Fee, Performance
+// bonus or Competition, never a module of its own.
+const GOALS = [
+  { key: "sales",     label: "Sales" },
+  { key: "quality",   label: "Content quality" },
+  { key: "awareness", label: "Awareness or reach" },
+  { key: "launch",    label: "Product launch" },
+  { key: "unsure",    label: "I'm not sure, help me decide" },
+];
+// Goals are a multi-select; "I'm not sure" stands alone, so picking it
+// clears the others and picking any other goal clears it.
+function toggleGoalKey(keys, key) {
+  if (key === "unsure") return keys.includes("unsure") ? [] : ["unsure"];
+  const rest = keys.filter((k) => k !== "unsure");
+  return rest.includes(key) ? rest.filter((k) => k !== key) : [...rest, key];
+}
+function goalLabels(keys) {
+  return GOALS.filter((g) => keys.includes(g.key)).map((g) => g.label);
+}
+// key = the part key inside the builder's The Offer section, field =
+// the createFields alias that part reads.
+const OFFER_MODULES = [
+  { key: "fee",         label: "Fee",               field: "offer_fee" },
+  { key: "commission",  label: "Commission",        field: "offer_commission" },
+  { key: "gift",        label: "Gift",              field: "offer_gift" },
+  { key: "sample",      label: "Sample",            field: "offer_sample" },
+  { key: "bonus",       label: "Performance bonus", field: "offer_bonus" },
+  { key: "competition", label: "Competition",       field: "offer_competition" },
+];
+const OFFER_KEYS = ["offer"].concat(OFFER_MODULES.map((m) => m.field), ["usage_rights", "offer_notes"]);
+// Picking an approach before any module fills its typical mix.
+const APPROACHES = [
+  { key: "budget",   label: "Budget-conscious", sub: "Sample + commission + a milestone bonus",
+    mods: ["commission", "sample", "bonus"] },
+  { key: "balanced", label: "Balanced",         sub: "Modest fee + sample + commission + performance bonus",
+    mods: ["fee", "commission", "sample", "bonus"] },
+  { key: "high",     label: "High-incentive",   sub: "Strong fee + higher or tiered commission + bonuses or prizes",
+    mods: ["fee", "commission", "bonus", "competition"] },
+];
+const DEPTHS = [
+  { key: "know",  label: "I know the details" },
+  { key: "range", label: "I have a range" },
+  { key: "help",  label: "Help me decide" },
+];
+const RIGHTS_DEPTHS = [
+  { key: "help", label: "Help me decide" },
+  { key: "know", label: "I know the terms" },
+  { key: "none", label: "Not needed" },
+];
+const CURRENCIES = [
+  { key: "USD", symbol: "$" },
+  { key: "GBP", symbol: "£" },
+  { key: "EUR", symbol: "€" },
+  { key: "CAD", symbol: "CA$" },
+  { key: "AUD", symbol: "A$" },
+];
+const FEE_TIMINGS    = ["Before filming", "On approval", "After posting", "Half upfront, half on approval"];
+const ATTRIBUTION    = ["7 days", "14 days", "30 days"];
+const BONUS_BASIS    = ["Content performance", "Sales performance", "Both"];
+const REWARD_TYPES   = ["Cash", "Higher commission", "Gift", "Product", "Ambassador opportunity"];
+const COMP_METRICS   = ["GMV", "Sales", "Conversions", "Content performance"];
+const USAGE_CHANNELS = ["Brand's social", "Paid ads", "Website", "Email", "Marketplace listings"];
+const TERMS          = ["30 days", "90 days", "6 months", "12 months"];
+const EMPTY_OFFER = { mods: [], approach: "", currency: "USD", d: {}, limits: {}, rights: { depth: "help" }, skipped: false };
+const GENERATING_WITH_OFFER = GENERATING_MESSAGES.slice(0, 2).concat("Building the offer", GENERATING_MESSAGES.slice(2));
+const OFFER_MESSAGES = ["Reading the product", "Weighing the budget", "Setting the figures", "Writing the offer"];
+const OFFER_SYS =
+  "You design creator offers for brand briefs. Return ONLY a JSON object, no prose, no code fences. " +
+  "Every value is clean HTML using <p>, <ul><li> or <b>. No headings. NEVER use em dashes. " +
+  "Recommend concrete, realistic figures where the brand asks for help, and never change a figure the brand gave you.";
+
+const trimStr = (v) => String(v == null ? "" : v).trim();
+const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const capFirst = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+function currencyOf(key) {
+  return CURRENCIES.find((c) => c.key === key) || CURRENCIES[0];
+}
+// A bare number takes the currency symbol; anything typed with its
+// own symbol or words stays exactly as typed.
+function money(sym, v) {
+  const s = trimStr(v);
+  if (!s) return "";
+  return /^[\d.,\s]+$/.test(s) ? sym + s.replace(/\s+/g, "") : s;
+}
+function pct(v) {
+  const s = trimStr(v).replace(/\s*%$/, "");
+  return s ? s + "%" : "";
+}
+function offerOn(o) {
+  return !!(o && !o.skipped && o.mods.length);
+}
+function modOf(o, key) {
+  return (o.d && o.d[key]) || { depth: "know" };
+}
+// "I'm not sure" resolves here, once, so every writing leg aims at the
+// same goal. The offer note tells the brand which goal Lee picked.
+function suggestGoal(creatorType, channel) {
+  const t = creatorType && creatorType.label;
+  if (t === "Affiliate" || (channel && channel.label === "Paid")) return "Sales";
+  if (t === "UGC" || t === "Customer") return "Content quality";
+  return "Awareness or reach";
+}
+function goalLine(goals, note, creatorType, channel) {
+  const extra = trimStr(note) ? " In the brand's words: " + trimStr(note) : "";
+  const keys = goals || [];
+  if (!keys.length) return extra ? `What the brand wants from this brief:${extra}\n` : "";
+  if (keys.includes("unsure")) {
+    return `Brief goal: the brand was not sure, so aim it at ${suggestGoal(creatorType, channel)}, the best fit for ${creatorType.label} creators on the ${channel.label} channel.${extra}\n`;
+  }
+  const labels = goalLabels(keys);
+  if (labels.length === 1) return `Brief goal: ${labels[0]}.${extra}\n`;
+  const list = labels.slice(0, -1).join(", ") + " and " + labels[labels.length - 1];
+  return `Brief goals: ${list}. Serve every one of them in this one brief.${extra}\n`;
+}
+// What the brand said about one module, as short phrases. `exact`
+// marks what the model must copy; the same phrases make the fallback.
+function moduleFacts(mod, v, cur, productName) {
+  const out = [];
+  const add = (text, exact) => { if (text) out.push({ text, exact: !!exact }); };
+  const known = v.depth === "know";
+  const ranged = v.depth === "range";
+  const m = (x) => money(cur.symbol, x);
+  const span = (a, b, fmt) => (trimStr(a) || trimStr(b) ? `between ${fmt(a) || "?"} and ${fmt(b) || "?"}` : "");
+  if (mod.key === "fee") {
+    if (known) add(m(v.amount), true);
+    if (ranged) add(span(v.from, v.to, m));
+    add(v.timing && "paid " + v.timing.toLowerCase(), true);
+  } else if (mod.key === "commission") {
+    if (known) add(trimStr(v.rate) && pct(v.rate) + " per sale", true);
+    if (ranged) add(span(v.from, v.to, pct) && span(v.from, v.to, pct) + " per sale");
+    add(v.structure && v.structure.toLowerCase() + " rate", true);
+    add(v.structure === "Tiered" && trimStr(v.tiers) && "tiers: " + trimStr(v.tiers), true);
+    add(v.attribution && v.attribution + " attribution window", true);
+  } else if (mod.key === "gift") {
+    if (known) add(trimStr(v.details), true);
+    if (ranged) add(trimStr(v.budget) && "a gift worth up to " + m(v.budget));
+  } else if (mod.key === "sample") {
+    add(trimStr(v.product != null ? v.product : productName), known);
+    add(trimStr(v.qty) && "quantity " + trimStr(v.qty), known);
+    if (known) add(trimStr(v.value) && "worth about " + m(v.value), true);
+    if (ranged) add(trimStr(v.valueTo) && "worth up to " + m(v.valueTo));
+  } else if (mod.key === "bonus") {
+    add(v.basis && "based on " + (v.basis === "Both" ? "content and sales performance" : v.basis.toLowerCase()), true);
+    add(v.rewards && v.rewards.length ? "rewarded with " + v.rewards.join(" or ").toLowerCase() : "", true);
+    if (known) add(trimStr(v.target) && "target: " + trimStr(v.target), true);
+    if (known) add(trimStr(v.reward) && "reward: " + trimStr(v.reward), true);
+    if (ranged) add(trimStr(v.budget) && "reward budget up to " + m(v.budget));
+  } else if (mod.key === "competition") {
+    add(v.metric && "ranked by " + v.metric, true);
+    add(trimStr(v.winners) && trimStr(v.winners) + " winners", true);
+    add(trimStr(v.period) && "over " + trimStr(v.period), true);
+    if (known) add(trimStr(v.prizes) && "prizes: " + trimStr(v.prizes), true);
+    if (ranged) add(trimStr(v.budget) && "prize budget up to " + m(v.budget));
+  }
+  return out;
+}
+// What the brand actually typed or tapped on a module. The sample's
+// product is prefilled from the catalog, so it never counts on its own.
+const MOD_INPUTS = {
+  fee: ["amount", "from", "to", "timing"],
+  commission: ["rate", "from", "to", "structure", "tiers", "attribution"],
+  gift: ["details", "budget"],
+  sample: ["qty", "value", "valueTo"],
+  bonus: ["basis", "rewards", "target", "reward", "budget"],
+  competition: ["metric", "winners", "period", "prizes", "budget"],
+};
+function modHasInput(mod, v) {
+  return (MOD_INPUTS[mod.key] || []).some((k) => {
+    const x = v[k];
+    return Array.isArray(x) ? x.length > 0 : trimStr(x) !== "";
+  });
+}
+// A module is Lee's when it was handed to him, when it holds a range,
+// or when it was ticked and left empty. The approach question and the
+// card's own "I'll suggest it" line both read this.
+function modNeedsAi(mod, v) {
+  const depth = v.depth || "know";
+  if (depth === "help" || depth === "range") return true;
+  return !modHasInput(mod, v);
+}
+function offerNeedsAi(o) {
+  return !o.mods.length
+    || OFFER_MODULES.some((m) => o.mods.includes(m.key) && modNeedsAi(m, modOf(o, m.key)));
+}
+function rightsFacts(r) {
+  return [
+    r.usage && r.usage.length ? `usage on ${r.usage.join(", ").toLowerCase()}${r.usageTerm ? " for " + r.usageTerm : ""}` : "no usage rights",
+    r.paid === "Yes" ? `paid ads rights (Spark Ads, partnership ads or whitelisting)${r.paidTerm ? " for " + r.paidTerm : ""}` : "no paid ads rights",
+    r.excl === "Yes" ? `exclusivity${trimStr(r.exclDetail) ? ": " + trimStr(r.exclDetail) : ""}${r.exclTerm ? " for " + r.exclTerm : ""}` : "no exclusivity",
+  ];
+}
+// Digits in a piece of text, thousands separators and ordinals ignored,
+// so "$1,000" and "1000" match and "1st" is not a figure.
+function numbersIn(text) {
+  const plain = String(text || "").replace(/<[^>]*>/g, " ").replace(/(\d),(?=\d{3}\b)/g, "$1");
+  return (plain.match(/\b\d+(?:\.\d+)?(?!\d|\s*(?:st|nd|rd|th)\b)/gi) || []).map((n) => String(parseFloat(n)));
+}
+function offerRequest(o, octx) {
+  const cur = currencyOf(o.currency);
+  const ap = APPROACHES.find((a) => a.key === o.approach) || null;
+  const productName = octx.product ? octx.product.name : "";
+  const chosen = OFFER_MODULES.filter((m) => o.mods.includes(m.key));
+  const unchosen = OFFER_MODULES.filter((m) => !o.mods.includes(m.key));
+  const moduleLine = (mod) => {
+    const v = modOf(o, mod.key);
+    const facts = moduleFacts(mod, v, cur, productName);
+    if ((v.depth || "know") === "help" || !modHasInput(mod, v) || !facts.length) return `- ${mod.label}: the brand wants your recommendation.`;
+    const how = v.depth === "range" ? "the brand has a range, pick one figure inside it" : "the brand knows the details";
+    return `- ${mod.label} (${how}): ` + facts.map((f) => f.text + (f.exact ? " [EXACT]" : "")).join("; ") + ".";
+  };
+  const l = o.limits || {};
+  const value = l.value != null ? trimStr(l.value) : trimStr(octx.product && octx.product.price);
+  const limits = [
+    trimStr(l.budget)
+      ? `- Maximum total budget across all creators: ${money(cur.symbol, l.budget)}. Never exceed it.`
+      : "- Maximum budget: none given. Keep every figure you recommend conservative and say in offer_notes that they are estimates.",
+    trimStr(l.creators) && `- Number of creators: ${trimStr(l.creators)}`,
+    // The catalog price carries the product page's own currency, so it
+    // only takes the chosen symbol once the brand has typed it here.
+    value && `- Product price or value: ${l.value != null ? money(cur.symbol, value) : value + " (as listed on the product page)"}`,
+    trimStr(l.deliverables) && `- Deliverables: ${trimStr(l.deliverables)}`,
+    trimStr(l.margin) && `- Margin or maximum commission: ${trimStr(l.margin)}. Never exceed it.`,
+  ].filter(Boolean).join("\n");
+  const r = o.rights || { depth: "help" };
+  const rights = r.depth === "none"
+    ? "Rights and restrictions: not needed, so usage_rights is an empty string."
+    : r.depth === "know"
+      ? `Rights and restrictions [EXACT], write them as given: ${rightsFacts(r).join("; ")}.`
+      : `Rights and restrictions: recommend fair usage rights (name the channels and the duration), paid ads rights and exclusivity for a ${octx.channel.label} brief with ${octx.creatorType.label} creators, and say in offer_notes that these terms are your suggestion.`;
+  return (
+    "THE OFFER. Build ONE offer for this brief from the modules the brand chose. Never write options to choose between.\n" +
+    (ap
+      ? `Offer approach: ${ap.label}. Typical structure: ${ap.sub}.\n`
+      : "The brand set every part itself. Write what it gave you and add nothing of your own.\n") +
+    `Currency: ${cur.key}. Write every amount in ${cur.key} with the ${cur.symbol} symbol.\n` +
+    "Modules chosen:\n" + chosen.map(moduleLine).join("\n") + "\n" +
+    "Budget and limits:\n" + limits + "\n" +
+    rights + "\n\n" +
+    `Return a JSON object with exactly these keys: ${OFFER_KEYS.join(", ")}.\n` +
+    "Every field is creator-facing HTML: one or two <p>, or a <ul> where it lists things, with the key figure in <b>.\n" +
+    "offer: one or two short <p> that sum up the whole package in plain words, the line a creator decides on. It must agree with the parts: the same figures and the same payment timing.\n" +
+    "offer_fee: the fee, its currency and when it is paid.\n" +
+    "offer_commission: the rate, flat or tiered (list each tier), what it is paid on and the attribution window.\n" +
+    "offer_gift: the gift, an extra on top of the work such as a gift card, store credit, a bundle, early access or an experience. Never the product sample.\n" +
+    "offer_sample: the product sent to film with: which product, how many and roughly what it is worth (the product price per unit, when it is given). Never a gift card.\n" +
+    "offer_bonus: what triggers it (content performance, sales or both), the target and the reward.\n" +
+    "offer_competition: what it is ranked on, the period, the number of winners and the prize for each position as a <ul>.\n" +
+    "usage_rights: Rights and restrictions: usage rights naming the channels and the duration, paid ads rights and exclusivity. These never appear in any offer field.\n" +
+    "offer_notes: a note to the BRAND that creators never see. One or two short <p>: why this offer suits the goal and the approach, " +
+    "exactly which figures are your estimates rather than the brand's, and, when the brand was not sure of the goal, which goal you aimed at and why.\n" +
+    (unchosen.length ? `${unchosen.map((m) => m.field).join(", ")} must be empty strings: the brand did not choose those modules.\n` : "") +
+    "Rules: details marked [EXACT] are the brand's own terms. Keep every figure, timing, channel and duration in them exactly as given, " +
+    "and write them as natural sentences to the creator, never as the notes above. Where the brand gave a range, pick one figure inside it. " +
+    "Where the brand wants a recommendation, give one concrete figure or idea that suits the approach and the product's value. " +
+    "Write every number as digits. A retainer is never part of the offer; a future ambassador opportunity may appear only as a bonus reward or a prize. " +
+    "Cash is only ever a reward inside the fee, the bonus or the competition. Address the creator as you in every field except offer_notes. " +
+    "Decide quickly and do not weigh alternatives at length."
+  );
+}
+// The brand's own details as plain parts: the fallback when both
+// models fail, and the replacement for a part whose [EXACT] figure
+// the model dropped or changed. Help-me-decide modules have nothing.
+function offerFallback(o, octx) {
+  const cur = currencyOf(o.currency);
+  const productName = octx.product ? octx.product.name : "";
+  const out = {};
+  OFFER_MODULES.forEach((mod) => {
+    if (!o.mods.includes(mod.key)) return;
+    const v = modOf(o, mod.key);
+    if ((v.depth || "help") === "help") return;
+    const facts = moduleFacts(mod, v, cur, productName);
+    if (facts.length) out[mod.field] = `<p>${escHtml(capFirst(facts.map((f) => f.text).join(", ")))}.</p>`;
+  });
+  const r = o.rights || {};
+  if (r.depth === "know") out.usage_rights = `<p>${escHtml(capFirst(rightsFacts(r).join("; ")))}.</p>`;
+  return out;
+}
+// Model output to fields. Only chosen modules keep a part, and a part
+// that lost an [EXACT] figure goes back to the brand's own words.
+function finishOffer(obj, o, octx) {
+  const fb = offerFallback(o, octx);
+  if (!obj || typeof obj !== "object") {
+    return { ...fb, offer_notes: "<p>Lee couldn't draft this offer, so it holds only the details you gave. Fill in the rest here.</p>" };
+  }
+  const cur = currencyOf(o.currency);
+  const productName = octx.product ? octx.product.name : "";
+  const out = {};
+  OFFER_KEYS.forEach((k) => {
+    const v = cleanHtml(obj[k]);
+    if (v) out[k] = /^\s*</.test(v) ? v : `<p>${escHtml(v)}</p>`;
+  });
+  OFFER_MODULES.forEach((mod) => {
+    if (!o.mods.includes(mod.key)) { delete out[mod.field]; return; }
+    const v = modOf(o, mod.key);
+    const need = v.depth === "know"
+      ? numbersIn(moduleFacts(mod, v, cur, productName).filter((f) => f.exact).map((f) => f.text).join(" "))
+      : [];
+    const have = numbersIn(out[mod.field]);
+    if (fb[mod.field] && (!out[mod.field] || need.some((n) => !have.includes(n)))) out[mod.field] = fb[mod.field];
+  });
+  const r = o.rights || {};
+  if (r.depth === "none") delete out.usage_rights;
+  if (r.depth === "know") {
+    const need = numbersIn([r.usageTerm, r.paidTerm, r.exclTerm].filter(Boolean).join(" "));
+    const have = numbersIn(out.usage_rights);
+    if (!out.usage_rights || need.some((n) => !have.includes(n))) out.usage_rights = fb.usage_rights;
+  }
+  return out;
+}
+// One line per chosen module for the chat bubble.
+function offerSummary(o, productName) {
+  const cur = currencyOf(o.currency);
+  return OFFER_MODULES.filter((m) => o.mods.includes(m.key)).map((m) => {
+    const v = modOf(o, m.key);
+    const facts = moduleFacts(m, v, cur, productName);
+    if ((v.depth || "know") === "help" || !modHasInput(m, v) || !facts.length) return m.label + ": help me decide";
+    return m.label + ": " + facts[0].text;
+  }).join(" · ");
+}
+// section_order for the new brief. The Offer shows the deal plus a
+// part per chosen module; Rights and restrictions follows it when the
+// offer leg wrote one. A skipped offer keeps the starter shape.
+function sectionOrderFor(o, written) {
+  if (!offerOn(o)) return STARTER_SECTIONS;
+  const parts = ["deal"].concat(OFFER_MODULES.filter((m) => o.mods.includes(m.key)).map((m) => m.key));
+  const rights = written && written.usage_rights ? ["usageRights"] : [];
+  return STARTER_SECTIONS.split(",")
+    .flatMap((k) => (k === "offer" ? ["offer:" + parts.join("+")].concat(rights) : [k]))
+    .join(",");
+}
+
 // The core shape a new brief opens with. Keys match the builder's
 // SECTION_DEFS; everything else waits in the rail.
 const STARTER_SECTIONS = "brand,offer,productFeature,deliverables,hook,visualFormat,guidelines,examples,submissions";
@@ -183,6 +532,17 @@ const createFields = q.select({
   donts:               "I5wOP",
   submission_notes:    "gx4hJ",
   visual_format:       "XwklL",
+  // The Offer's parts and Rights and restrictions, written by the
+  // Offer Builder leg. offer_notes is Lee's note to the brand: the
+  // builder shows it, the live brief never reads it.
+  offer_fee:           "wjr87",
+  offer_commission:    "8GtDO",
+  offer_gift:          "NjTVB",
+  offer_sample:        "xtFjh",
+  offer_bonus:         "cFazY",
+  offer_competition:   "rGIsY",
+  offer_notes:         "uhVQP",
+  usage_rights:        "ybqMW",
 });
 
 const accountSelect = q.select({
@@ -445,8 +805,9 @@ function StepArea({ children }) {
 
 // Centered scene for the wait after the last pick — the original
 // chat's spinning-sparkles generating state, with a floating Lee.
-function WritingScene({ mode, genIdx, overtime }) {
-  const line = mode === "ai" ? GENERATING_MESSAGES[genIdx % GENERATING_MESSAGES.length] : "Setting up your brief";
+function WritingScene({ mode, genIdx, overtime, withOffer }) {
+  const lines = mode === "offer" ? OFFER_MESSAGES : withOffer ? GENERATING_WITH_OFFER : GENERATING_MESSAGES;
+  const line = mode === "quick" ? "Setting up your brief" : lines[genIdx % lines.length];
   return (
     <div
       className="animate-in fade-in duration-500"
@@ -463,18 +824,275 @@ function WritingScene({ mode, genIdx, overtime }) {
         />
       </div>
       <h2 style={{ fontSize: 20, fontWeight: 600, color: NAVY, margin: "0 0 8px", letterSpacing: "-0.01em" }}>
-        {mode === "ai" ? "Lee is writing your brief" : "One moment"}
+        {mode === "ai" ? "Lee is writing your brief" : mode === "offer" ? "Lee is writing your offer" : "One moment"}
       </h2>
       <p key={genIdx} style={{ fontSize: 14, color: "#6B7A99", margin: "0 0 6px", minHeight: 20, animation: "blFade 0.4s ease-out" }}>
         {line}
       </p>
       <p style={{ fontSize: 12, color: "#9aa6c3", margin: 0 }}>
-        {mode !== "ai"
+        {mode === "quick"
           ? "Opening the builder."
           : overtime
             ? "Still working. Rich brand context takes a touch longer, hang tight."
-            : "This usually takes 30 to 60 seconds."}
+            : mode === "offer"
+              ? "This usually takes 20 to 40 seconds."
+              : "This usually takes 30 to 60 seconds."}
       </p>
+    </div>
+  );
+}
+
+// ─── Offer Builder pieces ─────────────────────────────────────────
+function FieldLabel({ children }) {
+  return (
+    <div className="text-[11px] mb-1.5" style={{ color: NAVY, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+      {children}
+    </div>
+  );
+}
+function SubLabel({ children }) {
+  return <div className="text-[11px]" style={{ color: "#6B7A99" }}>{children}</div>;
+}
+// A small input with an optional symbol before or after the value.
+function TextIn({ value, onChange, placeholder, prefix, suffix, grow }) {
+  return (
+    <div
+      className="flex items-center gap-1.5 rounded-lg px-2.5 bg-white"
+      style={{ border: CHIP_BORDER, flex: grow ? "1 1 200px" : "0 1 150px", minWidth: 0 }}
+    >
+      {prefix ? <span className="text-[12px]" style={{ color: "#6B7A99" }}>{prefix}</span> : null}
+      <input
+        value={value == null ? "" : value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full py-2 text-[13px] bg-transparent"
+        style={{ color: NAVY, minWidth: 0, border: "none" }}
+      />
+      {suffix ? <span className="text-[12px]" style={{ color: "#6B7A99" }}>{suffix}</span> : null}
+    </div>
+  );
+}
+// One choice as a row of chips; tapping the chosen one clears it.
+function ChipPick({ options, value, onChange }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((o) => (
+        <Chip key={o} on={value === o} onClick={() => onChange(value === o ? "" : o)}>{o}</Chip>
+      ))}
+    </div>
+  );
+}
+function ChipMulti({ options, value, onChange }) {
+  const list = Array.isArray(value) ? value : [];
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((o) => (
+        <Chip key={o} on={list.includes(o)} onClick={() => onChange(list.includes(o) ? list.filter((x) => x !== o) : [...list, o])}>{o}</Chip>
+      ))}
+    </div>
+  );
+}
+function Segmented({ options, value, onChange }) {
+  return (
+    <div className="inline-flex flex-wrap rounded-lg p-0.5" style={{ background: "#F0F3FF" }}>
+      {options.map((o) => {
+        const on = value === o.key;
+        return (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => onChange(o.key)}
+            className="text-[11px] px-2.5 py-1.5 rounded-md transition-all duration-200"
+            style={{ background: on ? "#fff" : "transparent", color: on ? NAVY : "#6B7A99", fontWeight: on ? 600 : 400, boxShadow: on ? "0 1px 2px rgba(0, 19, 100, 0.08)" : "none" }}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+// A closed optional group; opens in place.
+function MoreToggle({ open, onClick, title, sub }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left bg-white transition-all duration-200 hover:shadow-sm"
+      style={{ border: CHIP_BORDER, color: NAVY }}
+    >
+      <span className="min-w-0">
+        <span className="block text-[12px]" style={{ fontWeight: 700 }}>{title}</span>
+        {sub ? <span className="block text-[11px] mt-0.5" style={{ color: "#6B7A99" }}>{sub}</span> : null}
+      </span>
+      <span className="text-[12px] flex-shrink-0" style={{ color: PERI, fontWeight: 600 }}>{open ? "Hide" : "Add"}</span>
+    </button>
+  );
+}
+// Module-level on purpose: a component defined inside ModuleCard would
+// remount its inputs on every keystroke and drop focus.
+function Row({ children }) {
+  return <div className="flex flex-wrap items-center gap-2">{children}</div>;
+}
+// One chosen module: its depth, then only the fields that depth needs.
+function ModuleCard({ mod, v, set, sym, productName, needsAi }) {
+  const depth = v.depth || "know";
+  const known = depth === "know";
+  let body = null;
+  if (depth !== "help") {
+    if (mod.key === "fee") {
+      body = (
+        <>
+          {known ? (
+            <Row><TextIn value={v.amount} onChange={(x) => set({ amount: x })} placeholder="Amount" prefix={sym} /></Row>
+          ) : (
+            <Row>
+              <TextIn value={v.from} onChange={(x) => set({ from: x })} placeholder="From" prefix={sym} />
+              <TextIn value={v.to} onChange={(x) => set({ to: x })} placeholder="To" prefix={sym} />
+            </Row>
+          )}
+          <SubLabel>When it's paid</SubLabel>
+          <ChipPick options={FEE_TIMINGS} value={v.timing} onChange={(x) => set({ timing: x })} />
+        </>
+      );
+    } else if (mod.key === "commission") {
+      body = (
+        <>
+          {known ? (
+            <Row><TextIn value={v.rate} onChange={(x) => set({ rate: x })} placeholder="Rate" suffix="%" /></Row>
+          ) : (
+            <Row>
+              <TextIn value={v.from} onChange={(x) => set({ from: x })} placeholder="From" suffix="%" />
+              <TextIn value={v.to} onChange={(x) => set({ to: x })} placeholder="To" suffix="%" />
+            </Row>
+          )}
+          <SubLabel>Flat or tiered</SubLabel>
+          <ChipPick options={["Flat", "Tiered"]} value={v.structure} onChange={(x) => set({ structure: x })} />
+          {v.structure === "Tiered" && (
+            <Row><TextIn grow value={v.tiers} onChange={(x) => set({ tiers: x })} placeholder="Sales or GMV thresholds, e.g. 20% after $2,000 GMV" /></Row>
+          )}
+          <SubLabel>Attribution period</SubLabel>
+          <ChipPick options={ATTRIBUTION} value={v.attribution} onChange={(x) => set({ attribution: x })} />
+        </>
+      );
+    } else if (mod.key === "gift") {
+      body = known ? (
+        <Row><TextIn grow value={v.details} onChange={(x) => set({ details: x })} placeholder="What is it? e.g. a $50 gift card, or the full bundle" /></Row>
+      ) : (
+        <Row><TextIn value={v.budget} onChange={(x) => set({ budget: x })} placeholder="Worth up to" prefix={sym} /></Row>
+      );
+    } else if (mod.key === "sample") {
+      body = (
+        <>
+          <Row><TextIn grow value={v.product != null ? v.product : productName || ""} onChange={(x) => set({ product: x })} placeholder="Product" /></Row>
+          {known ? (
+            <Row>
+              <TextIn value={v.qty} onChange={(x) => set({ qty: x })} placeholder="Quantity" />
+              <TextIn value={v.value} onChange={(x) => set({ value: x })} placeholder="Value, roughly" prefix={sym} />
+            </Row>
+          ) : (
+            <Row>
+              <TextIn value={v.qty} onChange={(x) => set({ qty: x })} placeholder="Quantity, e.g. 1 to 3" />
+              <TextIn value={v.valueTo} onChange={(x) => set({ valueTo: x })} placeholder="Value up to" prefix={sym} />
+            </Row>
+          )}
+        </>
+      );
+    } else if (mod.key === "bonus") {
+      body = (
+        <>
+          <SubLabel>Based on</SubLabel>
+          <ChipPick options={BONUS_BASIS} value={v.basis} onChange={(x) => set({ basis: x })} />
+          <SubLabel>Reward type</SubLabel>
+          <ChipMulti options={REWARD_TYPES} value={v.rewards} onChange={(x) => set({ rewards: x })} />
+          {known ? (
+            <Row>
+              <TextIn grow value={v.target} onChange={(x) => set({ target: x })} placeholder="Target, e.g. 50 sales in 30 days" />
+              <TextIn grow value={v.reward} onChange={(x) => set({ reward: x })} placeholder="Reward, e.g. $100 or 20% commission" />
+            </Row>
+          ) : (
+            <Row><TextIn value={v.budget} onChange={(x) => set({ budget: x })} placeholder="Reward budget" prefix={sym} /></Row>
+          )}
+        </>
+      );
+    } else if (mod.key === "competition") {
+      body = (
+        <>
+          <SubLabel>Ranked by</SubLabel>
+          <ChipPick options={COMP_METRICS} value={v.metric} onChange={(x) => set({ metric: x })} />
+          <Row>
+            <TextIn value={v.winners} onChange={(x) => set({ winners: x })} placeholder="Winners" />
+            <TextIn grow value={v.period} onChange={(x) => set({ period: x })} placeholder="Period, e.g. the first 30 days" />
+          </Row>
+          {known ? (
+            <Row><TextIn grow value={v.prizes} onChange={(x) => set({ prizes: x })} placeholder="Prize for each position, e.g. 1st $500, 2nd $250" /></Row>
+          ) : (
+            <Row><TextIn value={v.budget} onChange={(x) => set({ budget: x })} placeholder="Prize budget" prefix={sym} /></Row>
+          )}
+        </>
+      );
+    }
+  }
+  return (
+    <div className="rounded-xl p-3" style={{ border: CHIP_BORDER, background: "#FAFBFF" }}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[13px]" style={{ color: NAVY, fontWeight: 700 }}>{mod.label}</span>
+        <Segmented options={DEPTHS} value={depth} onChange={(d) => set({ depth: d })} />
+      </div>
+      {body ? (
+        <div className="mt-2.5 space-y-2">{body}</div>
+      ) : (
+        <div className="text-[11px] mt-1.5" style={{ color: "#6B7A99" }}>I'll suggest this one.</div>
+      )}
+      {body && needsAi ? (
+        <div className="text-[11px] mt-2" style={{ color: "#6B7A99" }}>Nothing filled in yet, so I'll suggest it.</div>
+      ) : null}
+    </div>
+  );
+}
+function LimitsFields({ l, set, sym, productPrice }) {
+  const price = String(productPrice || "").replace(/^[^\d]+/, "");
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <TextIn value={l.budget} onChange={(x) => set({ budget: x })} placeholder="Total budget" prefix={sym} />
+        <TextIn value={l.creators} onChange={(x) => set({ creators: x })} placeholder="Number of creators" />
+        <TextIn value={l.value != null ? l.value : price} onChange={(x) => set({ value: x })} placeholder="Product price or value" prefix={sym} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <TextIn grow value={l.deliverables} onChange={(x) => set({ deliverables: x })} placeholder="Deliverables, e.g. 2 TikTok videos" />
+        <TextIn grow value={l.margin} onChange={(x) => set({ margin: x })} placeholder="Margin or maximum commission" />
+      </div>
+    </div>
+  );
+}
+function RightsFields({ r, set }) {
+  const depth = r.depth || "help";
+  return (
+    <div className="space-y-2">
+      <Segmented options={RIGHTS_DEPTHS} value={depth} onChange={(d) => set({ depth: d })} />
+      {depth === "help" && <SubLabel>I'll suggest fair terms for the channel and the creator type.</SubLabel>}
+      {depth === "know" && (
+        <div className="space-y-2">
+          <SubLabel>Where the brand can use the content</SubLabel>
+          <ChipMulti options={USAGE_CHANNELS} value={r.usage} onChange={(x) => set({ usage: x })} />
+          <SubLabel>For how long</SubLabel>
+          <ChipPick options={TERMS} value={r.usageTerm} onChange={(x) => set({ usageTerm: x })} />
+          <SubLabel>Paid ads rights (Spark Ads, partnership ads or whitelisting)</SubLabel>
+          <ChipPick options={["No", "Yes"]} value={r.paid} onChange={(x) => set({ paid: x })} />
+          {r.paid === "Yes" && <ChipPick options={TERMS} value={r.paidTerm} onChange={(x) => set({ paidTerm: x })} />}
+          <SubLabel>Exclusivity</SubLabel>
+          <ChipPick options={["No", "Yes"]} value={r.excl} onChange={(x) => set({ excl: x })} />
+          {r.excl === "Yes" && (
+            <>
+              <div className="flex flex-wrap gap-2">
+                <TextIn grow value={r.exclDetail} onChange={(x) => set({ exclDetail: x })} placeholder="e.g. no competing skincare brands" />
+              </div>
+              <ChipPick options={TERMS} value={r.exclTerm} onChange={(x) => set({ exclTerm: x })} />
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -574,7 +1192,7 @@ export default function Block() {
 
   // Conversation state
   const [creatorIds, setCreatorIds] = useState([]);
-  const [step, setStep] = useState("boot"); // boot | workspace | source | pdfUpload | pdfAttach | project | product | productUrl | basics | mode | dead-end
+  const [step, setStep] = useState("boot"); // boot | workspace | source | pdfUpload | pdfAttach | project | product | productUrl | basics | goal | offer | creators | mode | dead-end
   const [msgs, setMsgs] = useState([]);
   const [busy, setBusy] = useState(false);
   const [workspaceId, setWorkspaceId] = useState("");
@@ -584,6 +1202,9 @@ export default function Block() {
   const [creatorType, setCreatorType] = useState(CREATOR_TYPES[0]);
   const [channel, setChannel] = useState(CHANNELS[0]);
   const [goalInput, setGoalInput] = useState("");
+  const [goals, setGoals] = useState([]);            // GOALS keys, any mix
+  const [offer, setOffer] = useState(EMPTY_OFFER);   // the Offer Builder's answers
+  const [more, setMore] = useState({});              // which optional groups are open
   const [urlInput, setUrlInput] = useState("");
   const [pdf, setPdf] = useState(null); // { filename, url, sections | null, attach }
   const [scene, setScene] = useState(""); // "" | "ai" | "quick" — the centered writing scene
@@ -603,7 +1224,7 @@ export default function Block() {
   const remember = () => {
     histRef.current.push({
       step, msgsLen: msgs.length, workspaceId, projectId, product, pdf,
-      briefName, creatorType, channel, goalInput,
+      briefName, creatorType, channel, goalInput, goals, offer,
     });
   };
   const goBack = () => {
@@ -618,6 +1239,9 @@ export default function Block() {
     setCreatorType(h.creatorType);
     setChannel(h.channel);
     setGoalInput(h.goalInput);
+    setGoals(h.goals || []);
+    // Details typed since stay put, so stepping back never wipes them.
+    setOffer((cur) => ({ ...h.offer, d: cur.d, limits: cur.limits, rights: cur.rights, currency: cur.currency }));
     setStep(h.step);
   };
 
@@ -628,7 +1252,7 @@ export default function Block() {
 
   // Rotate the writing scene's status line; flag overtime past 45s.
   useEffect(() => {
-    if (scene !== "ai") { setGenIdx(0); setOvertime(false); return; }
+    if (scene !== "ai" && scene !== "offer") { setGenIdx(0); setOvertime(false); return; }
     const rot = setInterval(() => setGenIdx((i) => i + 1), 3500);
     const late = setTimeout(() => setOvertime(true), 45000);
     return () => { clearInterval(rot); clearTimeout(late); };
@@ -885,7 +1509,7 @@ export default function Block() {
       pdf ? (
         <span>Nearly there. Check the name and the details, I've filled what I could from the document.</span>
       ) : (
-        <span>Nearly there. Name the brief, pick who's filming and the channel, and tell me the goal if you have one.</span>
+        <span>Name the brief and pick who's filming and the channel.</span>
       )
     );
     setStep("basics");
@@ -917,25 +1541,79 @@ export default function Block() {
       submit("pdf");
       return;
     }
+    askMode();
+  };
+
+  const askMode = () => {
     say(<span>Last one. Want me to write the brief from your brand context, or go straight to the builder and write it there?</span>);
     setStep("mode");
   };
 
+  // The PDF route goes straight on: the document holds its own goal
+  // and offer. From scratch, the goal comes next, then the offer.
   const submitBasics = () => {
     const nm = briefName.trim();
     if (!nm) return;
     remember();
     mine(nm);
-    if (workspaceMembers.length) {
-      askCreators();
-      return;
-    }
     if (pdf) {
-      submit("pdf");
+      if (workspaceMembers.length) askCreators();
+      else submit("pdf");
       return;
     }
-    say(<span>Last one. Want me to write the brief from your brand context, or go straight to the builder and write it there?</span>);
-    setStep("mode");
+    say(<span>What should this brief achieve? Pick everything that applies.</span>);
+    setStep("goal");
+  };
+
+  const submitGoal = () => {
+    if (!goals.length) return;
+    remember();
+    mine(goalLabels(goals).join(", ") + (goalInput.trim() ? ": " + goalInput.trim() : ""));
+    say(
+      <span>
+        What is the creator receiving? Tick what applies and fill in what you know. Anything you leave empty, I'll
+        suggest. No offer on this one? Skip it.
+      </span>
+    );
+    setStep("offer");
+  };
+
+  const toggleModule = (key) =>
+    setOffer((o) => ({ ...o, mods: o.mods.includes(key) ? o.mods.filter((k) => k !== key) : [...o.mods, key] }));
+  // With nothing ticked, an approach also picks the mix and hands every
+  // part to Lee. With parts ticked it only sets how generous he is.
+  const pickApproach = (a) =>
+    setOffer((o) => {
+      if (o.mods.length) return { ...o, approach: a.key };
+      const d = { ...o.d };
+      a.mods.forEach((k) => { d[k] = { ...(d[k] || {}), depth: "help" }; });
+      return { ...o, approach: a.key, mods: a.mods.slice(), d };
+    });
+  const setMod = (key, patch) =>
+    setOffer((o) => ({ ...o, d: { ...o.d, [key]: { ...modOf(o, key), ...patch } } }));
+  const setLimits = (patch) => setOffer((o) => ({ ...o, limits: { ...o.limits, ...patch } }));
+  const setRights = (patch) => setOffer((o) => ({ ...o, rights: { ...o.rights, ...patch } }));
+
+  const submitOffer = () => {
+    const needsAi = offerNeedsAi(offer);
+    if (!offer.mods.length || (needsAi && !offer.approach)) return;
+    remember();
+    const ap = APPROACHES.find((a) => a.key === offer.approach);
+    mine(offerSummary(offer, product && product.name) + (ap && needsAi ? " · " + ap.label : ""));
+    setOffer((o) => ({ ...o, skipped: false }));
+    afterOffer();
+  };
+
+  const skipOffer = () => {
+    remember();
+    mine("Skip the offer");
+    setOffer((o) => ({ ...o, skipped: true }));
+    afterOffer();
+  };
+
+  const afterOffer = () => {
+    if (workspaceMembers.length) askCreators();
+    else askMode();
   };
 
   // ── Read an uploaded PDF and map it into the section fields ────
@@ -1134,7 +1812,8 @@ export default function Block() {
   };
 
   // ── The AI write (same section model as create-brief-quick) ────
-  const writeBrief = async () => {
+  // The context every writing leg reads, the offer leg included.
+  const briefContext = () => {
     const af = (account && account.fields) || {};
     const brandContext = [
       af.name ? "Brand: " + af.name : "",
@@ -1151,7 +1830,17 @@ export default function Block() {
           product.scrape ? "From the product page: " + String(product.scrape).slice(0, 4000) : "",
         ].filter(Boolean).join("\n")
       : "This brief is NOT about a specific product. It is brand or organic content. Do not invent a product.";
+    return (
+      `Brief name: ${briefName.trim()}\n` +
+      `Who is filming: ${creatorType.label}\n` +
+      `Channel: ${channel.label}\n` +
+      goalLine(goals, goalInput, creatorType, channel) +
+      `\nBrand context:\n${brandContext || "(none on file)"}\n\n` +
+      `What this brief promotes:\n${productContext}\n\n`
+    );
+  };
 
+  const writeBrief = async () => {
     const sys =
       "You write creator briefs. Return ONLY a JSON object, no prose, no code fences. " +
       "Every value is clean HTML using <p>, <ul><li> or <b>. No headings. NEVER use em dashes. " +
@@ -1160,13 +1849,7 @@ export default function Block() {
     // Two parallel calls (prose + lists), Pro first, Flash retry per
     // call, results merged. A set that fails on both models resolves
     // empty rather than sinking the other set.
-    const context =
-      `Brief name: ${briefName.trim()}\n` +
-      `Who is filming: ${creatorType.label}\n` +
-      `Channel: ${channel.label}\n` +
-      (goalInput.trim() ? `What the brand wants from this brief: ${goalInput.trim()}\n` : "") +
-      `\nBrand context:\n${brandContext || "(none on file)"}\n\n` +
-      `What this brief promotes:\n${productContext}\n\n`;
+    const context = briefContext();
 
     const callOnce = async (model, keys, note) => {
       const usr =
@@ -1220,8 +1903,10 @@ export default function Block() {
       }
     };
 
+    // The offer is the Offer Builder's own leg (writeOffer), so the
+    // prose set leaves it out. The PDF mapper still reads it verbatim.
     const [prose, lists, picks] = await Promise.all([
-      writeSet(KEYS_PROSE, PROSE_NOTE),
+      writeSet(KEYS_PROSE.filter((k) => k !== "offer"), PROSE_NOTE),
       writeSet(KEYS_LISTS, LISTS_NOTE),
       pickFormatsWithFallback(aiFetch, context + FORMAT_NOTE),
     ]);
@@ -1235,28 +1920,83 @@ export default function Block() {
     return merged;
   };
 
+  // The Offer Builder's leg. V4 Pro reasons before it answers and the
+  // reasoning counts against max_tokens, hence the 20k budget and
+  // json_object. It never throws: when both models fail, the brand's
+  // own details still land in their parts.
+  const writeOffer = async () => {
+    const octx = { product, channel, creatorType };
+    const usr = briefContext() + offerRequest(offer, octx);
+    const once = async (model) => {
+      const res = await withTimeout(
+        aiFetch(OPENROUTER_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "system", content: OFFER_SYS }, { role: "user", content: usr }],
+            temperature: 0.4,
+            max_tokens: 20000,
+            response_format: { type: "json_object" },
+          }),
+        }),
+        MODEL_TIMEOUT_MS,
+        "Offer"
+      );
+      if (!res.ok) throw new Error(`OpenRouter returned HTTP ${res.status}`);
+      const json = await res.json();
+      const choice = (json && json.choices && json.choices[0]) || {};
+      const msg = choice.message || {};
+      if (!msg.content && choice.finish_reason === "length") throw new Error("The offer ran out of room");
+      return parseModelJson(msg.content || msg.reasoning || "");
+    };
+    let obj = null;
+    try {
+      obj = await once(WRITE_MODEL);
+    } catch (e1) {
+      console.warn("Offer: primary model failed, retrying on fallback:", e1 && e1.message);
+      try {
+        obj = await once(WRITE_FALLBACK_MODEL);
+      } catch (e2) {
+        console.error("Offer: fallback model failed too:", e2 && e2.message);
+      }
+    }
+    return finishOffer(obj, offer, octx);
+  };
+
   // ── Create ─────────────────────────────────────────────────────
   const submit = async (route) => {
     if (!user || !user.id) { toast.error("You need to be signed in."); return; }
     if (!createRecord.enabled) { toast.error("You don't have permission to create briefs."); return; }
     if (route !== "pdf") mine(route === "ai" ? "Write it with AI" : "Open the builder");
-    setScene(route === "ai" ? "ai" : "quick");
+    const withOffer = route !== "pdf" && offerOn(offer);
+    setScene(route === "ai" ? "ai" : withOffer ? "offer" : "quick");
     setBusy(true);
     try {
       let sections = {};
+      let offerParts = {};
       if (route === "ai") {
         say(<span>Writing the brief from your brand context. This can take a minute or two.</span>);
-        try {
-          sections = await writeBrief();
-        } catch (e) {
-          console.error("AI write failed:", e);
-          toast.error("The AI couldn't write this one", {
-            description: "Creating the brief anyway so you can write it in the builder.",
-          });
-        }
+        // The offer leg runs alongside the brief's own legs. A failed
+        // brief write still keeps the offer.
+        const [written, offered] = await Promise.all([
+          writeBrief().catch((e) => {
+            console.error("AI write failed:", e);
+            toast.error("The AI couldn't write this one", {
+              description: "Creating the brief anyway so you can write it in the builder.",
+            });
+            return {};
+          }),
+          withOffer ? writeOffer() : Promise.resolve({}),
+        ]);
+        sections = written;
+        offerParts = offered;
       } else if (route === "pdf" && pdf && pdf.sections) {
         say(<span>Setting it up…</span>);
         sections = pdf.sections;
+      } else if (withOffer) {
+        say(<span>Writing your offer…</span>);
+        offerParts = await writeOffer();
       } else {
         say(<span>Setting it up…</span>);
       }
@@ -1271,10 +2011,11 @@ export default function Block() {
         description: "",
         status: STATUS_DRAFT_ID,
         generated: route === "ai" || (route === "pdf" && pdf && pdf.sections) ? GENERATED_AI_ID : GENERATED_MANUAL_ID,
-        section_order: STARTER_SECTIONS,
+        section_order: withOffer ? sectionOrderFor(offer, offerParts) : STARTER_SECTIONS,
         creator_type: creatorType.id,
         channel: channel.id,
         ...sections,
+        ...offerParts,
       });
       const newId = (created && (created.id || created.recordId)) || "";
       if (!newId) throw new Error("Create returned no record id");
@@ -1318,7 +2059,7 @@ export default function Block() {
       {isInactive ? (
         <UpgradeCard />
       ) : scene ? (
-        <WritingScene mode={scene} genIdx={genIdx} overtime={overtime} />
+        <WritingScene mode={scene} genIdx={genIdx} overtime={overtime} withOffer={offerOn(offer)} />
       ) : (
         <div>
           {msgs.map((m, i) => {
@@ -1517,14 +2258,6 @@ export default function Block() {
                     ))}
                   </div>
                 </div>
-                <textarea
-                  value={goalInput}
-                  onChange={(e) => setGoalInput(e.target.value)}
-                  placeholder="What should this brief achieve? (optional)"
-                  rows={2}
-                  className="w-full rounded-xl px-3.5 py-2.5 text-sm resize-none"
-                  style={{ border: CHIP_BORDER, color: NAVY, background: "#fff" }}
-                />
                 <button
                   type="button"
                   onClick={submitBasics}
@@ -1537,6 +2270,149 @@ export default function Block() {
               </div>
               <div className="mt-2">
                 <Chip on={false} onClick={goBack}>Back</Chip>
+              </div>
+            </StepArea>
+          )}
+
+          {!busy && step === "goal" && (
+            <StepArea>
+              <div className="space-y-3 bg-white rounded-2xl p-4 shadow-sm" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+                <div className="flex flex-wrap gap-2">
+                  {GOALS.map((g) => (
+                    <Chip key={g.key} on={goals.includes(g.key)} onClick={() => setGoals((cur) => toggleGoalKey(cur, g.key))}>{g.label}</Chip>
+                  ))}
+                </div>
+                <textarea
+                  value={goalInput}
+                  onChange={(e) => setGoalInput(e.target.value)}
+                  placeholder="Anything to add? (optional)"
+                  rows={2}
+                  className="w-full rounded-xl px-3.5 py-2.5 text-sm resize-none"
+                  style={{ border: CHIP_BORDER, color: NAVY, background: "#fff" }}
+                />
+                <button
+                  type="button"
+                  onClick={submitGoal}
+                  disabled={!goals.length}
+                  className="w-full py-2.5 rounded-xl text-sm shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50"
+                  style={{ background: "#879CF7", color: "#fff", fontWeight: 600 }}
+                >
+                  Continue
+                </button>
+              </div>
+              <div className="mt-2">
+                <Chip on={false} onClick={goBack}>Back</Chip>
+              </div>
+            </StepArea>
+          )}
+
+          {!busy && step === "offer" && (
+            <StepArea>
+              <div className="space-y-4 bg-white rounded-2xl p-4 shadow-sm" style={{ border: "1px solid rgba(217, 224, 255, 0.4)" }}>
+                <div>
+                  <FieldLabel>What is the creator receiving?</FieldLabel>
+                  <div className="flex flex-wrap gap-2">
+                    {OFFER_MODULES.map((m) => (
+                      <Chip key={m.key} on={offer.mods.includes(m.key)} onClick={() => toggleModule(m.key)}>{m.label}</Chip>
+                    ))}
+                  </div>
+                  <div className="text-[11px] mt-1.5" style={{ color: "#6B7A99" }}>
+                    A gift is an extra, like a gift card. A sample is the product itself.
+                  </div>
+                </div>
+
+                {offer.mods.length > 0 && (
+                  <div>
+                    <FieldLabel>Currency</FieldLabel>
+                    <div className="flex flex-wrap gap-1.5">
+                      {CURRENCIES.map((c) => (
+                        <Chip key={c.key} on={offer.currency === c.key} onClick={() => setOffer((o) => ({ ...o, currency: c.key }))}>{c.key}</Chip>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {OFFER_MODULES.filter((m) => offer.mods.includes(m.key)).map((m) => (
+                  <ModuleCard
+                    key={m.key}
+                    mod={m}
+                    v={modOf(offer, m.key)}
+                    set={(patch) => setMod(m.key, patch)}
+                    sym={currencyOf(offer.currency).symbol}
+                    productName={product ? product.name : ""}
+                    needsAi={modNeedsAi(m, modOf(offer, m.key))}
+                  />
+                ))}
+
+                {/* Only asked when something is left to Lee. A brand that
+                    typed every figure is never asked how generous to be. */}
+                {offerNeedsAi(offer) && (
+                  <div>
+                    <FieldLabel>How generous should I be?</FieldLabel>
+                    <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+                      {APPROACHES.map((a) => {
+                        const on = offer.approach === a.key;
+                        return (
+                          <button
+                            key={a.key}
+                            type="button"
+                            onClick={() => pickApproach(a)}
+                            className="rounded-xl px-3 py-2.5 text-left shadow-sm hover:shadow-md transition-all duration-200"
+                            style={{ background: on ? "#F0F3FF" : "#fff", border: on ? `1px solid ${PERI}` : CHIP_BORDER, color: NAVY }}
+                          >
+                            <span className="block text-[12px]" style={{ fontWeight: 700 }}>{a.label}</span>
+                            <span className="block text-[11px] mt-0.5" style={{ color: "#6B7A99", lineHeight: 1.35 }}>{a.sub}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="text-[11px] mt-1.5" style={{ color: "#6B7A99" }}>
+                      {offer.mods.length
+                        ? "This only shapes the parts you left to me."
+                        : "Nothing ticked yet? Pick one and I'll suggest the whole offer."}
+                    </div>
+                  </div>
+                )}
+
+                {offer.mods.length > 0 && (
+                  <>
+                    <MoreToggle
+                      open={!!more.limits}
+                      onClick={() => setMore((s) => ({ ...s, limits: !s.limits }))}
+                      title="Budget and limits"
+                      sub="Optional. With no budget I keep every figure conservative and mark it as an estimate."
+                    />
+                    {more.limits && (
+                      <LimitsFields
+                        l={offer.limits || {}}
+                        set={setLimits}
+                        sym={currencyOf(offer.currency).symbol}
+                        productPrice={product ? product.price : ""}
+                      />
+                    )}
+                    <MoreToggle
+                      open={!!more.rights}
+                      onClick={() => setMore((s) => ({ ...s, rights: !s.rights }))}
+                      title="Rights and restrictions"
+                      sub="Usage, paid ads rights and exclusivity. They get their own section, apart from the offer."
+                    />
+                    {more.rights && <RightsFields r={offer.rights || { depth: "help" }} set={setRights} />}
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  onClick={submitOffer}
+                  disabled={!offer.mods.length || (offerNeedsAi(offer) && !offer.approach)}
+                  className="w-full py-2.5 rounded-xl text-sm shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50"
+                  style={{ background: "#879CF7", color: "#fff", fontWeight: 600 }}
+                >
+                  Continue
+                </button>
+              </div>
+              <div className="flex justify-between mt-2">
+                <Chip on={false} onClick={goBack}>Back</Chip>
+                <Chip on={false} onClick={skipOffer}>Skip the offer</Chip>
               </div>
             </StepArea>
           )}
@@ -1591,7 +2467,9 @@ export default function Block() {
                   style={{ border: CHIP_BORDER, color: NAVY }}
                 >
                   <span className="block text-[13px]" style={{ fontWeight: 700 }}>Open the builder</span>
-                  <span className="block text-[11px] mt-0.5" style={{ color: "#6B7A99" }}>Your picks saved, write it yourself</span>
+                  <span className="block text-[11px] mt-0.5" style={{ color: "#6B7A99" }}>
+                    {offerOn(offer) ? "I write the offer, you write the rest" : "Your picks saved, write it yourself"}
+                  </span>
                 </button>
               </div>
               <div className="mt-2">
