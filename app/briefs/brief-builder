@@ -1331,6 +1331,10 @@ export default function Block() {
     ) || null;
   };
 
+  // EmailIt dedupes on the Idempotency-Key, so a key built only from
+  // the member and the brief silently swallows every resend: the API
+  // answers 200 and no email leaves. The minute bucket keeps the guard
+  // against a double click while letting a deliberate resend through.
   const sendInviteEmail = async ({ template, to, subject, variables, idemKey }) => {
     const res = await emailitFetch("https://api.emailit.com/v2/emails", {
       method: "POST",
@@ -1398,7 +1402,7 @@ export default function Block() {
           template: "bl-tx-invite-brief",
           to: cleanEmail,
           subject: "You have a brief from " + (account?.fields?.accountName || "Brieflee"),
-          idemKey: `bl-invite-${memberId || cleanEmail}-${briefId}`,
+          idemKey: `bl-invite-${memberId || cleanEmail}-${briefId}-${Math.floor(Date.now() / 60000)}`,
           variables: invVars,
         });
         toast.success("Invite sent");
@@ -1433,7 +1437,7 @@ export default function Block() {
       template: "bl-tx-invite-brief",
       to,
       subject: "You have a brief from " + (account?.fields?.accountName || "Brieflee"),
-      idemKey: `bl-invite-${row.id}-${briefId}`,
+      idemKey: `bl-invite-${row.id}-${briefId}-${Math.floor(Date.now() / 60000)}`,
       variables: rowVars,
     });
     await updateMember.mutateAsync({
@@ -1521,7 +1525,7 @@ export default function Block() {
         template: "bl-tx-invite-review",
         to: cleanEmail,
         subject: "A review was shared with you",
-        idemKey: `bl-invite-${memberId || cleanEmail}-${sub.id}`,
+        idemKey: `bl-invite-${memberId || cleanEmail}-${sub.id}-${Math.floor(Date.now() / 60000)}`,
         variables: shareVars,
       });
       toast.success("Review shared");
@@ -4461,6 +4465,10 @@ function InvitesView({ rows, published, canInvite, onAdd, onSendRow, onSendRows,
     return published && canInvite &&
       (selectLabel(fl.member_status) || "Invited") === "Pending";
   };
+  // Someone already invited can be sent the email again: they lose it,
+  // it lands in spam, or the brief changed since.
+  const canResend = (r) =>
+    published && canInvite && (selectLabel((r.fields || {}).member_status) || "Invited") === "Invited";
   const pageEligibleIds = pageRows.filter(eligible).map((r) => r.id);
   const showSelect = published && canInvite && rows.some(eligible);
   const grid = showSelect ? "26px " + invGrid : invGrid;
@@ -4545,9 +4553,9 @@ function InvitesView({ rows, published, canInvite, onAdd, onSendRow, onSendRows,
               <span><span style={{ ...invStatusStyle(status), display: "inline-flex", alignItems: "center", padding: "3px 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 600, fontFamily: INV_FONT }}>{status}</span></span>
               <span style={{ fontFamily: INV_FONT, fontSize: 12.5, color: NAVY_DEEP }}>{fmtInviteDate(fl.member_invited) || "Not yet"}</span>
               <span style={{ textAlign: "right" }}>
-                {rowEligible && (
+                {(rowEligible || canResend(r)) && (
                   <button type="button" style={{ ...invGhostBtnStyle, opacity: sending ? 0.6 : 1 }} disabled={sending} onClick={() => onSendRow(r)}>
-                    {sending ? "Sending…" : "Send invite"}
+                    {sending ? "Sending…" : rowEligible ? "Send invite" : "Resend"}
                   </button>
                 )}
               </span>
