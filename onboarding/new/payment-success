@@ -1,8 +1,15 @@
 // /payment-success — landing page after Stripe Checkout
 //
-// Stripe Checkout (embedded or redirect) sends the user here on
-// successful payment. We show a brief celebration + a single CTA into
-// the onboarding setup flow at /set-up.
+// Stripe only sends the user here after a successful payment, so landing
+// on this page IS the confirmation. The success state renders immediately
+// with trial dates computed client-side (today → today + 7 days); nothing
+// waits on the database or the Stripe webhook. The record write happens
+// in the background behind the already-visible UI.
+//
+// (Earlier revision polled the subscription_status lookup before showing
+// success. That lookup can't resolve until the webhook writes billing and
+// links the account, so first-time payers sat on a "finishing your setup"
+// screen and only saw success after a manual reload. Gone.)
 //
 // On landing we persist the trial window to the user row in the
 // brieflee beta users table (idempotent — only on first visit):
@@ -30,18 +37,26 @@ import { useCurrentUser } from "@/lib/user";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 
-// brieflee beta users table — field aliases for the per-user write.
+// brieflee beta users table — field aliases for the per-user write + read.
 // Source: Tables API GET /tables/brpbVf8sL2xqxV.
 const userFields = q.select({
   trialStart: "J06K2",  // DATETIME
   trialEnd:   "5cUNI",  // DATETIME
 });
 
+// UPDATE select — writable fields only. A read-only field (lookup/formula)
+// in an update hook's map stops Softr's analyzer registering ANY action,
+// which disables the write for everyone. Same split as app/settings/workspace.
+const writeFields = q.select({
+  trialStart: "J06K2",
+  trialEnd:   "5cUNI",
+});
+
 const TRIAL_DAYS = 7;
 const NEXT_PATH = "/set-up";
 
 const SMILE_LOGO =
-  "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_brand_isometric-smiley-face-tilted-disc-blue-outline-cream-mark_2026-03.png";
+  "https://res.cloudinary.com/dchroynzv/image/upload/v1777622985/brieflee_logo_primary-logo-blue-wordmark-smiley-mark_2025-03.png";
 
 const BL_NAVY       = "#001364";
 const BL_DEEP       = "#000F4D";
@@ -51,19 +66,19 @@ const BL_MUTED      = "#6B7A99";
 export default function Block() {
   const user = useCurrentUser();
   const { data, status } = useRecord({ recordId: user?.id, select: userFields });
-  const updateRecord = useRecordUpdate({ fields: userFields });
+  const updateRecord = useRecordUpdate({ fields: writeFields });
   const hasInitialisedRef = useRef(false);
 
-  // Local trial-end used for display. Hydrated from the record if it
-  // already has trial_end; otherwise computed locally on first render so
-  // the page never blanks while we wait for the write to complete.
+  // Trial end shown on screen. Computed on first render (today + 7 days)
+  // so the page is complete on paint — no data fetch in the critical path.
+  // If the record turns out to hold real dates, they replace this silently.
   const [trialEndDate, setTrialEndDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + TRIAL_DAYS);
     return d;
   });
 
-  // ----- Idempotent trial-date persistence on landing -----
+  // ----- Idempotent trial-date persistence, behind the visible UI -----
   useEffect(() => {
     if (status !== "success") return;
     if (!user?.id) return;
@@ -74,9 +89,18 @@ export default function Block() {
     const existingEnd   = data?.fields?.trialEnd;
 
     if (existingStart) {
-      // Trial already started on a previous visit — display the
-      // persisted end date and skip the write.
-      if (existingEnd) setTrialEndDate(new Date(existingEnd));
+      // Returning visit — the record is the source of truth.
+      const end = existingEnd
+        ? new Date(existingEnd)
+        : (() => { const d = new Date(existingStart); d.setDate(d.getDate() + TRIAL_DAYS); return d; })();
+
+      if (end.getTime() < Date.now()) {
+        // Trial over — this page has nothing to show; go to the dashboard.
+        if (typeof window !== "undefined") window.location.replace("/new");
+        return;
+      }
+
+      setTrialEndDate(end);
       return;
     }
 
@@ -227,6 +251,7 @@ function Style() {
           margin: 0;
           max-width: 360px;
         }
+
       `}
     </style>
   );
