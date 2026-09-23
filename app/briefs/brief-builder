@@ -1268,7 +1268,20 @@ export default function Block() {
     }
   });
   const { data: subsRaw } = useRecords({ select: subSelect, from: ds.submissions, count: 100, enabled: !!briefId });
-  const { data: membersRaw, refetch: refetchMembers } = useRecords({ select: memberSelect, from: ds.members, count: 100, enabled: !!briefId });
+  // The roster is account-wide, and two things read it: the invite
+  // dedupe and the pick-an-existing-person list. One page is not
+  // enough for either. Past 100 people, a creator who already has a
+  // row looks new and gets a second one. Drained a page at a time up
+  // to 1,000, the cap the bulk brief import uses.
+  const membersQ = useRecords({ select: memberSelect, from: ds.members, count: 100, enabled: !!briefId });
+  const membersRaw = membersQ.data;
+  const refetchMembers = membersQ.refetch;
+  useEffect(() => {
+    const loaded = membersQ.data?.pages?.length || 0;
+    if (membersQ.hasNextPage && !membersQ.isFetchingNextPage && loaded < 10) {
+      membersQ.fetchNextPage();
+    }
+  }, [membersQ.hasNextPage, membersQ.isFetchingNextPage, membersQ.data]); // eslint-disable-line
   const createMember = useRecordCreate({ from: ds.members, fields: memberCreateFields });
   const updateMember = useRecordUpdate({ from: ds.members, fields: memberUpdateFields });
   const emailitFetch = useProxyFetch(ds.emailit);
@@ -4460,15 +4473,19 @@ function InvitesView({ rows, published, canInvite, onAdd, onSendRow, onSendRows,
   const pages = Math.max(1, Math.ceil(rows.length / INV_PAGE_SIZE));
   const cur = Math.min(page, pages - 1);
   const pageRows = rows.slice(cur * INV_PAGE_SIZE, cur * INV_PAGE_SIZE + INV_PAGE_SIZE);
+  // Waiting on a first send: added to the brief but not emailed
+  // (Pending), or sitting on the roster untouched, which is Imported
+  // or a blank status. The table has no default any more, so blank is
+  // a real state and it means nobody has been contacted.
   const eligible = (r) => {
     const fl = r.fields || {};
-    return published && canInvite &&
-      (selectLabel(fl.member_status) || "Invited") === "Pending";
+    const st = selectLabel(fl.member_status) || "";
+    return published && canInvite && (st === "Pending" || st === "Imported" || st === "");
   };
   // Someone already invited can be sent the email again: they lose it,
   // it lands in spam, or the brief changed since.
   const canResend = (r) =>
-    published && canInvite && (selectLabel((r.fields || {}).member_status) || "Invited") === "Invited";
+    published && canInvite && selectLabel((r.fields || {}).member_status) === "Invited";
   const pageEligibleIds = pageRows.filter(eligible).map((r) => r.id);
   const showSelect = published && canInvite && rows.some(eligible);
   const grid = showSelect ? "26px " + invGrid : invGrid;
@@ -4528,7 +4545,7 @@ function InvitesView({ rows, published, canInvite, onAdd, onSendRow, onSendRows,
         {pageRows.map((r) => {
           const fl = r.fields || {};
           const name = unwrap(fl.member_name) || unwrap(fl.member_email) || "Member";
-          const status = selectLabel(fl.member_status) || "Invited";
+          const status = selectLabel(fl.member_status) || "Not sent";
           const access = selectLabel(fl.member_access) || "";
           const rowEligible = eligible(r);
           const sending = sendingRowId === r.id || (bulkBusy && sel.includes(r.id));

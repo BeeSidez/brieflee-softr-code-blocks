@@ -637,6 +637,60 @@ const briefSelect = q.select({
 // The parent submission of a revision, and its review.
 
 // ─── Writes ────────────────────────────────────────────────────
+// ─── Social links ─────────────────────────────────────────────
+// A creator pastes a link, the domain says which platform it is, and
+// it is filed into that column. No API, no key, no lookup. Anything
+// unrecognised is kept as other_url rather than dropped.
+const SOCIAL_HOSTS = [
+  { field: "tiktokUrl", label: "TikTok", re: /(^|\.)tiktok\.com$/i, at: true,
+    icon: "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_tiktok-logo-3d-transparent_2026-05.png", base: "https://www.tiktok.com/@" },
+  { field: "instagramUrl", label: "Instagram", re: /(^|\.)instagram\.com$/i,
+    icon: "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_instagram-logo-3d-transparent_2026-05.png", base: "https://www.instagram.com/" },
+  { field: "youtubeUrl", label: "YouTube", re: /(^|\.)(youtube\.com|youtu\.be)$/i, at: true,
+    icon: "https://res.cloudinary.com/dchroynzv/image/upload/v1779101297/brieflee_icon_youtube-logo-3d-transparent_2026-05.png", base: "https://www.youtube.com/@" },
+  { field: "facebookUrl", label: "Facebook", re: /(^|\.)(facebook\.com|fb\.com|fb\.me)$/i,
+    icon: "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_facebook-logo-3d-transparent_2026-05.png", base: "https://www.facebook.com/" },
+];
+// A creator types "@nia" as often as a full link, so both are taken and
+// turned into the one thing worth storing: the profile URL.
+function socialValue(field, raw) {
+  const host = SOCIAL_HOSTS.find((h) => h.field === field);
+  const v = String(raw || "").trim().replace(/^@+/, "");
+  if (!host || !v) return "";
+  if (!/[./]/.test(v)) return host.base + v;
+  const hit = socialUrl(v);
+  return hit ? hit.url : host.base + v.split("/").filter(Boolean).pop().replace(/^@+/, "");
+}
+const SOCIAL_POST_SEG = /^(video|reel|reels|p|status|watch|shorts|posts)$/i;
+function socialUrl(raw) {
+  const v = String(raw || "").trim();
+  if (!v) return null;
+  const withScheme = /^https?:\/\//i.test(v) ? v : "https://" + v.replace(/^\/+/, "");
+  let u;
+  try { u = new URL(withScheme); } catch (e) { return null; }
+  // "name@example.com" parses as a URL with a username. It is an email.
+  if (u.username || !u.hostname.includes(".")) return null;
+  const host = u.hostname.replace(/^www\./i, "");
+  const parts = u.pathname.split("/").filter(Boolean);
+  // A link to one post is not a profile: keep the handle, drop the rest.
+  let path = u.pathname.replace(/\/+$/, "");
+  if (parts.length && SOCIAL_POST_SEG.test(parts[0])) return null;
+  if (parts.length > 1 && SOCIAL_POST_SEG.test(parts[1])) path = "/" + parts[0];
+  const hit = SOCIAL_HOSTS.find((h) => h.re.test(host));
+  // Only the four platforms have a column, so anything else is not a
+  // social we keep.
+  if (!hit) return null;
+  return { field: hit.field, label: hit.label, url: u.origin + path };
+}
+function socialFieldsFrom(list) {
+  const fields = {};
+  (list || []).forEach((raw) => {
+    const hit = socialUrl(raw);
+    if (hit && !fields[hit.field]) fields[hit.field] = hit.url;
+  });
+  return fields;
+}
+
 const submissionCreate = q.select({
   name:            "XebTQ",
   accounts:        "v94f0",
@@ -648,6 +702,8 @@ const submissionCreate = q.select({
   briefAttachment: "GmjrC",
   creatorName:     "9ZryL",
   creatorEmail:    "INZs6",
+  creatorMobile:   "mA531",
+  creatorSocials:  "dWUnp",
   submissionType:  "b82bF",
   status:          "4flIO",
   userValidation:  "QqS0I",
@@ -1407,7 +1463,7 @@ export default function Block() {
   // ── The pipeline, one video at a time ────────────────────────
   async function runPipeline(item, myRun, ui, ctx) {
     // Per-submission settings from the panel.
-    const { agents, briefId, brief, notes, pdf, creatorName, creatorEmail } = ctx;
+    const { agents, briefId, brief, notes, pdf, creatorName, creatorEmail, creatorMobile, creatorSocials } = ctx;
     const aiModeLabel = unwrapE(brief?.aiMode) || unwrapE(af?.aiMode) || "Hybrid";
     const alive = () => runRef.current === myRun;
     const isFile = item.kind === "file";
@@ -1629,6 +1685,12 @@ export default function Block() {
       briefAttachment: pdfUploaded ? [pdfUploaded] : null,
       creatorName: cleanName(creatorName) || (isCreator ? cleanName(unwrapE(parent?.creatorName)) : (STEPPER ? cleanName(unwrapE(mf.fullName)) : "")),
       creatorEmail: isCreator ? (creatorEmail.trim() || unwrapE(parent?.creatorEmail) || "") : creatorEmail.trim(),
+      // Asked for on the public forms so a creator who arrives without
+      // an invite is still reachable. Stored as they typed it.
+      creatorMobile: String(creatorMobile || "").trim() || (isCreator ? unwrapE(parent?.creatorMobile) || "" : ""),
+      // Kept as typed, one per line. The structured set lives on the
+      // member row; this is the receipt for this video.
+      creatorSocials: (creatorSocials || []).map((v) => (socialUrl(v) || {}).url).filter(Boolean).join("\n"),
       submissionType: context === "submission" ? OPT.subTypeRevision : (STEPPER && kind === "analyse" ? OPT.subTypeAnalyse : STEPPER && kind === "remix" ? OPT.subTypeSwipe : briefId ? OPT.subTypeBrief : OPT.subTypeContentReview),
       status: OPT.statusReviewed,
       userValidation: OPT.userValidationProceed,
@@ -1752,7 +1814,7 @@ export default function Block() {
     if (unwrapE(briefE.status) !== "Active") throw new Error("This brief is closed to new submissions.");
     if (lookupStatus && lookupStatus !== "Active") throw new Error("This brief isn't taking submissions right now. Check back later or contact the brand.");
     if (!uploaded?.url) throw new Error("The upload did not finish. Try again.");
-    const ctx = { agents: [], briefId, brief: briefE, notes: note || "", pdf: null, pdfUploaded: null, creatorName: name, creatorEmail: email };
+    const ctx = { agents: [], briefId, brief: briefE, notes: note || "", pdf: null, pdfUploaded: null, creatorName: name, creatorEmail: email, creatorMobile: mobile, creatorSocials: Object.values(socialVals) };
     const item = { kind: "file", file: file || null, label: uploaded.filename, uploaded };
     const r = await runPipeline(item, runRef.current, { stage: () => {}, preview: () => {} }, ctx);
     if (!r) throw new Error("The review did not finish.");
@@ -2466,6 +2528,28 @@ function UploadPanel({
   const [video, setVideo] = useState(null); // { filename, url, size }
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [mobile, setMobile] = useState("");
+  // Socials are a row of logos, not a stack of inputs: tap one, fill
+  // it, it closes. Nothing is asked for that the creator did not ask
+  // to give.
+  const [socialVals, setSocialVals] = useState({});
+  const [socialOpen, setSocialOpen] = useState("");
+  const [socialDraft, setSocialDraft] = useState("");
+  const openSocial = (field) => {
+    if (socialOpen === field) { setSocialOpen(""); return; }
+    setSocialOpen(field);
+    setSocialDraft(socialVals[field] || "");
+  };
+  const commitSocial = () => {
+    const url = socialValue(socialOpen, socialDraft);
+    setSocialVals((v) => {
+      const next = { ...v };
+      if (url) next[socialOpen] = url; else delete next[socialOpen];
+      return next;
+    });
+    setSocialOpen("");
+    setSocialDraft("");
+  };
   const [dragOver, setDragOver] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -2484,11 +2568,16 @@ function UploadPanel({
   if (!open) return null;
 
   const reset = () => {
-    setStep(1); setVideo(null); setName(""); setEmail("");
+    setStep(1); setVideo(null); setName(""); setEmail(""); setMobile("");
+    setSocialVals({}); setSocialOpen(""); setSocialDraft("");
     setDone(false); setResult(null); setError("");
   };
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const canNext = step === 1 ? !!video && !isUploading : name.trim().length > 0 && emailOk;
+  // Loose on purpose: creators write their number every which way, and
+  // the country code is what matters. Seven digits is the shortest
+  // real mobile anywhere.
+  const mobileOk = mobile.replace(/\D/g, "").length >= 7;
+  const canNext = step === 1 ? !!video && !isUploading : name.trim().length > 0 && emailOk && mobileOk;
 
   const pickFile = async (files) => {
     const file = files && files[0];
@@ -2616,7 +2705,40 @@ function UploadPanel({
                   id="bl-up-email" className="bl-up-input" type="email" placeholder="your@email.com"
                   value={email} onChange={(e) => setEmail(e.target.value)}
                 />
-                <p className="bl-up-caption">Your review lands in this inbox.</p>
+                <label className="bl-up-label" htmlFor="bl-up-mobile">Mobile number</label>
+                <input
+                  id="bl-up-mobile" className="bl-up-input" type="tel" placeholder="+44 7700 900000"
+                  value={mobile} onChange={(e) => setMobile(e.target.value)}
+                />
+<label className="bl-up-label">Share your socials <span style={{ opacity: 0.6, fontWeight: 400 }}>(optional)</span></label>
+                <div className="bl-up-socials">
+                  {SOCIAL_HOSTS.map((h) => (
+                    <button
+                      key={h.field}
+                      type="button"
+                      title={h.label}
+                      aria-label={h.label}
+                      className={"bl-up-socialbtn" + (socialVals[h.field] ? " is-on" : "") + (socialOpen === h.field ? " is-open" : "")}
+                      onClick={() => openSocial(h.field)}
+                    >
+                      <img src={h.icon} alt="" />
+                    </button>
+                  ))}
+                </div>
+                {socialOpen && (
+                  <div className="bl-up-socialrow">
+                    <input
+                      className="bl-up-input"
+                      value={socialDraft}
+                      autoFocus
+                      placeholder={"@yourhandle or a link"}
+                      onChange={(e) => setSocialDraft(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitSocial(); } }}
+                    />
+                    <button type="button" className="bl-up-socialsave" onClick={commitSocial}>Save</button>
+                  </div>
+                )}
+                <p className="bl-up-caption">Your review lands in this inbox. The number is so the brand can reach you about this video, and the links let them check the post later.</p>
               </div>
             )}
 
@@ -3915,6 +4037,14 @@ function Style() {
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       }
       .bl-up-file-size { font-size: 11.5px; color: ${MUTED}; }
+      .bl-up-socials { display: flex; gap: 10px; margin-top: 8px; }
+      .bl-up-socialbtn { width: 44px; height: 44px; padding: 6px; border-radius: 12px; border: 1px solid rgba(217,224,255,0.7); background: #FFFFFF; cursor: pointer; opacity: 0.45; filter: grayscale(1); transition: opacity 0.15s, filter 0.15s, border-color 0.15s, transform 0.15s; }
+      .bl-up-socialbtn:hover { opacity: 0.85; filter: grayscale(0.2); transform: translateY(-1px); }
+      .bl-up-socialbtn.is-on, .bl-up-socialbtn.is-open { opacity: 1; filter: none; border-color: #879CF7; }
+      .bl-up-socialbtn img { width: 100%; height: 100%; object-fit: contain; display: block; }
+      .bl-up-socialrow { display: flex; gap: 8px; margin-top: 10px; }
+      .bl-up-socialrow .bl-up-input { flex: 1; }
+      .bl-up-socialsave { padding: 0 16px; border-radius: 10px; border: none; background: #879CF7; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
       .bl-up-input {
         width: 100%; box-sizing: border-box;
         padding: 10px 14px; border: 1px solid ${BORDER}; border-radius: 12px;

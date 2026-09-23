@@ -1,0 +1,1767 @@
+// =====================================================================
+// /app/submission details/submission-review — Submission Review ·
+// Vibe Code block (NEW). The whole page body: video player + flag
+// timeline on the left, the review panel on the right with eight
+// tabs — AI review, Report, Ask Lee, Comments, Transcript, Remix,
+// Details, People. Built from the Submission Review 01 design; spec
+// with every verified field id: submission-review-spec.md (same
+// folder). The current native page stays untouched until Bev swaps.
+//
+// Storage: the page record is the SUBMISSION (recordId in URL).
+// Reads: submissions (the record), reviews (rows linked to it — the
+// first is the review), review_report (one row per agent), members,
+// comments. Writes: reviews.human_decision, request_message,
+// human_decided_at, human_decided_by and overall_rating (Update Record
+// on reviews), new comments (Create Record on comments) and new members
+// (Create Record on members, the Add people modal). Ask Lee talks to
+// OpenRouter through the REST datasource.
+//
+// SOFTR CONFIG REQUIRED:
+//   1. Page: the submission detail page (recordId in URL).
+//   2. Source tab: submissions, reviews, review_report, members,
+//      comments tables + the OpenRouter REST API datasource. The
+//      connection ids in datasource.define are THIS block's live ids
+//      (taken from Bev's working paste) — pasting into the same block
+//      just works. Connection ids are PER BLOCK: pasting into a NEW
+//      block means swapping all six for that block's own ids.
+//   3. Actions tab: Update Record on reviews; Create Record on
+//      comments and on members.
+//   4. The /review-invite and /review-details modal pages exist.
+// =====================================================================
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  datasource, useRecord, useRecords, useCurrentRecordId, useRecordUpdate, useRecordCreate, useProxyFetch, q,
+} from "@/lib/datasource";
+import { useCurrentUser } from "@/lib/user";
+import {
+  Camera, Check, ChevronDown, Copy, Download as DownloadIcon, Flag,
+  LayoutGrid, List as ListIcon, ListChecks, MessageCircle, Pencil, Play,
+  Send, ShieldCheck, SkipBack, SkipForward, Sparkles, Star, UserPlus, X,
+} from "lucide-react";
+import { toast } from "sonner";
+
+// ─── Datasources (ids from this block's Source tab) ───────────
+const ds = datasource.define({
+  submissions: "5c5f0ce2-9669-44ac-9dbb-f5c8025e14d4",
+  reviews:     "23eb0ed1-c0bf-4ff2-8eb5-1a1468ce6c87",
+  report:      "7ae7d09f-69b2-4ca8-b481-7e302e777cb2",
+  members:     "f1998106-02b6-46c3-9070-87bca368c371",
+  comments:    "b5117187-b582-4b34-b566-2accdf7555f3",
+  openrouter:  "d9539a55-45c6-4bff-b21f-32d52ef27dea",
+});
+
+// ─── Brand palette ────────────────────────────────────────────
+const NAVY_DEEP = "#001364";
+const PERIWINKLE = "#879CF7";
+const PERIWINKLE_HOVER = "#294FF6";
+const MUTED = "#6B7A99";
+const SOFT_MUTED = "#9aa6c3";
+const BORDER = "rgba(217, 224, 255, 0.55)";
+const TRACK = "rgba(217, 224, 255, 0.6)";
+const TAG_BG = "rgba(135, 156, 247, 0.10)";
+const PASS_BG = "rgba(45, 170, 99, 0.12)";
+const PASS_FG = "#2DAA63";
+const WARN_BG = "rgba(199, 123, 37, 0.14)";
+const WARN_FG = "#C77B25";
+const FAIL_BG = "rgba(224, 82, 82, 0.12)";
+const FAIL_FG = "#E05252";
+
+// ─── submissions — the page record ────────────────────────────
+const subSelect = q.select({
+  sub_name:       "XebTQ",
+  sub_creator:    "9ZryL",
+  sub_email:      "INZs6",
+  sub_type:       "b82bF",
+  sub_status:     "4flIO",
+  sub_video_file: "PP7rO",
+  sub_video_url:  "XrARi",
+  sub_duration:   "si3xT",
+  sub_briefs:     "fqtit",
+  sub_accounts:   "v94f0",
+  sub_brief_name: "Au4N7",
+  sub_created:    "ywb3H",
+  sub_version:    "eiUDC",
+  sub_thumbnail:  "HKHil",
+});
+
+// ─── reviews — the verdict + scripts ──────────────────────────
+const reviewSelect = q.select({
+  rv_rating:      "uRkEe",
+  rv_transcript:  "5kQxm",
+  rv_adapted:     "Z95A7",
+  rv_status:      "4ljXK",
+  rv_comment:     "Zqqx4",
+  rv_reasoning:   "yp7ca",
+  rv_action:      "j6SpS",
+  rv_human:       "ULvsM",
+  rv_ai:          "pxln3",
+  rv_mode:        "O8NvX",
+  rv_request:     "JF1tu",
+  rv_decided_at:  "mSvJ8",
+  rv_decided_by:  "HpXw5",
+  rv_thumbnail:   "4rkuC",
+  rv_display_url: "kIbht",
+  rv_submissions: "nB4G1",
+
+  // Per-criterion results. These live as FLAT COLUMNS on the review row,
+  // one score/status/comment/screenshot set per criterion. The review_report
+  // table was meant to hold them as rows but has never been written to
+  // (0 rows database-wide), which is why the AI review and Report tabs
+  // rendered empty. See the `checks` memo below.
+  c_hook_score:      "PPgD7",
+  c_hook_status:     "BCdmg",
+  c_hook_comment:    "FleWi",
+  c_hook_shot:       "tJHIq",
+  c_vhook_score:     "TuCZK",
+  c_vhook_status:    "Q8htG",
+  c_vhook_comment:   "H8mtq",
+  c_vhook_shot:      "jku6W",
+  c_pacing_score:    "ZgN1w",
+  c_pacing_status:   "J6Hlm",
+  c_pacing_comment:  "dSTFY",
+  c_pacing_shot:     "q9hyL",
+  c_product_score:   "wwk9X",
+  c_product_status:  "MIomy",
+  c_product_comment: "Golmf",
+  c_product_shot:    "bzZmF",
+  c_audio_score:     "gQ2My",
+  c_audio_status:    "O4iGG",
+  c_audio_comment:   "ytuTT",
+  c_audio_shot:      "Ltgaq",
+  c_face_score:      "mCcVd",
+  c_face_status:     "GNsfa",
+  c_face_comment:    "wcLV7",
+  c_face_shot:       "CKEBR",
+  c_text_score:      "CoAzZ",
+  c_text_status:     "gJZmz",
+  c_text_comment:    "S60Ob",
+  c_text_shot:       "dPZEk",
+  c_cta_score:       "58szQ",
+  c_cta_status:      "O5wRt",
+  c_cta_comment:     "MfmJY",
+  c_cta_shot:        "t5EX4",
+  c_mention_score:   "7fAI0",
+  c_mention_status:  "9kKJP",
+  c_mention_comment: "JIpeg",
+  c_mention_shot:    "CCHAV",
+  c_mod_status:      "ZHNmv",
+  c_mod_comment:     "1tXyK",
+  c_mod_shot:        "xgoo8",
+  c_copy_status:     "cftY3",
+  c_copy_comment:    "UDj20",
+  c_copy_shot:       "JMUZh",
+  c_align_status:    "36f1U",
+  c_align_comment:   "H9Xkc",
+  c_align_shot:      "usb6i",
+});
+const reviewWrite = q.select({
+  rv_human:      "ULvsM",
+  rv_rating:     "uRkEe",
+  rv_request:    "JF1tu",
+  rv_decided_at: "mSvJ8",
+  rv_decided_by: "HpXw5",
+});
+const HUMAN_APPROVE = { id: "e5f429c2-c986-4204-aa59-41c45f3c2de9", label: "Approve" };
+const HUMAN_REJECT  = { id: "01bc0d1b-908a-4f00-b851-a47dda8647ea", label: "Reject" };
+const HUMAN_CHANGES = { id: "75d07c29-52ae-4fd7-beed-de422029cfb7", label: "Changes Requested" };
+const HUMAN_PENDING = { id: "4bf114f6-eb39-40cd-964f-6cd9bb26c8f8", label: "Pending" };
+
+// ─── review_report — one row per agent check ──────────────────
+const reportSelect = q.select({
+  rp_criteria:   "E004U",
+  rp_score:      "iy2K3",
+  rp_threshold:  "Q5UCr",
+  rp_rating:     "uRkEe",
+  rp_severity:   "oO0ev",
+  rp_status:     "TxU8J",
+  rp_comment:    "3Pr6i",
+  rp_screenshot: "syqU5",
+  rp_moment:     "BEfco",
+  rp_review:     "Iu9MX",
+  rp_submissions:"nB4G1",
+});
+
+// ─── members — who has access ─────────────────────────────────
+const memberSelect = q.select({
+  mb_name:        "qtE5x",
+  mb_email:       "v0MOD",
+  mb_status:      "ZjtKB",
+  mb_invited:     "IeYjB",
+  mb_created:     "2hwsV",
+  mb_access:      "8B5e8",
+  mb_submissions: "WmfhK",
+});
+
+// ─── comments — the time-pinned thread ────────────────────────
+const commentSelect = q.select({
+  cm_text:        "RGOIL",
+  cm_sec:         "lAewT",
+  cm_author:      "d5Xye",
+  cm_email:       "ghU7I",
+  cm_submissions: "sECqv",
+  cm_created:     "GCou0",
+});
+const commentCreate = q.select({
+  cm_text:        "RGOIL",
+  cm_sec:         "lAewT",
+  cm_author:      "d5Xye",
+  cm_email:       "ghU7I",
+  cm_submissions: "sECqv",
+  cm_users:       "nb3K4",
+});
+// The Add people modal writes the same members row the brief's Add people
+// flow creates, linked to this submission and the workspace.
+const memberCreate = q.select({
+  mb_name:        "qtE5x",
+  mb_email:       "v0MOD",
+  mb_status:      "ZjtKB",
+  mb_access:      "8B5e8",
+  mb_message:     "s4Kev",
+  mb_invited:     "IeYjB",
+  mb_submissions: "WmfhK",
+  mb_accounts:    "O72qI",
+  mb_users:       "C0WMG",
+});
+const MEMBER_INVITED = { id: "ba4533e6-c617-43e1-8835-1e6f5007758f", label: "Invited" };
+const ACCESS = {
+  comment: { id: "e6d835d4-7486-4c86-862d-dacea2908f2c", label: "Comment only" },
+  view:    { id: "d046ebf8-5cbd-41c9-b54d-b673aae670ba", label: "View only" },
+  full:    { id: "4f64aba6-5b8c-4b17-a6b3-beae6004a1af", label: "Full access" },
+};
+
+// ─── Helpers ──────────────────────────────────────────────────
+function unwrap(raw) {
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw.trim();
+  if (Array.isArray(raw)) return raw.map(unwrap).filter(Boolean).join(", ");
+  if (typeof raw === "object") return raw.label || raw.value || raw.name || "";
+  return String(raw);
+}
+function selectLabel(raw) {
+  if (!raw) return "";
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw)) return raw.map(selectLabel).filter(Boolean).join(", ");
+  return raw.label || "";
+}
+function asArray(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (raw == null) return [];
+  return [raw];
+}
+// useRecords data arrives flat, wrapped, or as infinite-query pages
+// ({ pages: [{ offset, total, items }] }). Flatten every shape.
+function recordsOf(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (Array.isArray(raw.records)) return raw.records;
+  if (Array.isArray(raw.items)) return raw.items;
+  if (Array.isArray(raw.data)) return raw.data;
+  if (Array.isArray(raw.pages)) {
+    return raw.pages.flatMap((p) => Array.isArray(p) ? p : (p?.items || p?.records || p?.data || []));
+  }
+  return [];
+}
+// Linked entries arrive as {id,label} pairs or plain labels — match
+// either against a record id or its primary-field name.
+function linkedTo(raw, id, name) {
+  return asArray(raw).some((x) => {
+    if (!x) return false;
+    const xid = typeof x === "string" ? x : (x.id || "");
+    if (xid && xid === id) return true;
+    const label = typeof x === "string" ? x : (x.label || "");
+    return !!name && label.trim() === name;
+  });
+}
+function stripHtmlText(html) {
+  if (!html) return "";
+  return String(html)
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+function fmtTime(sec) {
+  const s = Math.max(0, Math.floor(Number(sec) || 0));
+  return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+}
+function fmtDate(iso) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  } catch { return String(iso); }
+}
+function agoLabel(iso) {
+  if (!iso) return "";
+  try {
+    const mins = Math.max(1, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+    if (mins < 60) return mins + "m";
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return hrs + "h";
+    return Math.round(hrs / 24) + "d";
+  } catch { return ""; }
+}
+function initialsOf(name) {
+  return String(name || "?").split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+}
+// Status + severity pills (labels vary across the flows).
+function statusTone(label) {
+  const s = String(label || "").toUpperCase();
+  if (/PASS|ALIGNED|APPROVE|CLEAR|SAFE/.test(s)) return { bg: PASS_BG, fg: PASS_FG };
+  if (/FAIL|REJECT|MISALIGNED/.test(s)) return { bg: FAIL_BG, fg: FAIL_FG };
+  return { bg: WARN_BG, fg: WARN_FG };
+}
+function severityTone(label) {
+  const s = String(label || "").toLowerCase();
+  if (/critical|major/.test(s)) return { bg: FAIL_BG, fg: FAIL_FG };
+  if (/warn|adjust|medium/.test(s)) return { bg: WARN_BG, fg: WARN_FG };
+  return { bg: "rgba(154,166,195,0.14)", fg: MUTED };
+}
+const isPassStatus = (label) => /PASS|ALIGNED|APPROVE|CLEAR|SAFE/.test(String(label || "").toUpperCase());
+// The seconds hiding in key_moment_timestamp select labels ("0","33").
+function momentSec(raw) {
+  const label = selectLabel(raw);
+  const n = parseInt(label, 10);
+  return Number.isFinite(n) ? n : null;
+}
+// Group the agent checks the way the design does.
+// The AI stores the frame it judged a criterion on as a Cloudinary
+// screenshot whose transform carries the second: ".../so_8/c_fill,...".
+// That offset IS the moment, so rows stay clickable-to-seek without a
+// separate moment field.
+function soSec(url) {
+  const m = /\/so_(\d+)[,/]/.exec(String(url || ""));
+  return m ? Number(m[1]) : null;
+}
+
+function checkGroup(criteria) {
+  const c = String(criteria || "").toLowerCase();
+  if (/hook|pacing|scene/.test(c)) return "Hook & attention";
+  if (/energy|authentic|wardrobe|appearance|audio|legibility|light|face|creator visib|product/.test(c)) return "Production quality";
+  if (/copyright|moderation|brand|alignment|safe/.test(c)) return "Compliance & safety";
+  return "Other checks";
+}
+const GROUP_ORDER = ["Hook & attention", "Production quality", "Compliance & safety", "Other checks"];
+// Parse a transcript / adapted script into timestamped rows.
+// Handles "[12s]", "[0:12]", "[12]" markers; text between markers is
+// the row body. Falls back to one plain row when no markers exist.
+function parseScript(rawText) {
+  const text = stripHtmlText(rawText);
+  if (!text) return [];
+  const re = /\[(\d+):(\d{1,2})\]|\[(\d+)\s*s?\]/g;
+  const marks = [];
+  let m;
+  while ((m = re.exec(text))) {
+    const sec = m[1] != null ? Number(m[1]) * 60 + Number(m[2]) : Number(m[3]);
+    marks.push({ sec, at: m.index, len: m[0].length });
+  }
+  if (!marks.length) return [{ sec: null, text }];
+  const rows = [];
+  for (let i = 0; i < marks.length; i++) {
+    const start = marks[i].at + marks[i].len;
+    const end = i + 1 < marks.length ? marks[i + 1].at : text.length;
+    const body = text.slice(start, end).replace(/^[\s:·—-]+/, "").trim();
+    if (body) rows.push({ sec: marks[i].sec, text: body });
+  }
+  return rows.length ? rows : [{ sec: null, text }];
+}
+// Client-side CSV for the report tab.
+function reportCsv(rows) {
+  const esc = (v) => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
+  const head = ["Criteria", "Score", "Status", "Severity", "Rating", "Moment", "Comment"];
+  const lines = [head.join(",")].concat(rows.map((r) => [
+    r.criteria, r.score, r.status, r.severity, r.rating, r.sec == null ? "" : fmtTime(r.sec), r.comment,
+  ].map(esc).join(",")));
+  return lines.join("\n");
+}
+
+// A small centred modal in the brief page's Share panel style: one card,
+// a title, a helper line, the content, the buttons.
+function SmallModal({ title, helper, children, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div className="bl-sr-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bl-sr-modal" role="dialog" aria-modal="true" aria-label={title}>
+        <div className="bl-sr-modal-title">{title}</div>
+        {helper ? <div className="bl-sr-modal-helper">{helper}</div> : null}
+        <div className="bl-sr-modal-body">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// MAIN BLOCK
+// =====================================================================
+export default function Block() {
+  const user = useCurrentUser();
+  // The decision made on this screen, so the bar updates before the refetch lands.
+  const [localDecision, setLocalDecision] = useState(null); // { human, at, by, request }
+  const submissionId = useCurrentRecordId() || "";
+  const { data: submission } = useRecord({ recordId: submissionId, select: subSelect, from: ds.submissions });
+  // Scoped server-side to this submission. Unscoped, only the first 100
+  // reviews ever arrived, so a newer video's review could go missing.
+  const { data: reviewsRaw } = useRecords({
+    select: reviewSelect,
+    from: ds.reviews,
+    count: 100,
+    where: q.array("rv_submissions").is(submissionId),
+    enabled: !!submissionId,
+  });
+  // review_report rows are fetched further down, once the review id is known.
+  // Account-wide roster. Add people dedupes against it on email, so a
+  // single page would hand anyone past the first 100 a second member
+  // row. Drained a page at a time up to 1,000.
+  const membersQ = useRecords({ select: memberSelect, from: ds.members, count: 100, enabled: !!submissionId });
+  const membersRaw = membersQ.data;
+  const refetchMembers = membersQ.refetch;
+  useEffect(() => {
+    const loaded = membersQ.data?.pages?.length || 0;
+    if (membersQ.hasNextPage && !membersQ.isFetchingNextPage && loaded < 10) {
+      membersQ.fetchNextPage();
+    }
+  }, [membersQ.hasNextPage, membersQ.isFetchingNextPage, membersQ.data]); // eslint-disable-line
+  const { data: commentsRaw } = useRecords({ select: commentSelect, from: ds.comments, count: 100, enabled: !!submissionId });
+  const updateReview = useRecordUpdate({ fields: reviewWrite, from: ds.reviews });
+  const createComment = useRecordCreate({ fields: commentCreate, from: ds.comments });
+  const createMember = useRecordCreate({ fields: memberCreate, from: ds.members });
+  const proxyFetch = useProxyFetch(ds.openrouter);
+
+  const sf = submission?.fields || {};
+  const subName = unwrap(sf.sub_name) || "Submission";
+  const creatorName = unwrap(sf.sub_creator) || "Creator";
+  const briefName = unwrap(sf.sub_brief_name);
+
+  // ─── The review + its report rows, scoped to this submission ─
+  const review = useMemo(() => {
+    const list = recordsOf(reviewsRaw).filter((r) => linkedTo(r?.fields?.rv_submissions, submissionId, subName));
+    return list[0] || null;
+  }, [reviewsRaw, submissionId, subName]);
+  const rf = review?.fields || {};
+  const reviewId = review?.id || "";
+  // This review's own check rows, filtered server-side. Unfiltered, only the
+  // first 100 rows of review_report arrived, so a recent video never found
+  // its rows and fell back to the 12 flat columns ("12 of 12 passed" on a
+  // flagged video). Rows that carry only the submission link still match.
+  const { data: reportRaw } = useRecords({
+    select: reportSelect,
+    from: ds.report,
+    count: 100,
+    where: reviewId
+      ? q.or(q.array("rp_review").is(reviewId), q.array("rp_submissions").is(submissionId))
+      : q.array("rp_submissions").is(submissionId),
+    enabled: !!submissionId,
+  });
+
+  const checks = useMemo(() => {
+    const fromReport = recordsOf(reportRaw)
+      .filter((r) => {
+        const fl = r?.fields || {};
+        if (reviewId && linkedTo(fl.rp_review, reviewId, "")) return true;
+        return linkedTo(fl.rp_submissions, submissionId, subName);
+      })
+      .map((r) => {
+        const fl = r.fields || {};
+        return {
+          id: r.id,
+          criteria: unwrap(fl.rp_criteria) || "Check",
+          score: unwrap(fl.rp_score) || unwrap(fl.rp_threshold),
+          status: selectLabel(fl.rp_status),
+          severity: selectLabel(fl.rp_severity),
+          rating: Number(fl.rp_rating) || 0,
+          comment: unwrap(fl.rp_comment),
+          screenshot: typeof fl.rp_screenshot === "string" ? fl.rp_screenshot : "",
+          sec: momentSec(fl.rp_moment),
+          group: checkGroup(unwrap(fl.rp_criteria)),
+        };
+      });
+    if (fromReport.length) return fromReport;
+
+    // Nothing in review_report, so read the review's own per-criterion
+    // columns. Written out statically rather than looped over a table of
+    // alias names, so the block's field analyser can see each one is used
+    // and keeps it in the fetch.
+    const flat = [
+      ["hook",    "Hook speed",              rf.c_hook_score,    rf.c_hook_status,    rf.c_hook_comment,    rf.c_hook_shot],
+      ["vhook",   "Visual hook",             rf.c_vhook_score,   rf.c_vhook_status,   rf.c_vhook_comment,   rf.c_vhook_shot],
+      ["pacing",  "Engagement pacing",       rf.c_pacing_score,  rf.c_pacing_status,  rf.c_pacing_comment,  rf.c_pacing_shot],
+      ["product", "Product screen time",     rf.c_product_score, rf.c_product_status, rf.c_product_comment, rf.c_product_shot],
+      ["audio",   "Audio clarity",           rf.c_audio_score,   rf.c_audio_status,   rf.c_audio_comment,   rf.c_audio_shot],
+      ["face",    "Face time",               rf.c_face_score,    rf.c_face_status,    rf.c_face_comment,    rf.c_face_shot],
+      ["text",    "Text legibility",         rf.c_text_score,    rf.c_text_status,    rf.c_text_comment,    rf.c_text_shot],
+      ["cta",     "CTA placement",           rf.c_cta_score,     rf.c_cta_status,     rf.c_cta_comment,     rf.c_cta_shot],
+      ["mention", "Brand mentions",          rf.c_mention_score, rf.c_mention_status, rf.c_mention_comment, rf.c_mention_shot],
+      ["mod",     "Content moderation",      null,               rf.c_mod_status,     rf.c_mod_comment,     rf.c_mod_shot],
+      ["copy",    "Copyright",               null,               rf.c_copy_status,    rf.c_copy_comment,    rf.c_copy_shot],
+      ["align",   "Brand & brief alignment", null,               rf.c_align_status,   rf.c_align_comment,   rf.c_align_shot],
+    ];
+    return flat
+      .map((row) => {
+        const status = selectLabel(row[3]);
+        const comment = unwrap(row[4]);
+        const raw = unwrap(row[2]);
+        const shotRaw = unwrap(row[5]);
+        const score = raw === null || raw === undefined || raw === "" ? "" : String(raw);
+        // A criterion the review never filled in is left out entirely
+        // rather than shown as a blank row.
+        if (!status && !comment && !score) return null;
+        const shot = typeof shotRaw === "string" ? shotRaw : "";
+        return {
+          id: (reviewId || "rv") + ":" + row[0],
+          criteria: row[1],
+          score,
+          status,
+          severity: "",
+          rating: 0,
+          comment: comment || "",
+          screenshot: shot,
+          sec: soSec(shot),
+          group: checkGroup(row[1]),
+        };
+      })
+      .filter(Boolean);
+  }, [reportRaw, reviewId, submissionId, subName, review]);
+
+  const passCount = checks.filter((c) => isPassStatus(c.status)).length;
+  // Only percentage-like scores count towards the overall number —
+  // second-counts and mention-counts (1, 2, 4) would drag it down.
+  const numericScores = checks.map((c) => parseInt(c.score, 10)).filter((n) => Number.isFinite(n) && n >= 10 && n <= 100);
+  const overallScore = numericScores.length
+    ? Math.round(numericScores.reduce((a, b) => a + b, 0) / numericScores.length)
+    : null;
+  const humanLabel = localDecision ? localDecision.human : selectLabel(rf.rv_human);
+  const decisionLabel = (humanLabel && humanLabel !== "Pending")
+    ? humanLabel
+    : (selectLabel(rf.rv_ai) || selectLabel(rf.rv_status) || "In review");
+
+  // Flagged view. When any check was flagged or failed, or the verdict itself
+  // is a flag, the AI review leads with what was flagged and folds the rest
+  // behind a toggle. A clean pass keeps the full grouped list.
+  const flaggedChecks = checks.filter((c) => /FLAG|FAIL|REJECT|MISALIGN|ADJUST|WARN/i.test(String(c.status || "")));
+  const restChecks = checks.filter((c) => !flaggedChecks.includes(c));
+  const restAllPass = restChecks.every((c) => isPassStatus(c.status));
+  const flaggedView = flaggedChecks.length > 0 || /FLAG|FAIL|REJECT|CHANGE/i.test(decisionLabel);
+  const summaryText = !checks.length
+    ? "No checks yet"
+    : flaggedChecks.length
+      ? flaggedChecks.length + " flagged · " + passCount + " passed"
+      : flaggedView
+        ? "Flagged for review · " + passCount + " of " + checks.length + " checks passed"
+        : passCount + " of " + checks.length + " checks passed";
+
+  const members = useMemo(
+    () => recordsOf(membersRaw).filter((r) => linkedTo(r?.fields?.mb_submissions, submissionId, subName)),
+    [membersRaw, submissionId, subName]
+  );
+  const comments = useMemo(() => {
+    return recordsOf(commentsRaw)
+      .filter((r) => linkedTo(r?.fields?.cm_submissions, submissionId, subName))
+      .map((r) => {
+        const fl = r.fields || {};
+        return {
+          id: r.id,
+          text: unwrap(fl.cm_text),
+          sec: Number(fl.cm_sec) || 0,
+          author: unwrap(fl.cm_author) || "Someone",
+          email: unwrap(fl.cm_email),
+          created: fl.cm_created || "",
+        };
+      })
+      .sort((a, b) => a.sec - b.sec);
+  }, [commentsRaw, submissionId, subName]);
+
+  const transcript = useMemo(() => parseScript(rf.rv_transcript), [rf.rv_transcript]);
+  const remix = useMemo(() => parseScript(rf.rv_adapted), [rf.rv_adapted]);
+
+  // ─── Video + timeline ─────────────────────────────────────
+  const videoRef = useRef(null);
+  const [nowSec, setNowSec] = useState(0);
+  const [duration, setDuration] = useState(0);
+  // What the player gets. A submission that came from a link holds the
+  // page URL, not a video, so it can never be a <video> src. The Review
+  // Agents already made a playable copy on Cloudinary while they watched
+  // it, and the review carries it, so that is what plays.
+  const playUrl = (() => {
+    const att = asArray(sf.sub_video_file)[0];
+    const fromFile = att && (att.url || (typeof att === "string" ? att : ""));
+    if (fromFile) return fromFile;
+    const copy = typeof rf.rv_display_url === "string" ? rf.rv_display_url.trim() : "";
+    if (copy) return copy;
+    const direct = typeof sf.sub_video_url === "string" ? sf.sub_video_url : "";
+    return /\.(mp4|mov|webm|m4v)(\?|$)/i.test(direct) ? direct : "";
+  })();
+  // Where it came from, for the button that opens the original.
+  const videoUrl = (() => {
+    const att = asArray(sf.sub_video_file)[0];
+    const fromFile = att && (att.url || (typeof att === "string" ? att : ""));
+    if (fromFile) return fromFile;
+    const direct = typeof sf.sub_video_url === "string" ? sf.sub_video_url : "";
+    return direct || playUrl;
+  })();
+  const poster = typeof rf.rv_thumbnail === "string" ? rf.rv_thumbnail.trim() : "";
+  const onTime = (e) => {
+    const s = Math.floor(e.currentTarget.currentTime || 0);
+    if (s !== nowSec) setNowSec(s);
+  };
+  const [portrait, setPortrait] = useState(true);
+  const onMeta = (e) => {
+    setDuration(Math.max(1, Math.ceil(e.currentTarget.duration || 0)));
+    setPortrait((e.currentTarget.videoHeight || 1) >= (e.currentTarget.videoWidth || 0));
+  };
+  const seek = (sec) => {
+    const v = videoRef.current;
+    if (!v || sec == null) return;
+    try { v.currentTime = sec; v.play?.(); } catch {}
+  };
+
+  // ─── Panel state ──────────────────────────────────────────
+  // Always opens on the AI review. The tab used to be remembered across
+  // submissions, so opening a fresh one could land on People, which is
+  // empty on almost every submission and reads as "nothing happened".
+  const [tab, setTab] = useState("review");
+  const pickTab = (k) => setTab(k);
+  const [reportView, setReportView] = useState("list");
+  const [openGroups, setOpenGroups] = useState({ "Hook & attention": true });
+  const [showPassed, setShowPassed] = useState(false);
+  const flipGroup = (g) => setOpenGroups((o) => ({ ...o, [g]: !o[g] }));
+  const [ratePop, setRatePop] = useState(false);
+  const panelRef = useRef(null);
+  const startDrag = (e) => {
+    e.preventDefault();
+    const panel = panelRef.current;
+    if (!panel) return;
+    const startX = e.clientX;
+    const startW = panel.getBoundingClientRect().width;
+    let lastW = startW;
+    const move = (ev) => {
+      let w = startW - (ev.clientX - startX);
+      w = Math.max(320, Math.min(760, w));
+      lastW = w;
+      panel.style.flex = "0 0 " + w + "px";
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      document.body.style.userSelect = "";
+      try { localStorage.setItem("bl-sr-panelW", String(Math.round(lastW))); } catch {}
+    };
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
+  useEffect(() => {
+    try {
+      const w = localStorage.getItem("bl-sr-panelW");
+      if (w && panelRef.current) panelRef.current.style.flex = "0 0 " + w + "px";
+    } catch {}
+  }, []);
+
+  // ─── Timeline markers per tab ──────────────────────────────
+  const markers = useMemo(() => {
+    if (tab === "comments") {
+      return comments.map((c, i) => ({
+        sec: c.sec, letter: String.fromCharCode(65 + (i % 26)),
+        title: c.author, text: c.text,
+      }));
+    }
+    if (tab === "transcript") return transcript.filter((r) => r.sec != null).map((r) => ({ sec: r.sec, title: fmtTime(r.sec), text: r.text }));
+    if (tab === "remix") return remix.filter((r) => r.sec != null).map((r) => ({ sec: r.sec, title: fmtTime(r.sec), text: r.text }));
+    return checks.filter((c) => c.sec != null).map((c) => ({ sec: c.sec, title: c.criteria, text: c.comment }));
+  }, [tab, checks, comments, transcript, remix]);
+  const stripLabel = tab === "comments" ? "Team comments"
+    : tab === "transcript" ? "Transcript"
+    : tab === "remix" ? "Remixed script"
+    : "Lee's timestamps";
+  const markerSecs = markers.map((m) => m.sec).sort((a, b) => a - b);
+  const nextFlag = () => {
+    const v = videoRef.current; if (!v || !markerSecs.length) return;
+    const t = v.currentTime || 0;
+    const n = markerSecs.find((s) => s > t + 0.25);
+    seek(n != null ? n : markerSecs[0]);
+  };
+  const prevFlag = () => {
+    const v = videoRef.current; if (!v || !markerSecs.length) return;
+    const t = v.currentTime || 0;
+    const before = markerSecs.filter((s) => s < t - 0.4);
+    seek(before.length ? before[before.length - 1] : markerSecs[markerSecs.length - 1]);
+  };
+
+  // ─── The decision ────────────────────────────────────────
+  // Approve, Request changes and Reject live on the tool rail, each behind a
+  // small confirm modal. Every decision writes reviews.human_decision plus who
+  // and when, Request changes carries the note the creator reads, and the
+  // toast offers Undo for a few seconds (Undo puts the review back to Pending).
+  const [ask, setAsk] = useState(null); // approve | reject | changes | invite | null
+  const [deciding, setDeciding] = useState(false);
+  const [changeNote, setChangeNote] = useState("");
+  const humanDecided = !!humanLabel && humanLabel !== "Pending";
+  const decidedAtIso = localDecision ? localDecision.at : unwrap(rf.rv_decided_at);
+  const decidedBy = localDecision ? localDecision.by : unwrap(rf.rv_decided_by);
+  const decidedMs = decidedAtIso ? new Date(decidedAtIso).getTime() : NaN;
+  const agoText = (ms) => {
+    if (!Number.isFinite(ms)) return "";
+    const m = Math.max(0, Math.round((Date.now() - ms) / 60000));
+    if (m < 1) return "just now"; if (m < 60) return m + " minute" + (m === 1 ? "" : "s") + " ago";
+    const h = Math.round(m / 60); if (h < 48) return h + " hour" + (h === 1 ? "" : "s") + " ago";
+    return Math.round(h / 24) + " days ago";
+  };
+  const decidedWord = humanLabel === "Approve" ? "Approved" : humanLabel === "Reject" ? "Rejected" : humanLabel === "Changes Requested" ? "Changes requested" : "";
+  const decidedLine = humanDecided ? [decidedWord, agoText(decidedMs), decidedBy ? "by " + decidedBy : ""].filter(Boolean).join(" ") : "";
+  const prefillNote = () => {
+    const kept = localDecision ? localDecision.request : unwrap(rf.rv_request);
+    if (kept) return kept;
+    return flaggedChecks.map((c) => c.criteria + (c.comment ? ": " + c.comment : "")).join("\n");
+  };
+  const decide = async (opt, message) => {
+    if (!reviewId) { toast.error("No review on this submission yet."); return; }
+    setDeciding(true);
+    const at = new Date().toISOString();
+    const by = opt === HUMAN_PENDING ? "" : (unwrap(user?.fullName) || unwrap(user?.name) || unwrap(user?.email) || "");
+    try {
+      const fields = { rv_human: { id: opt.id, label: opt.label }, rv_decided_at: opt === HUMAN_PENDING ? null : at, rv_decided_by: by };
+      if (message !== undefined) fields.rv_request = message;
+      await updateReview.mutateAsync({ recordId: reviewId, fields });
+      setLocalDecision({ human: opt.label, at, by, request: message !== undefined ? message : (localDecision ? localDecision.request : unwrap(rf.rv_request)) });
+      setAsk(null);
+      if (opt === HUMAN_PENDING) { toast.success("Decision undone"); return; }
+      toast.success(opt === HUMAN_APPROVE ? subName + " approved" : opt === HUMAN_REJECT ? subName + " rejected" : "Changes requested on " + subName, {
+        duration: 8000,
+        action: { label: "Undo", onClick: () => decide(HUMAN_PENDING, message !== undefined ? "" : undefined) },
+      });
+    } catch (e) {
+      console.error("Decision failed:", e);
+      toast.error("Couldn't save the decision", { description: e?.message });
+    } finally { setDeciding(false); }
+  };
+  const openAsk = (kind) => {
+    if (!reviewId) { toast.error("No review on this submission yet."); return; }
+    if (kind === "changes") setChangeNote(prefillNote());
+    setAsk(kind);
+  };
+
+  // ─── Add people ──────────────────────────────────────────
+  const [inv, setInv] = useState({ name: "", email: "", access: "comment", message: "" });
+  const [inviting, setInviting] = useState(false);
+  const sendInvite = async () => {
+    const email = inv.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error("Enter an email address."); return; }
+    const access = ACCESS[inv.access] || ACCESS.comment;
+    setInviting(true);
+    try {
+      await createMember.mutateAsync({
+        mb_name: inv.name.trim() || email.split("@")[0],
+        mb_email: email,
+        mb_status: { id: MEMBER_INVITED.id, label: MEMBER_INVITED.label },
+        mb_access: { id: access.id, label: access.label },
+        mb_message: inv.message.trim(),
+        mb_invited: new Date().toISOString(),
+        mb_submissions: [{ id: submissionId }],
+        mb_accounts: asArray(sf.sub_accounts).map((a) => ({ id: typeof a === "string" ? a : (a && a.id) || "" })).filter((a) => a.id),
+        mb_users: user?.id ? [{ id: user.id }] : [],
+      });
+      toast.success("Added " + email, { description: "They show up under People." });
+      setInv({ name: "", email: "", access: "comment", message: "" });
+      setAsk(null);
+      await refetchMembers?.();
+    } catch (e) {
+      console.error("Invite failed:", e);
+      toast.error("Couldn't add them", { description: e?.message });
+    } finally { setInviting(false); }
+  };
+  const [rating, setRating] = useState(0);
+  useEffect(() => { setRating(Number(rf.rv_rating) || 0); }, [rf.rv_rating]);
+  const rate = async (n) => {
+    if (!reviewId) return;
+    setRating(n);
+    try {
+      await updateReview.mutateAsync({ recordId: reviewId, fields: { rv_rating: n } });
+      toast.success("Rated " + n + " star" + (n === 1 ? "" : "s"));
+    } catch (e) {
+      console.error("Rating failed:", e);
+      toast.error("Couldn't save the rating", { description: e?.message });
+    }
+  };
+  const download = () => {
+    if (videoUrl) window.open(videoUrl, "_blank", "noreferrer");
+    else toast.info("No video file on this submission.");
+  };
+  const copyText = async (text, label) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(label + " copied");
+    } catch { toast.error("Couldn't copy"); }
+  };
+  const exportCsv = () => {
+    const csv = reportCsv(checks);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = (subName || "review") + " report.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  // ─── Comment composer ─────────────────────────────────────
+  const [draft, setDraft] = useState("");
+  const [posting, setPosting] = useState(false);
+  const postComment = async () => {
+    const text = draft.trim();
+    if (!text) return;
+    setPosting(true);
+    try {
+      await createComment.mutateAsync({
+        cm_text: text,
+        cm_sec: Math.floor(videoRef.current?.currentTime || 0),
+        cm_author: unwrap(user?.fullName) || unwrap(user?.name) || "Team member",
+        cm_email: unwrap(user?.email),
+        cm_users: user?.id ? [{ id: user.id }] : [],
+        cm_submissions: [{ id: submissionId }],
+      });
+      setDraft("");
+      toast.success("Comment pinned at " + fmtTime(videoRef.current?.currentTime || 0));
+    } catch (e) {
+      console.error("Comment failed:", e);
+      toast.error("Couldn't post the comment", { description: e?.message });
+    } finally { setPosting(false); }
+  };
+
+  // ─── Ask Lee ──────────────────────────────────────────────
+  const [chat, setChat] = useState([]);
+  const [chatBusy, setChatBusy] = useState(false);
+  const askRef = useRef(null);
+  const chatScrollRef = useRef(null);
+  useEffect(() => {
+    if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+  }, [chat, chatBusy]);
+  const askLee = async (question) => {
+    const qText = (question || "").trim();
+    if (!qText || chatBusy) return;
+    setChat((c) => c.concat([{ role: "user", text: qText }]));
+    setChatBusy(true);
+    try {
+      const context = [
+        "Submission: " + subName + " by " + creatorName + (briefName ? " against the brief \"" + briefName + "\"" : ""),
+        "Decision: " + decisionLabel + (overallScore != null ? " · score " + overallScore + "/100" : "") + " · " + passCount + " of " + checks.length + " checks passed",
+        "Checks:",
+        checks.map((c) => "- " + c.criteria + ": " + (c.score || c.status) + " (" + c.status + (c.severity ? ", " + c.severity : "") + ") — " + c.comment).join("\n"),
+        rf.rv_reasoning ? "Decision reasoning: " + stripHtmlText(rf.rv_reasoning) : "",
+        rf.rv_action ? "Recommended action: " + stripHtmlText(rf.rv_action) : "",
+        "Transcript:\n" + transcript.map((r) => (r.sec != null ? "[" + fmtTime(r.sec) + "] " : "") + r.text).join("\n").slice(0, 6000),
+      ].filter(Boolean).join("\n\n");
+      const res = await proxyFetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          // Ask Lee. Heaviest recurring AI call in the app: carries up to
+          // 6,000 chars of transcript plus the full check list, and replays
+          // the last 8 turns on every question. DeepSeek V4 Pro from
+          // 2026-07-30, benched at ~90% under Sonnet 4.5.
+          model: "deepseek/deepseek-v4-pro",
+          messages: [
+            { role: "system", content: "You are Lee, Brieflee's AI review assistant. You have reviewed this creator video and the data below is your review. Answer the brand's questions plainly and concretely, referencing timestamps like 0:12 where useful. Keep answers short (under 120 words unless asked for a draft). No em dashes. British spelling.\n\n" + context },
+            ...chat.slice(-8).map((m) => ({ role: m.role === "lee" ? "assistant" : "user", content: m.text })),
+            { role: "user", content: qText },
+          ],
+          temperature: 0.4,
+        }),
+      });
+      if (!res.ok) throw new Error("OpenRouter returned HTTP " + res.status);
+      const json = await res.json();
+      // House style guard, same as brief-builder. The system prompt already
+      // says no em dashes; DeepSeek reaches for them more readily than
+      // Sonnet did, and Lee's answers are read by the brand.
+      const out = (json?.choices?.[0]?.message?.content || "").trim()
+        .replace(/\s*—\s*/g, ", ").replace(/,\s*,/g, ",");
+      setChat((c) => c.concat([{ role: "lee", text: out || "I couldn't put an answer together. Try again?" }]));
+    } catch (e) {
+      console.error("Ask Lee failed:", e);
+      setChat((c) => c.concat([{ role: "lee", text: "Something went wrong reaching the review engine. Check the OpenRouter datasource on this block and try again." }]));
+    } finally { setChatBusy(false); }
+  };
+  const welcome = "Hi" + (unwrap(user?.firstName) ? " " + unwrap(user.firstName) : "") + " — I've reviewed " + creatorName + "'s video." +
+    (overallScore != null ? " It scored " + overallScore + "/100" : "") +
+    (checks.length ? " and passed " + passCount + " of " + checks.length + " checks." : "") +
+    " Ask me anything, or try a shortcut below.";
+
+  // Remix belongs only on remix submissions. On a content review the
+  // adapted script is empty, so the tab was offering a blank script to copy.
+  const isRemix = /remix/i.test(selectLabel(sf.sub_type) || "");
+  const TABS = [
+    { key: "review", label: "AI review" },
+    { key: "report", label: "Report", count: checks.length },
+    { key: "ask", label: "Ask Lee" },
+    { key: "comments", label: "Comments", count: comments.length },
+    { key: "transcript", label: "Transcript" },
+    { key: "remix", label: "Remix" },
+    { key: "details", label: "Details" },
+    { key: "people", label: "People", count: members.length },
+  ].filter((t) => t.key !== "remix" || isRemix);
+
+  // ─── Render ───────────────────────────────────────────────
+  const dur = duration || 39;
+  const pct = (s) => Math.min(100, (s / dur) * 100).toFixed(1) + "%";
+  const activeIdx = (() => {
+    let idx = -1;
+    markerSecs.forEach((s, i) => { if (s <= nowSec) idx = i; });
+    return idx;
+  })();
+  const nearestIdx = (rows) => {
+    let idx = -1;
+    rows.forEach((r, i) => { if (r.sec != null && r.sec <= nowSec) idx = i; });
+    return idx;
+  };
+  const tone = statusTone(decisionLabel);
+  const groupIcon = (g) => (
+    g === "Hook & attention" ? <Sparkles size={14} />
+    : g === "Production quality" ? <Camera size={14} />
+    : g === "Compliance & safety" ? <ShieldCheck size={14} />
+    : <ListChecks size={14} />
+  );
+  // One check card for the flagged list, with the check's own status pill.
+  const renderCheck = (c) => {
+    const st = statusTone(c.status);
+    return (
+      <div key={c.id} className="bl-sr-check">
+        {c.screenshot
+          ? <img className="bl-sr-check-shot" src={c.screenshot} alt="" loading="lazy" onClick={() => c.sec != null && seek(c.sec)} />
+          : <span className="bl-sr-check-shot is-empty" />}
+        <div className="bl-sr-check-main">
+          <div className="bl-sr-check-top">
+            <b>{c.criteria}</b>
+            <span className="bl-sr-check-flag" style={{ background: st.bg, color: st.fg }}>{c.status}</span>
+            {c.score ? <span className="bl-sr-check-score" style={{ color: st.fg }}>● {c.score}</span> : null}
+          </div>
+          {c.comment ? <p>{c.comment}</p> : null}
+          {c.sec != null && (
+            <button type="button" className="bl-sr-time" onClick={() => seek(c.sec)}>
+              <Play size={9} /> {fmtTime(c.sec)}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+  const groupsShort = GROUP_ORDER
+    .filter((g) => checks.some((c) => c.group === g))
+    .map((g) => g.split(" ")[0])
+    .join(" · ");
+
+  return (
+    <>
+      <Style />
+      <div className="bl-sr w-full">
+        <div className="bl-sr-layout">
+
+          {/* ── Player column ── */}
+          <div className="bl-sr-player">
+            <div className="bl-sr-head">
+              <h1 className="bl-sr-title">{subName}</h1>
+              <p className="bl-sr-sub">
+                {creatorName}{briefName ? " · " + briefName : ""}{duration ? " · " + fmtTime(duration) : ""}
+              </p>
+            </div>
+            <div className="bl-sr-stage">
+              <div className="bl-sr-tools">
+                <button type="button" onClick={() => openAsk("changes")} disabled={deciding} title={humanLabel === "Changes Requested" ? decidedLine : "Request changes"} className={humanLabel === "Changes Requested" ? "is-changes" : ""}><Pencil size={15} /></button>
+                <button type="button" onClick={() => openAsk("approve")} disabled={deciding} title={humanLabel === "Approve" ? decidedLine : "Approve"} className={humanLabel === "Approve" ? "is-approved" : ""}><Check size={15} /></button>
+                <button type="button" onClick={() => openAsk("reject")} disabled={deciding} title={humanLabel === "Reject" ? decidedLine : "Reject"} className={humanLabel === "Reject" ? "is-rejected" : ""}><X size={15} /></button>
+                <span className="bl-sr-rate">
+                  <button type="button" onClick={() => setRatePop(!ratePop)} title="Rate this submission" className={rating ? "is-on" : ""}>
+                    <Star size={15} fill={rating ? "currentColor" : "none"} />
+                  </button>
+                  {ratePop && (
+                    <span className="bl-sr-rate-pop">
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <button key={n} type="button" onClick={() => { rate(n); setRatePop(false); }} className={n <= rating ? "is-on" : ""}>
+                          <Star size={14} fill={n <= rating ? "currentColor" : "none"} />
+                        </button>
+                      ))}
+                    </span>
+                  )}
+                </span>
+                <button type="button" onClick={download} title="Download the video"><DownloadIcon size={15} /></button>
+                <button type="button" onClick={() => setAsk("invite")} title="Add people"><UserPlus size={15} /></button>
+                <button type="button" onClick={() => pickTab("comments")} title="Comments"><MessageCircle size={15} /></button>
+              </div>
+              <div className={`bl-sr-video ${portrait ? "is-portrait" : ""}`}>
+                {playUrl ? (
+                  <video
+                    ref={videoRef}
+                    src={playUrl}
+                    poster={poster || undefined}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    onTimeUpdate={onTime}
+                    onLoadedMetadata={onMeta}
+                  />
+                ) : (
+                  <div className="bl-sr-novideo">No video file on this submission yet.</div>
+                )}
+              </div>
+            </div>
+            <div className="bl-sr-strip">
+              <div className="bl-sr-track">
+                <div className="bl-sr-track-fill" style={{ width: pct(nowSec) }} />
+                {markers.map((m, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className={`bl-sr-mkr ${i === activeIdx ? "is-active" : ""}`}
+                    style={{ left: pct(m.sec) }}
+                    onClick={() => seek(m.sec)}
+                  >
+                    {m.letter ? <span className="bl-sr-mkr-letter">{m.letter}</span> : <Flag size={9} />}
+                    <span className="bl-sr-mkr-tip">
+                      <b>{m.title}</b>
+                      <i>{fmtTime(m.sec)}</i>
+                      {m.text ? <em>{String(m.text).slice(0, 120)}</em> : null}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="bl-sr-strip-times">
+                <span>0:00</span>
+                <span className="bl-sr-strip-label">{stripLabel}</span>
+                <span>{fmtTime(dur)}</span>
+              </div>
+              <div className="bl-sr-flagrow">
+                <button type="button" className="bl-sr-flagprev" onClick={prevFlag} title="Previous flag"><SkipBack size={13} /></button>
+                <button type="button" className="bl-sr-nextflag" onClick={nextFlag}>Next flag <SkipForward size={13} /></button>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Review panel ── */}
+          <div className="bl-sr-panel" ref={panelRef}>
+            <div className="bl-sr-drag" onMouseDown={startDrag} title="Drag to resize" />
+
+            <div className="bl-sr-tabs">
+              {TABS.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={`bl-sr-tab ${tab === t.key ? "is-active" : ""}`}
+                  onClick={() => pickTab(t.key)}
+                >
+                  {t.label}{t.count ? <span className="bl-sr-tab-count">{t.count}</span> : null}
+                </button>
+              ))}
+            </div>
+
+            <div className="bl-sr-body">
+
+              {tab === "review" && (
+                <div>
+                  <div className="bl-sr-score">
+                    <div className="bl-sr-score-top">
+                      <div className="bl-sr-score-num">{overallScore != null ? overallScore : "–"}<span>/ 100</span></div>
+                      <span className="bl-sr-chip" style={{ background: tone.bg, color: tone.fg }}>{decisionLabel}</span>
+                    </div>
+                    <div className="bl-sr-scorebar">
+                      <div style={{ width: (overallScore != null ? overallScore : 0) + "%" }} />
+                    </div>
+                    <div className="bl-sr-score-meta">
+                      <span className={"bl-sr-passdot" + (flaggedView ? " is-flag" : "")}>● {summaryText}</span>
+                      <span>{groupsShort}</span>
+                    </div>
+                    {rf.rv_reasoning ? <p className="bl-sr-score-note">{stripHtmlText(rf.rv_reasoning)}</p> : null}
+                  </div>
+                  {checks.length ? null : (
+                    <p className="bl-sr-empty">
+                      This submission has not been checked yet. Once the review runs, every
+                      criterion appears here with its score, its verdict and the frame it was judged on.
+                    </p>
+                  )}
+                  {flaggedView && (
+                    <div className="bl-sr-flagged">
+                      <div className="bl-sr-flagged-head"><Flag size={13} /> {flaggedChecks.length ? "What was flagged" : "Why it was flagged"}</div>
+                      {flaggedChecks.map((c) => renderCheck(c))}
+                      {!flaggedChecks.length && !rf.rv_action ? (
+                        <p className="bl-sr-flagged-action">The summary above explains why the review flagged this video.</p>
+                      ) : null}
+                      {rf.rv_action ? (
+                        <p className="bl-sr-flagged-action"><b>What to do:</b> {stripHtmlText(rf.rv_action)}</p>
+                      ) : null}
+                    </div>
+                  )}
+                  {flaggedView && restChecks.length > 0 && (
+                    <button type="button" className="bl-sr-passtoggle" onClick={() => setShowPassed((v) => !v)}>
+                      <span>{showPassed ? "Hide" : "Show"} {restAllPass ? "the " + restChecks.length + (restChecks.length === 1 ? " check that passed" : " checks that passed") : "the other " + restChecks.length + (restChecks.length === 1 ? " check" : " checks")}</span>
+                      <ChevronDown size={15} className={"bl-sr-chev" + (showPassed ? " is-open" : "")} />
+                    </button>
+                  )}
+                  {(!flaggedView || showPassed) && GROUP_ORDER.map((g) => {
+                    const rows = (flaggedView ? restChecks : checks).filter((c) => c.group === g);
+                    if (!rows.length) return null;
+                    const gPass = rows.filter((c) => isPassStatus(c.status)).length;
+                    const open = !!openGroups[g];
+                    return (
+                      <div key={g} className="bl-sr-group">
+                        <button type="button" className="bl-sr-group-head" onClick={() => flipGroup(g)}>
+                          <span className="bl-sr-group-ic">{groupIcon(g)}</span>
+                          <span className="bl-sr-group-name">{g}</span>
+                          <span className="bl-sr-group-pass">{gPass} pass</span>
+                          <ChevronDown size={15} className={`bl-sr-chev ${open ? "is-open" : ""}`} />
+                        </button>
+                        {open && rows.map((c) => {
+                          const st = statusTone(c.status);
+                          return (
+                            <div key={c.id} className="bl-sr-check">
+                              {c.screenshot
+                                ? <img className="bl-sr-check-shot" src={c.screenshot} alt="" loading="lazy" onClick={() => c.sec != null && seek(c.sec)} />
+                                : <span className="bl-sr-check-shot is-empty" />}
+                              <div className="bl-sr-check-main">
+                                <div className="bl-sr-check-top">
+                                  <b>{c.criteria}</b>
+                                  {c.score ? <span className="bl-sr-check-score" style={{ color: st.fg }}>● {c.score}</span> : null}
+                                </div>
+                                {c.comment ? <p>{c.comment}</p> : null}
+                                {c.sec != null && (
+                                  <button type="button" className="bl-sr-time" onClick={() => seek(c.sec)}>
+                                    <Play size={9} /> {fmtTime(c.sec)}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {tab === "report" && (
+                <div>
+                  <div className="bl-sr-report-bar">
+                    <span className="bl-sr-muted">{passCount} / {checks.length} criteria passed</span>
+                    <span className="bl-sr-report-tools">
+                      <button type="button" className={`bl-sr-mini ${reportView === "list" ? "is-on" : ""}`} onClick={() => setReportView("list")} title="List"><ListIcon size={13} /></button>
+                      <button type="button" className={`bl-sr-mini ${reportView === "grid" ? "is-on" : ""}`} onClick={() => setReportView("grid")} title="Grid"><LayoutGrid size={13} /></button>
+                      <button type="button" className="bl-sr-mini" onClick={exportCsv} title="Export CSV">CSV</button>
+                    </span>
+                  </div>
+                  {!checks.length ? (
+                    <p className="bl-sr-empty">
+                      No criteria to report on yet. This fills in as soon as the submission has been reviewed.
+                    </p>
+                  ) : reportView === "list" ? (
+                    <table className="bl-sr-table">
+                      <thead><tr><th></th><th>Criteria</th><th>Score</th><th>Status</th><th>Severity</th><th>Comment</th></tr></thead>
+                      <tbody>
+                        {checks.map((c) => {
+                          const st = statusTone(c.status), sv = severityTone(c.severity);
+                          return (
+                            <tr key={c.id} onClick={() => c.sec != null && seek(c.sec)}>
+                              <td>{c.screenshot ? <img src={c.screenshot} alt="" loading="lazy" /> : null}</td>
+                              <td><b>{c.criteria}</b>{c.sec != null ? <span className="bl-sr-muted"> · {fmtTime(c.sec)}</span> : null}</td>
+                              <td>{c.score}</td>
+                              <td><span className="bl-sr-pill" style={{ background: st.bg, color: st.fg }}>{c.status}</span></td>
+                              <td>{c.severity ? <span className="bl-sr-pill" style={{ background: sv.bg, color: sv.fg }}>{c.severity}</span> : <span className="bl-sr-muted">—</span>}</td>
+                              <td className="bl-sr-td-comment">{c.comment}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="bl-sr-cards">
+                      {checks.map((c) => {
+                        const st = statusTone(c.status);
+                        return (
+                          <div key={c.id} className="bl-sr-card" onClick={() => c.sec != null && seek(c.sec)}>
+                            <div className="bl-sr-card-thumb">
+                              {c.screenshot ? <img src={c.screenshot} alt="" loading="lazy" /> : null}
+                              <span className="bl-sr-pill" style={{ background: st.bg, color: st.fg }}>{c.status}</span>
+                            </div>
+                            <div className="bl-sr-card-meta">
+                              <b>{c.criteria}</b>
+                              {c.score ? <span>{c.score}</span> : null}
+                              <p>{c.comment}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {tab === "ask" && (
+                <div className="bl-sr-ask">
+                  <div className="bl-sr-ask-scroll" ref={chatScrollRef}>
+                    {[{ role: "lee", text: welcome }].concat(chat).map((m, i) => (
+                      <div key={i} className={`bl-sr-msg ${m.role === "lee" ? "is-lee" : "is-user"}`}>
+                        {m.role === "lee" && <span className="bl-sr-msg-ava"><Sparkles size={11} /></span>}
+                        <p>{m.text}</p>
+                      </div>
+                    ))}
+                    {chatBusy && <div className="bl-sr-msg is-lee"><span className="bl-sr-msg-ava"><Sparkles size={11} /></span><p className="bl-sr-dots"><i>·</i><i>·</i><i>·</i></p></div>}
+                  </div>
+                  <div className="bl-sr-chips">
+                    {["Compare to my brief", "Draft revision notes", "Rewrite the CTA"].map((c) => (
+                      <button key={c} type="button" onClick={() => askLee(c)} disabled={chatBusy}>{c}</button>
+                    ))}
+                  </div>
+                  <div className="bl-sr-ask-input">
+                    <input
+                      ref={askRef}
+                      placeholder="Ask anything about this video…"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { askLee(e.currentTarget.value); e.currentTarget.value = ""; }
+                      }}
+                      disabled={chatBusy}
+                    />
+                    <button type="button" onClick={() => { askLee(askRef.current?.value); if (askRef.current) askRef.current.value = ""; }} disabled={chatBusy}>
+                      <Send size={13} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {tab === "comments" && (
+                <div className="bl-sr-comments">
+                  <p className="bl-sr-muted bl-sr-thread-note">{comments.length ? comments.length + " comment" + (comments.length === 1 ? "" : "s") + ", sorted by time in video" : "No comments yet. Pause the video where you have a note and write the first one."}</p>
+                  {comments.map((c, i) => (
+                    <div key={c.id} className={`bl-sr-comment ${i === nearestIdx(comments) ? "is-active" : ""}`}>
+                      <span className="bl-sr-ava">{initialsOf(c.author)}</span>
+                      <div className="bl-sr-comment-main">
+                        <div className="bl-sr-comment-top">
+                          <b>{c.author}</b>
+                          <button type="button" className="bl-sr-time" onClick={() => seek(c.sec)}>
+                            <Play size={9} /> {fmtTime(c.sec)}
+                          </button>
+                          <span className="bl-sr-muted">{agoLabel(c.created)}</span>
+                        </div>
+                        <p>{c.text}</p>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="bl-sr-composer">
+                    <textarea
+                      value={draft}
+                      placeholder={"Comment at " + fmtTime(nowSec) + "…"}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); postComment(); } }}
+                      disabled={posting}
+                    />
+                    <button type="button" onClick={postComment} disabled={posting || !draft.trim()}>
+                      <Send size={13} /> {posting ? "Posting…" : "Comment"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {(tab === "transcript" || tab === "remix") && (
+                <div>
+                  <div className="bl-sr-report-bar">
+                    <span className="bl-sr-muted">{tab === "transcript" ? "What the creator said in their video" : "Their script rewritten for your brand"}</span>
+                    <button
+                      type="button"
+                      className="bl-sr-mini"
+                      onClick={() => copyText(
+                        (tab === "transcript" ? transcript : remix).map((r) => (r.sec != null ? "[" + fmtTime(r.sec) + "] " : "") + r.text).join("\n"),
+                        tab === "transcript" ? "Transcript" : "Script"
+                      )}
+                    >
+                      <Copy size={12} /> Copy {tab === "transcript" ? "transcript" : "script"}
+                    </button>
+                  </div>
+                  {(tab === "transcript" ? transcript : remix).length ? (
+                    (tab === "transcript" ? transcript : remix).map((r, i) => (
+                      <div
+                        key={i}
+                        className={`bl-sr-line ${i === nearestIdx(tab === "transcript" ? transcript : remix) ? "is-active" : ""}`}
+                        onClick={() => r.sec != null && seek(r.sec)}
+                      >
+                        {r.sec != null && <span className="bl-sr-line-time">{fmtTime(r.sec)}</span>}
+                        <p>{r.text}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="bl-sr-muted">{tab === "transcript" ? "No transcript yet." : "No script yet."}</p>
+                  )}
+                </div>
+              )}
+
+              {tab === "details" && (
+                <div className="bl-sr-details">
+                  <div className="bl-sr-submitter">
+                    <span className="bl-sr-ava is-big">{initialsOf(creatorName)}</span>
+                    <div>
+                      <b>{creatorName}</b>
+                      <span className="bl-sr-muted">{unwrap(sf.sub_email)}</span>
+                    </div>
+                    <span className="bl-sr-chip" style={{ background: tone.bg, color: tone.fg }}>{decisionLabel}</span>
+                  </div>
+                  {[
+                    ["Submission type", selectLabel(sf.sub_type)],
+                    ["Campaign", briefName],
+                    ["Submitted", fmtDate(sf.sub_created)],
+                    ["Version", unwrap(sf.sub_version)],
+                    ["Video length", duration ? fmtTime(duration) : unwrap(sf.sub_duration)],
+                    ["Overall rating", rating ? "★".repeat(rating) + "☆".repeat(5 - rating) : ""],
+                  ].filter(([, v]) => v).map(([k, v]) => (
+                    <div key={k} className="bl-sr-field"><span>{k}</span><b>{v}</b></div>
+                  ))}
+                </div>
+              )}
+
+              {tab === "people" && (
+                <div>
+                  <div className="bl-sr-report-bar">
+                    <span className="bl-sr-muted">{members.length} {members.length === 1 ? "person" : "people"} on this submission</span>
+                    <button type="button" className="bl-sr-mini" onClick={() => setAsk("invite")}><UserPlus size={12} /> Invite</button>
+                  </div>
+                  {members.length ? members.map((r) => {
+                    const fl = r.fields || {};
+                    const you = unwrap(fl.mb_email) && unwrap(fl.mb_email) === unwrap(user?.email);
+                    const st = statusTone(selectLabel(fl.mb_status));
+                    return (
+                      <div key={r.id} className="bl-sr-member">
+                        <span className="bl-sr-ava">{initialsOf(unwrap(fl.mb_name))}</span>
+                        <div className="bl-sr-member-main">
+                          <b>{unwrap(fl.mb_name) || "Invited"}{you ? <span className="bl-sr-you">YOU</span> : null}</b>
+                          <span className="bl-sr-muted">{unwrap(fl.mb_email)}</span>
+                        </div>
+                        <span className="bl-sr-pill" style={{ background: st.bg, color: st.fg }}>{selectLabel(fl.mb_status)}</span>
+                        <span className="bl-sr-muted">{selectLabel(fl.mb_access)}</span>
+                      </div>
+                    );
+                  }) : <p className="bl-sr-muted">Nobody has been invited to this submission yet.</p>}
+                </div>
+              )}
+
+            </div>
+          </div>
+        </div>
+        {ask ? (
+          <SmallModal
+            title={ask === "approve" ? "Approve this video?" : ask === "reject" ? "Reject this video?" : ask === "changes" ? "Request changes" : "Add people to this video"}
+            helper={ask === "invite" ? "They get the link to this review and show up under People." : subName + " from " + creatorName}
+            onClose={() => { if (!deciding && !inviting) setAsk(null); }}
+          >
+            {ask === "approve" ? (
+              <>
+                <p>The video is marked approved and the creator hears it is good to go. You can undo for a few seconds after.</p>
+                <div className="bl-sr-modal-actions">
+                  <button type="button" className="bl-sr-mbtn" onClick={() => setAsk(null)} disabled={deciding}>Cancel</button>
+                  <button type="button" className="bl-sr-mbtn is-primary" onClick={() => decide(HUMAN_APPROVE)} disabled={deciding}>{deciding ? "Saving…" : "Approve"}</button>
+                </div>
+              </>
+            ) : ask === "reject" ? (
+              <>
+                <p>The video is marked rejected and the creator sees "Not approved". You can undo for a few seconds after.</p>
+                <div className="bl-sr-modal-actions">
+                  <button type="button" className="bl-sr-mbtn" onClick={() => setAsk(null)} disabled={deciding}>Cancel</button>
+                  <button type="button" className="bl-sr-mbtn is-danger" onClick={() => decide(HUMAN_REJECT)} disabled={deciding}>{deciding ? "Saving…" : "Reject"}</button>
+                </div>
+              </>
+            ) : ask === "changes" ? (
+              <>
+                <p>What should change in the next cut? The creator reads this on their result page.</p>
+                <textarea className="bl-sr-textarea" rows={5} value={changeNote} onChange={(e) => setChangeNote(e.target.value)} placeholder="One line per change." />
+                <div className="bl-sr-modal-actions">
+                  <button type="button" className="bl-sr-mbtn" onClick={() => setAsk(null)} disabled={deciding}>Cancel</button>
+                  <button type="button" className="bl-sr-mbtn is-primary" onClick={() => decide(HUMAN_CHANGES, changeNote.trim())} disabled={deciding || !changeNote.trim()}>{deciding ? "Sending…" : "Send to the creator"}</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <label className="bl-sr-field-label">Email</label>
+                <input className="bl-sr-input" type="email" value={inv.email} onChange={(e) => setInv({ ...inv, email: e.target.value })} placeholder="name@company.com" />
+                <label className="bl-sr-field-label">Name <span>optional</span></label>
+                <input className="bl-sr-input" type="text" value={inv.name} onChange={(e) => setInv({ ...inv, name: e.target.value })} placeholder="Their name" />
+                <label className="bl-sr-field-label">Access</label>
+                <select className="bl-sr-input" value={inv.access} onChange={(e) => setInv({ ...inv, access: e.target.value })}>
+                  <option value="comment">Comment only</option>
+                  <option value="view">View only</option>
+                  <option value="full">Full access</option>
+                </select>
+                <label className="bl-sr-field-label">Message <span>optional</span></label>
+                <textarea className="bl-sr-textarea" rows={3} value={inv.message} onChange={(e) => setInv({ ...inv, message: e.target.value })} placeholder="A line on why you're sharing this." />
+                <div className="bl-sr-modal-actions">
+                  <button type="button" className="bl-sr-mbtn" onClick={() => setAsk(null)} disabled={inviting}>Cancel</button>
+                  <button type="button" className="bl-sr-mbtn is-primary" onClick={sendInvite} disabled={inviting || !inv.email.trim()}><UserPlus size={14} /> {inviting ? "Adding…" : "Add them"}</button>
+                </div>
+              </>
+            )}
+          </SmallModal>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+// =====================================================================
+// Style
+// =====================================================================
+function Style() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+      .bl-sr, .bl-sr * { font-family: 'League Spartan', sans-serif; box-sizing: border-box; }
+      .bl-sr { background: transparent; padding: 12px 0 56px; max-width: 1140px; margin: 0 auto; }
+      .bl-sr-layout { display: flex; align-items: stretch; gap: 26px; }
+
+      /* ── Player column ── */
+      .bl-sr-player { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+      .bl-sr-head { margin: 6px 0 18px; text-align: center; }
+      .bl-sr-title { margin: 0 0 5px; font-size: 24px; font-weight: 700; color: ${NAVY_DEEP}; }
+      .bl-sr-sub { margin: 0; font-size: 13.5px; font-weight: 300; color: ${MUTED}; }
+      .bl-sr-stage { position: relative; width: 100%; display: flex; align-items: center; justify-content: center; }
+      .bl-sr-tools {
+        position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+        display: flex; flex-direction: column; gap: 3px; z-index: 6;
+        background: #fff; border: 1px solid ${BORDER}; border-radius: 999px;
+        padding: 9px 6px; box-shadow: 0 12px 28px rgba(0, 19, 100, 0.10);
+      }
+      .bl-sr-tools > button, .bl-sr-rate > button, .bl-sr-rate-pop button {
+        width: 34px; height: 34px; border: none; border-radius: 999px;
+        background: transparent; color: ${MUTED}; cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+      }
+      .bl-sr-tools > button:hover, .bl-sr-rate > button:hover { background: ${TAG_BG}; color: ${PERIWINKLE_HOVER}; }
+      .bl-sr-tools button:disabled { opacity: 0.45; cursor: default; }
+      /* ── Decision state on the rail ── */
+      .bl-sr-tools > button.is-approved { color: ${PASS_FG}; background: ${PASS_BG}; }
+      .bl-sr-tools > button.is-changes { color: ${WARN_FG}; background: ${WARN_BG}; }
+      .bl-sr-tools > button.is-rejected { color: ${FAIL_FG}; background: ${FAIL_BG}; }
+      /* ── Small modals (the brief page's Share panel look) ── */
+      .bl-sr-overlay { position: fixed; inset: 0; z-index: 950; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 15, 77, 0.28); }
+      .bl-sr-modal { width: 360px; max-width: 100%; background: #fff; border: 1px solid ${BORDER}; border-radius: 14px; box-shadow: 0 24px 60px -16px rgba(0, 15, 77, 0.30); padding: 16px; }
+      .bl-sr-modal-title { font-size: 14px; font-weight: 700; color: ${NAVY_DEEP}; margin: 0 0 2px; }
+      .bl-sr-modal-helper { font-size: 11.5px; color: ${MUTED}; margin-bottom: 10px; }
+      .bl-sr-modal-body p { margin: 0 0 12px; font-size: 13px; line-height: 1.5; color: ${NAVY_DEEP}; }
+      .bl-sr-field-label { display: block; margin: 8px 0 4px; font-size: 11.5px; font-weight: 600; color: ${NAVY_DEEP}; }
+      .bl-sr-field-label span { font-weight: 400; color: ${SOFT_MUTED}; }
+      .bl-sr-input, .bl-sr-textarea { width: 100%; box-sizing: border-box; border: 1px solid ${BORDER}; border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13px; color: ${NAVY_DEEP}; background: #fff; outline: none; }
+      .bl-sr-input { height: 34px; }
+      .bl-sr-textarea { resize: vertical; line-height: 1.5; }
+      .bl-sr-input:focus, .bl-sr-textarea:focus { border-color: ${PERIWINKLE}; }
+      .bl-sr-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+      .bl-sr-mbtn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid ${BORDER}; background: #fff; color: ${NAVY_DEEP}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+      .bl-sr-mbtn:hover:not(:disabled) { border-color: ${PERIWINKLE}; }
+      .bl-sr-mbtn:disabled { opacity: 0.55; cursor: not-allowed; }
+      .bl-sr-mbtn.is-primary { background: ${PERIWINKLE}; border-color: ${PERIWINKLE}; color: #fff; }
+      .bl-sr-mbtn.is-primary:hover:not(:disabled) { background: ${PERIWINKLE_HOVER}; border-color: ${PERIWINKLE_HOVER}; }
+      .bl-sr-mbtn.is-danger { background: ${FAIL_FG}; border-color: ${FAIL_FG}; color: #fff; }
+      .bl-sr-rate { position: relative; display: inline-flex; }
+      .bl-sr-rate > button.is-on { color: #F2B01E; }
+      .bl-sr-rate-pop {
+        position: absolute; left: 44px; top: 50%; transform: translateY(-50%);
+        display: flex; gap: 1px; background: #fff; border: 1px solid ${BORDER};
+        border-radius: 999px; padding: 4px 8px; box-shadow: 0 12px 28px rgba(0, 19, 100, 0.12);
+        z-index: 8;
+      }
+      .bl-sr-rate-pop button { width: 26px; height: 26px; color: ${TRACK}; }
+      .bl-sr-rate-pop button.is-on, .bl-sr-rate-pop button:hover { color: #F2B01E; background: transparent; }
+      .bl-sr-video {
+        background: #05070F; border-radius: 22px; overflow: hidden;
+        box-shadow: 0 20px 44px rgba(0, 19, 100, 0.16);
+      }
+      .bl-sr-video.is-portrait { width: min(100%, 300px); }
+      .bl-sr-video:not(.is-portrait) { width: 100%; max-width: 640px; }
+      .bl-sr-video video { display: block; width: 100%; height: auto; max-height: 64vh; }
+      .bl-sr-novideo { padding: 90px 20px; color: ${SOFT_MUTED}; font-size: 13.5px; text-align: center; }
+      .bl-sr-strip { width: min(100%, 430px); margin-top: 8px; }
+      .bl-sr-track { position: relative; height: 4px; background: ${TRACK}; border-radius: 999px; margin: 30px 10px 10px; }
+      .bl-sr-track-fill { position: absolute; inset: 0 auto 0 0; background: ${PERIWINKLE}; border-radius: 999px; }
+      .bl-sr-mkr {
+        position: absolute; top: 50%; transform: translate(-50%, -50%);
+        width: 22px; height: 22px; border-radius: 999px; cursor: pointer; z-index: 5;
+        background: #fff; border: 2px solid ${PERIWINKLE}; color: ${PERIWINKLE_HOVER};
+        display: inline-flex; align-items: center; justify-content: center;
+        box-shadow: 0 2px 6px rgba(0, 19, 100, 0.14);
+      }
+      .bl-sr-mkr:hover { z-index: 20; border-color: ${PERIWINKLE_HOVER}; }
+      .bl-sr-mkr.is-active {
+        background: ${PERIWINKLE_HOVER}; border-color: ${PERIWINKLE_HOVER}; color: #fff;
+        animation: blsrpulse 1.5s ease-out infinite; z-index: 16;
+      }
+      @keyframes blsrpulse {
+        0% { box-shadow: 0 2px 6px rgba(0,19,100,0.22), 0 0 0 0 rgba(135,156,247,0.55); }
+        70% { box-shadow: 0 2px 6px rgba(0,19,100,0.22), 0 0 0 7px rgba(135,156,247,0); }
+        100% { box-shadow: 0 2px 6px rgba(0,19,100,0.22), 0 0 0 0 rgba(135,156,247,0); }
+      }
+      .bl-sr-mkr-letter { font-size: 10px; font-weight: 700; }
+      .bl-sr-mkr-tip {
+        position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+        min-width: 180px; max-width: 240px; background: ${NAVY_DEEP}; color: #fff;
+        border-radius: 10px; padding: 8px 11px; text-align: left;
+        opacity: 0; visibility: hidden; transition: opacity 0.15s; pointer-events: none;
+        display: flex; flex-direction: column; gap: 2px; z-index: 30;
+      }
+      .bl-sr-mkr:hover .bl-sr-mkr-tip { opacity: 1; visibility: visible; }
+      .bl-sr-mkr-tip b { font-size: 11.5px; }
+      .bl-sr-mkr-tip i { font-style: normal; font-size: 10px; color: ${PERIWINKLE}; }
+      .bl-sr-mkr-tip em { font-style: normal; font-size: 10.5px; font-weight: 300; color: rgba(255,255,255,0.85); line-height: 1.4; }
+      .bl-sr-strip-times { display: flex; align-items: center; justify-content: space-between; margin: 0 10px; font-size: 11px; color: ${SOFT_MUTED}; }
+      .bl-sr-strip-label { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: ${MUTED}; }
+      .bl-sr-flagrow { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; }
+      .bl-sr-flagprev {
+        width: 34px; height: 34px; border: 1px solid ${BORDER}; border-radius: 999px;
+        background: #fff; color: ${MUTED}; cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+      }
+      .bl-sr-flagprev:hover { color: ${PERIWINKLE_HOVER}; border-color: ${PERIWINKLE}; }
+      .bl-sr-nextflag {
+        display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px;
+        border: none; border-radius: 999px; background: ${PERIWINKLE}; color: #fff;
+        font-size: 13px; font-weight: 600; cursor: pointer;
+      }
+      .bl-sr-nextflag:hover { background: ${PERIWINKLE_HOVER}; }
+
+      /* ── Panel ── */
+      .bl-sr-panel {
+        position: relative; flex: 0 0 460px; min-width: 320px;
+        background: #fff; border: 1px solid ${BORDER}; border-radius: 16px;
+        display: flex; flex-direction: column; overflow: hidden;
+      }
+      .bl-sr-drag { position: absolute; inset: 0 auto 0 -4px; width: 8px; cursor: col-resize; z-index: 10; }
+      .bl-sr-chip { padding: 5px 12px; border-radius: 999px; font-size: 11.5px; font-weight: 700; }
+      .bl-sr-tabs { display: flex; gap: 4px; padding: 6px 12px 0; border-bottom: 1px solid ${BORDER}; overflow-x: auto; scrollbar-width: none; }
+      .bl-sr-tabs::-webkit-scrollbar { display: none; }
+      .bl-sr-tab {
+        padding: 12px 9px; border: none; background: transparent; white-space: nowrap;
+        font-size: 13px; font-weight: 600; color: ${SOFT_MUTED}; cursor: pointer;
+        border-bottom: 2px solid transparent; margin-bottom: -1px;
+        display: inline-flex; align-items: center; gap: 5px;
+      }
+      .bl-sr-tab:hover { color: ${NAVY_DEEP}; }
+      .bl-sr-tab.is-active { color: ${PERIWINKLE_HOVER}; border-bottom-color: ${PERIWINKLE_HOVER}; }
+      .bl-sr-tab-count { padding: 1px 7px; border-radius: 999px; background: ${TAG_BG}; color: ${PERIWINKLE_HOVER}; font-size: 10.5px; }
+      .bl-sr-body { flex: 1; overflow: auto; padding: 18px 18px 22px; }
+      .bl-sr-muted { color: ${SOFT_MUTED}; font-size: 12px; }
+
+      /* AI review */
+      .bl-sr-score { padding: 2px 2px 18px; margin-bottom: 16px; }
+      .bl-sr-score-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .bl-sr-score-num {
+        display: flex; align-items: baseline; gap: 7px;
+        font-size: 42px; font-weight: 700; color: ${NAVY_DEEP}; line-height: 1;
+      }
+      .bl-sr-score-num span { font-size: 15px; font-weight: 600; color: ${SOFT_MUTED}; }
+      .bl-sr-scorebar { height: 8px; border-radius: 999px; background: ${TRACK}; margin: 15px 0 10px; overflow: hidden; }
+      .bl-sr-scorebar > div { height: 100%; border-radius: 999px; background: linear-gradient(90deg, ${PERIWINKLE}, ${PERIWINKLE_HOVER}); transition: width 0.4s; }
+      .bl-sr-score-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 11.5px; color: ${SOFT_MUTED}; }
+      .bl-sr-passdot { color: ${PASS_FG}; font-weight: 600; }
+      .bl-sr-passdot.is-flag { color: ${WARN_FG}; }
+      .bl-sr-flagged {
+        border: 1px solid rgba(199, 123, 37, 0.35); border-radius: 14px;
+        background: rgba(199, 123, 37, 0.05); margin-bottom: 12px; overflow: hidden;
+      }
+      .bl-sr-flagged-head {
+        display: flex; align-items: center; gap: 8px; padding: 12px 14px;
+        font-size: 13.5px; font-weight: 700; color: ${WARN_FG};
+      }
+      .bl-sr-flagged .bl-sr-check { border-top-color: rgba(199, 123, 37, 0.18); }
+      .bl-sr-flagged-action {
+        margin: 0; padding: 10px 14px 14px; border-top: 1px solid rgba(199, 123, 37, 0.18);
+        font-size: 12.5px; font-weight: 300; color: ${NAVY_DEEP}; line-height: 1.55;
+      }
+      .bl-sr-flagged-action b { font-weight: 600; }
+      .bl-sr-check-flag {
+        padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700;
+        letter-spacing: 0.02em; white-space: nowrap;
+      }
+      .bl-sr-passtoggle {
+        display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
+        margin: 0 0 12px; padding: 12px 14px; border: 1px solid ${BORDER}; border-radius: 14px;
+        background: #fff; color: ${MUTED}; font-size: 12.5px; font-weight: 600; cursor: pointer; text-align: left;
+      }
+      .bl-sr-passtoggle:hover { background: rgba(135,156,247,0.04); }
+      .bl-sr-score-note { margin: 12px 0 0; font-size: 12.5px; font-weight: 300; color: ${MUTED}; line-height: 1.55; }
+      .bl-sr-group {
+        border: 1px solid ${BORDER}; border-radius: 14px; background: #fff;
+        margin-bottom: 12px; overflow: hidden;
+      }
+      .bl-sr-group-head {
+        display: flex; align-items: center; gap: 10px; width: 100%;
+        padding: 12px 14px; border: none; background: transparent; cursor: pointer; text-align: left;
+      }
+      .bl-sr-group-head:hover { background: rgba(135,156,247,0.04); }
+      .bl-sr-group-ic {
+        flex: 0 0 30px; width: 30px; height: 30px; border-radius: 10px;
+        background: ${TAG_BG}; color: ${PERIWINKLE_HOVER};
+        display: inline-flex; align-items: center; justify-content: center;
+      }
+      .bl-sr-group-name { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 700; color: ${NAVY_DEEP}; }
+      .bl-sr-group-pass { padding: 4px 10px; border-radius: 999px; background: ${PASS_BG}; color: ${PASS_FG}; font-size: 11px; font-weight: 700; white-space: nowrap; }
+      .bl-sr-chev { color: ${SOFT_MUTED}; transition: transform 0.15s; }
+      .bl-sr-chev.is-open { transform: rotate(180deg); }
+      .bl-sr-check { display: flex; gap: 12px; padding: 12px 14px; border-top: 1px solid rgba(217,224,255,0.4); }
+      .bl-sr-check-shot {
+        flex: 0 0 46px; width: 46px; height: 62px; border-radius: 10px;
+        object-fit: cover; background: ${TRACK}; cursor: pointer; display: block;
+      }
+      .bl-sr-check-shot.is-empty { background: ${TAG_BG}; cursor: default; }
+      .bl-sr-empty {
+        margin: 18px 0 0;
+        padding: 20px 18px;
+        border: 1px dashed ${BORDER};
+        border-radius: 12px;
+        background: ${TAG_BG};
+        color: ${MUTED};
+        font-size: 13px;
+        line-height: 1.55;
+        text-align: center;
+      }
+      .bl-sr-check-main { min-width: 0; flex: 1; }
+      .bl-sr-check-top { display: flex; align-items: center; gap: 8px; }
+      .bl-sr-check-top b { flex: 1; min-width: 0; font-size: 13px; color: ${NAVY_DEEP}; }
+      .bl-sr-check-score { font-size: 12px; font-weight: 700; white-space: nowrap; }
+      .bl-sr-check-main p { margin: 3px 0 0; font-size: 12.5px; font-weight: 300; color: ${MUTED}; line-height: 1.5; }
+      .bl-sr-time {
+        display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px;
+        border: none; border-radius: 999px; background: ${TAG_BG};
+        color: ${PERIWINKLE_HOVER}; font-size: 10.5px; font-weight: 700; cursor: pointer;
+        margin-top: 7px;
+      }
+      .bl-sr-time:hover { background: rgba(135,156,247,0.2); }
+
+      /* Report */
+      .bl-sr-report-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+      .bl-sr-report-tools { display: inline-flex; gap: 5px; }
+      .bl-sr-mini {
+        display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px;
+        border: 1px solid ${BORDER}; border-radius: 8px; background: #fff;
+        font-size: 11.5px; font-weight: 600; color: ${MUTED}; cursor: pointer;
+      }
+      .bl-sr-mini:hover { color: ${PERIWINKLE_HOVER}; border-color: ${PERIWINKLE}; }
+      .bl-sr-mini.is-on { background: ${PERIWINKLE}; border-color: ${PERIWINKLE}; color: #fff; }
+      .bl-sr-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      .bl-sr-table th {
+        text-align: left; padding: 7px 8px; font-size: 10px; font-weight: 600;
+        letter-spacing: 0.08em; text-transform: uppercase; color: ${SOFT_MUTED};
+        border-bottom: 1px solid ${BORDER};
+      }
+      .bl-sr-table td { padding: 8px; border-bottom: 1px solid rgba(217,224,255,0.35); color: ${NAVY_DEEP}; vertical-align: top; }
+      .bl-sr-table tr { cursor: pointer; }
+      .bl-sr-table tr:hover td { background: rgba(135,156,247,0.05); }
+      .bl-sr-table td img { width: 30px; height: 44px; object-fit: cover; border-radius: 6px; display: block; }
+      .bl-sr-td-comment { font-weight: 300; color: ${MUTED}; }
+      .bl-sr-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700; white-space: nowrap; }
+      .bl-sr-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+      .bl-sr-card { border: 1px solid ${BORDER}; border-radius: 10px; overflow: hidden; cursor: pointer; }
+      .bl-sr-card:hover { border-color: ${PERIWINKLE}; }
+      .bl-sr-card-thumb { position: relative; height: 110px; background: ${TRACK}; }
+      .bl-sr-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .bl-sr-card-thumb .bl-sr-pill { position: absolute; top: 6px; left: 6px; }
+      .bl-sr-card-meta { padding: 8px 9px; }
+      .bl-sr-card-meta b { display: block; font-size: 12px; color: ${NAVY_DEEP}; }
+      .bl-sr-card-meta span { font-size: 11px; font-weight: 700; color: ${PERIWINKLE_HOVER}; }
+      .bl-sr-card-meta p { margin: 3px 0 0; font-size: 11px; font-weight: 300; color: ${MUTED}; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+      /* Ask Lee */
+      .bl-sr-ask { display: flex; flex-direction: column; min-height: 100%; }
+      .bl-sr-ask-scroll { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding-bottom: 10px; }
+      .bl-sr-msg { display: flex; gap: 8px; max-width: 92%; }
+      .bl-sr-msg.is-user { margin-left: auto; flex-direction: row-reverse; }
+      .bl-sr-msg p {
+        margin: 0; padding: 9px 12px; border-radius: 12px; font-size: 12.5px;
+        line-height: 1.55; white-space: pre-wrap;
+      }
+      .bl-sr-msg.is-lee p { background: rgba(135,156,247,0.10); color: ${NAVY_DEEP}; border-top-left-radius: 4px; }
+      .bl-sr-msg.is-user p { background: ${PERIWINKLE_HOVER}; color: #fff; border-top-right-radius: 4px; }
+      .bl-sr-msg-ava {
+        flex: 0 0 22px; width: 22px; height: 22px; border-radius: 999px;
+        background: ${NAVY_DEEP}; color: #fff; display: inline-flex;
+        align-items: center; justify-content: center; margin-top: 2px;
+      }
+      .bl-sr-dots i { font-style: normal; animation: blsrdot 1.2s infinite; }
+      .bl-sr-dots i:nth-child(2) { animation-delay: 0.2s; }
+      .bl-sr-dots i:nth-child(3) { animation-delay: 0.4s; }
+      @keyframes blsrdot { 0%, 60%, 100% { opacity: 0.25; } 30% { opacity: 1; } }
+      .bl-sr-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0; }
+      .bl-sr-chips button {
+        padding: 6px 11px; border: 1px solid ${BORDER}; border-radius: 999px;
+        background: #fff; font-size: 11.5px; font-weight: 600; color: ${NAVY_DEEP}; cursor: pointer;
+      }
+      .bl-sr-chips button:hover { border-color: ${PERIWINKLE}; color: ${PERIWINKLE_HOVER}; }
+      .bl-sr-ask-input { display: flex; gap: 6px; }
+      .bl-sr-ask-input input {
+        flex: 1; border: 1.5px solid ${BORDER}; border-radius: 10px;
+        padding: 9px 12px; font-size: 12.5px; color: ${NAVY_DEEP}; outline: none;
+      }
+      .bl-sr-ask-input input:focus { border-color: ${PERIWINKLE}; }
+      .bl-sr-ask-input button {
+        width: 38px; border: none; border-radius: 10px; background: ${PERIWINKLE};
+        color: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+      }
+      .bl-sr-ask-input button:hover { background: ${PERIWINKLE_HOVER}; }
+
+      /* Comments */
+      .bl-sr-thread-note { margin: 0 0 10px; }
+      .bl-sr-comment { display: flex; gap: 9px; padding: 9px 6px; border-radius: 10px; transition: background 0.15s; }
+      .bl-sr-comment.is-active { background: rgba(135,156,247,0.12); box-shadow: inset 3px 0 0 ${PERIWINKLE}; }
+      .bl-sr-ava {
+        flex: 0 0 28px; width: 28px; height: 28px; border-radius: 999px;
+        background: ${TAG_BG}; color: ${PERIWINKLE_HOVER}; font-size: 10.5px; font-weight: 700;
+        display: inline-flex; align-items: center; justify-content: center;
+      }
+      .bl-sr-ava.is-big { flex-basis: 40px; width: 40px; height: 40px; font-size: 13px; }
+      .bl-sr-comment-main { min-width: 0; flex: 1; }
+      .bl-sr-comment-top { display: flex; align-items: center; gap: 8px; }
+      .bl-sr-comment-top b { font-size: 12.5px; color: ${NAVY_DEEP}; }
+      .bl-sr-comment-top .bl-sr-time { margin-top: 0; }
+      .bl-sr-comment-main p { margin: 3px 0 0; font-size: 12.5px; font-weight: 300; color: ${MUTED}; line-height: 1.5; }
+      .bl-sr-composer { display: flex; gap: 8px; margin-top: 12px; align-items: flex-end; }
+      .bl-sr-composer textarea {
+        flex: 1; min-height: 58px; resize: vertical; border: 1.5px solid ${BORDER};
+        border-radius: 10px; padding: 9px 12px; font-size: 12.5px; color: ${NAVY_DEEP};
+        outline: none; line-height: 1.5;
+      }
+      .bl-sr-composer textarea:focus { border-color: ${PERIWINKLE}; }
+      .bl-sr-composer button {
+        display: inline-flex; align-items: center; gap: 6px; padding: 9px 13px;
+        border: none; border-radius: 10px; background: ${PERIWINKLE}; color: #fff;
+        font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+      }
+      .bl-sr-composer button:hover { background: ${PERIWINKLE_HOVER}; }
+      .bl-sr-composer button:disabled { opacity: 0.5; cursor: default; }
+
+      /* Transcript / Remix */
+      .bl-sr-line { display: flex; gap: 10px; padding: 8px 6px; border-radius: 10px; cursor: pointer; transition: background 0.15s; }
+      .bl-sr-line:hover { background: rgba(135,156,247,0.06); }
+      .bl-sr-line.is-active { background: rgba(135,156,247,0.12); box-shadow: inset 3px 0 0 ${PERIWINKLE}; }
+      .bl-sr-line-time { flex: 0 0 auto; font-size: 11px; font-weight: 700; color: ${PERIWINKLE_HOVER}; margin-top: 2px; }
+      .bl-sr-line p { margin: 0; font-size: 12.5px; font-weight: 300; color: ${NAVY_DEEP}; line-height: 1.55; }
+
+      /* Details / People */
+      .bl-sr-submitter { display: flex; align-items: center; gap: 11px; padding-bottom: 14px; border-bottom: 1px solid ${BORDER}; margin-bottom: 12px; }
+      .bl-sr-submitter b { display: block; font-size: 14px; color: ${NAVY_DEEP}; }
+      .bl-sr-submitter .bl-sr-chip { margin-left: auto; }
+      .bl-sr-field { display: flex; justify-content: space-between; gap: 12px; padding: 9px 2px; border-bottom: 1px solid rgba(217,224,255,0.35); font-size: 12.5px; }
+      .bl-sr-field span { color: ${SOFT_MUTED}; }
+      .bl-sr-field b { color: ${NAVY_DEEP}; font-weight: 600; text-align: right; }
+      .bl-sr-member { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid rgba(217,224,255,0.35); }
+      .bl-sr-member-main { min-width: 0; flex: 1; }
+      .bl-sr-member-main b { display: block; font-size: 12.5px; color: ${NAVY_DEEP}; }
+      .bl-sr-you {
+        margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+        background: ${PERIWINKLE_HOVER}; color: #fff; font-size: 9px; font-weight: 700;
+      }
+
+      @media (max-width: 1020px) {
+        .bl-sr-layout { flex-direction: column; }
+        .bl-sr-panel { flex: 1 1 auto !important; width: 100%; }
+        .bl-sr-drag { display: none; }
+        .bl-sr-stage { flex-direction: column; gap: 14px; }
+        .bl-sr-tools {
+          position: static; transform: none; flex-direction: row;
+          padding: 6px 9px; order: 2; margin-top: 14px;
+        }
+        .bl-sr-rate-pop { left: 50%; top: -44px; transform: translateX(-50%); }
+        .bl-sr-video { order: 1; }
+      }
+    `}</style>
+  );
+}
