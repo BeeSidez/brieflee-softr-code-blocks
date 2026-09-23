@@ -38,7 +38,9 @@
 //                 offer_notes, Lee's note to the brand (why this offer,
 //                 which figures are estimates) that the builder shows
 //                 and the live brief never reads. Skippable. The PDF
-//                 route skips it: the document carries its own offer.
+//                 route skips it: the document carries its own
+//                 offer, and the mapper pulls its offer parts, its
+//                 rights and its deliverable specs out of the file.
 //   5. Write      — "Write it with AI" calls OpenRouter in THREE
 //                   parallel calls, prose + lists + visual format
 //                   (one call writing all 11 sections ran V4 Pro past
@@ -473,6 +475,88 @@ function sectionOrderFor(o, written) {
     .join(",");
 }
 
+// ─── PDF mapping: terms and specs ─────────────────────────────────
+// The section keys carry a document's prose. A real brand brief also
+// states the offer's parts, the rights and the deliverable specs, so
+// the mapper reads those in a call of their own.
+const PDF_OFFER_KEYS = OFFER_MODULES.map((m) => m.field).concat(["usage_rights"]);
+const PDF_OFFER_NOTE =
+  "offer_fee: the creator's fee, its currency and when it is paid.\n" +
+  "offer_commission: the rate, flat or tiered (list each tier), what it is paid on and the attribution window.\n" +
+  "offer_gift: a gift on top of the work, such as a gift card, store credit, a bundle, early access or an experience. Never the product sample.\n" +
+  "offer_sample: the product sent to film with: which product, how many and roughly what it is worth.\n" +
+  "offer_bonus: a performance bonus: what triggers it, the target and the reward.\n" +
+  "offer_competition: a competition or ranking: what it is ranked on, the period, how many winners and the prize for each position.\n" +
+  "usage_rights: rights and restrictions: usage rights with the channels and the duration, paid ads rights, exclusivity. These never belong in an offer key.\n" +
+  'Also include "deliverables", an object holding platform, duration, duration_limit, aspect_ratio and delivery. ' +
+  'Each is EXACTLY one of the options below, or "" where the document does not say.\n' +
+  "platform: TikTok, Instagram, YouTube, Facebook, Twitter/X, LinkedIn, Other\n" +
+  "duration: 15 seconds, 30 seconds, 45 seconds, 60 seconds, 90 seconds, 120 seconds\n" +
+  "duration_limit: min, max\n" +
+  "aspect_ratio: 9:16 (Vertical), 1:1 (Square), 16:9 (Horizontal)\n" +
+  "delivery: Raw, Edited";
+// The mapper answers in labels; the record takes the option ids.
+const DELIVERABLE_OPTIONS = {
+  platform: [
+    { label: "TikTok", id: "25558459-6369-42f2-81ec-5948551e5b36" },
+    { label: "Instagram", id: "ca31e322-1080-4d95-8172-ae73273aec9c" },
+    { label: "YouTube", id: "5c83fc93-a646-4007-9c44-702c3e58fed8" },
+    { label: "Facebook", id: "c308e328-5dc0-402c-93b4-0d7f7b4fc96e" },
+    { label: "Twitter/X", id: "8d457ca8-21e3-4379-94d2-5527544eafd3" },
+    { label: "LinkedIn", id: "6ad7fab3-74b1-435b-9032-f6e7a18b2c32" },
+    { label: "Other", id: "2e269f77-2443-4815-82f4-151dcb1b1ed3" },
+  ],
+  duration: [
+    { label: "15 seconds", id: "8eff2d4f-d36e-4d03-9875-08827b635fcc" },
+    { label: "30 seconds", id: "a04ee330-355c-43b0-acf7-16ade1c8c194" },
+    { label: "45 seconds", id: "bb0060f6-9605-44ca-b71c-da6e42e2e804" },
+    { label: "60 seconds", id: "d9ea06db-138a-44e6-94ae-f44a9200479f" },
+    { label: "90 seconds", id: "06f8b79c-b927-468b-910c-518eddaff77f" },
+    { label: "120 seconds", id: "8e1cee0e-a5ce-485f-a000-573c2f203ce6" },
+  ],
+  duration_threshold: [
+    { label: "min", id: "1930c46b-a6ff-4d6d-9fc1-9bfe6d194631" },
+    { label: "max", id: "4a227411-cf9b-43f6-b5ab-17b805890e23" },
+  ],
+  aspect_ratio: [
+    { label: "9:16 (Vertical)", id: "3e0c1cb5-4f72-4c79-9b50-b31b522adc7c" },
+    { label: "1:1 (Square)", id: "a3a79d52-d607-4d2e-820d-dd38fa7adbe4" },
+    { label: "16:9 (Horizontal)", id: "752d40c5-3f8c-4b18-90d0-0f9abdfefa99" },
+  ],
+  content_delivery: [
+    { label: "Raw", id: "1148e7d3-a842-4119-ad1f-e8be01508ce7" },
+    { label: "Edited", id: "3c505b73-6c40-4012-b4be-4c118267a913" },
+  ],
+};
+function optionId(field, label) {
+  const want = trimStr(label).toLowerCase();
+  if (!want) return "";
+  const hit = (DELIVERABLE_OPTIONS[field] || []).find((o) => o.label.toLowerCase() === want);
+  return hit ? hit.id : "";
+}
+function deliverableFields(raw) {
+  const d = raw && typeof raw === "object" ? raw : {};
+  const out = {};
+  const put = (field, label) => { const id = optionId(field, label); if (id) out[field] = id; };
+  put("platform", d.platform);
+  put("duration", d.duration);
+  put("duration_threshold", d.duration_limit);
+  put("aspect_ratio", d.aspect_ratio);
+  put("content_delivery", d.delivery);
+  return out;
+}
+// section_order for a brief built from a PDF: The Offer shows the deal
+// plus whatever parts the document filled, and Rights and restrictions
+// follows it when the document set any terms.
+function pdfSectionOrder(sec) {
+  const parts = ["deal"].concat(OFFER_MODULES.filter((m) => sec[m.field]).map((m) => m.key));
+  const rights = sec.usage_rights ? ["usageRights"] : [];
+  if (parts.length === 1 && !rights.length) return STARTER_SECTIONS;
+  return STARTER_SECTIONS.split(",")
+    .flatMap((k) => (k === "offer" ? ["offer:" + parts.join("+")].concat(rights) : [k]))
+    .join(",");
+}
+
 // The core shape a new brief opens with. Keys match the builder's
 // SECTION_DEFS; everything else waits in the rail.
 const STARTER_SECTIONS = "brand,offer,productFeature,deliverables,hook,visualFormat,guidelines,examples,submissions";
@@ -543,6 +627,12 @@ const createFields = q.select({
   offer_competition:   "rGIsY",
   offer_notes:         "uhVQP",
   usage_rights:        "ybqMW",
+  // Deliverables, written by the PDF route when the document states them.
+  platform:            "1lPXC",
+  duration:            "SleHY",
+  duration_threshold:  "9lwe4",
+  aspect_ratio:        "Z8kno",
+  content_delivery:    "U9Cyn",
 });
 
 const accountSelect = q.select({
@@ -1692,14 +1782,19 @@ export default function Block() {
       '\nAlso include "suggested_name" (a short 3 to 6 word title for this brief, plain text), ' +
       '"creator_type" (exactly one of: UGC, Influencer, Affiliate, Customer, Employee Ambassador, Founder; or "") ' +
       'and "channel" (Organic or Paid; or "").';
-    const [proseObj, listsObj] = await Promise.all([
+    const [proseObj, listsObj, termsObj] = await Promise.all([
       mapSet(KEYS_PROSE, metaNote),
       mapSet(KEYS_LISTS, LISTS_NOTE),
+      mapSet(PDF_OFFER_KEYS, PDF_OFFER_NOTE),
     ]);
     const sections = {};
     KEYS_PROSE.forEach((k) => { const v = cleanHtml(proseObj[k]); if (v) sections[k] = v; });
     KEYS_LISTS.forEach((k) => { const v = cleanHtml(listsObj[k]); if (v) sections[k] = v; });
+    // The read test stays on prose + lists: the terms are a bonus, and a
+    // document with none of them is still a document we read fine.
     if (Object.keys(sections).length < 2) throw new Error("The document could not be read");
+    PDF_OFFER_KEYS.forEach((k) => { const v = cleanHtml(termsObj[k]); if (v) sections[k] = v; });
+    Object.assign(sections, deliverableFields(termsObj.deliverables));
     // Formats come AFTER the mapping, off the extracted sections
     // rather than the file. The mapper's own system prompt forbids
     // inventing and demands an empty string for anything the
@@ -2011,7 +2106,9 @@ export default function Block() {
         description: "",
         status: STATUS_DRAFT_ID,
         generated: route === "ai" || (route === "pdf" && pdf && pdf.sections) ? GENERATED_AI_ID : GENERATED_MANUAL_ID,
-        section_order: withOffer ? sectionOrderFor(offer, offerParts) : STARTER_SECTIONS,
+        section_order: route === "pdf"
+          ? pdfSectionOrder(sections)
+          : withOffer ? sectionOrderFor(offer, offerParts) : STARTER_SECTIONS,
         creator_type: creatorType.id,
         channel: channel.id,
         ...sections,

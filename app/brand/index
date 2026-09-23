@@ -62,8 +62,8 @@ const accountSelect = q.select({
   name:        "aAKkT",
   logo:        "q1B5K", // ATTACHMENT — uploaded brand logo
   logo_url:    "nPI65", // FORMULA — favicon fallback
-  brand_bio:   "iVPat",
-  description: "RQcNB",
+  // brand_bio and description are deliberately not read: the brand's
+  // blurb lives on the brief itself, so the index stays a list.
   website:     "RaK4B",
   community:   "oHBT3", // free text — WhatsApp / Discord invite links
 });
@@ -204,7 +204,6 @@ export default function Block() {
   const brandLogo = extractThumbUrl(a.logo)
     || (Array.isArray(a.logo_url) ? a.logo_url[0] : a.logo_url)
     || "";
-  const brandBio = stripTags(a.brand_bio) || stripTags(a.description) || "";
   const website  = typeof a.website === "string" ? a.website.trim() : "";
   const community = useMemo(() => extractCommunityLinks(a.community), [a.community]);
 
@@ -266,7 +265,6 @@ export default function Block() {
             <div className="bl-idx-hero-text">
               <span className="bl-idx-eyebrow">Creator briefs</span>
               <h1 className="bl-idx-title">{brandName || "Open briefs"}</h1>
-              {brandBio && <p className="bl-idx-bio">{brandBio}</p>}
               <div className="bl-idx-chips">
                 {!loading && (
                   <span className="bl-idx-chip is-accent">
@@ -522,10 +520,6 @@ function Style() {
       .bl-idx-title {
         margin: 8px 0 0; font-size: clamp(28px, 3.4vw, 38px); font-weight: 700;
         letter-spacing: -0.032em; line-height: 1.04; color: #001364;
-      }
-      .bl-idx-bio {
-        margin: 10px 0 0; font-size: 15px; line-height: 1.6; color: #3A4770;
-        max-width: 620px; text-wrap: pretty;
       }
       .bl-idx-chips { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
       .bl-idx-chip {

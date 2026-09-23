@@ -1723,14 +1723,26 @@ export default function Block() {
   };
   const [privacySaving, setPrivacySaving] = useState(false);
   const togglePrivacy = async () => {
-    // Keep Seo:index in lockstep with public/private.
+    // Keep Seo:index in lockstep with public/private. Going public on a
+    // DRAFT publishes it in the same move: public + draft is listed
+    // nowhere and opens for nobody, so the toggle would look broken.
+    // Going private never unpublishes, because a live brief shared by
+    // link with invited creators only is a real state.
     const nextPrivate = !isPrivate;
+    const active = STATUS_OPTIONS.find((o) => o.label === "Active");
+    const alsoPublish = !nextPrivate && briefStatus?.label === "Draft" && !!active;
     setPrivacySaving(true);
     await saveField({
       private_mode: nextPrivate,
       seo_index: !nextPrivate,
+      ...(alsoPublish ? { status: { id: active.id, label: active.label } } : {}),
     }, "privacy");
     setPrivacySaving(false);
+    if (alsoPublish) {
+      toast.success("Public and published", {
+        description: "Creators can open the link, and the brief is listed on your public briefs page.",
+      });
+    }
   };
   const [reviewModeSaving, setReviewModeSaving] = useState(false);
   const reviewModeLabel = selectLabel(f.ai_mode) || "";
@@ -2632,6 +2644,7 @@ export default function Block() {
               creatorUrl={creatorUrl}
               teamUrl={teamUrl}
               isPrivate={isPrivate}
+              isDraft={briefStatus?.label === "Draft"}
               privacySaving={privacySaving}
               onTogglePrivacy={togglePrivacy}
               onAddPeople={() => setInviteOpen(true)}
@@ -3582,7 +3595,7 @@ function DateTimeField({ label, tooltip, value, onSave }) {
 // INSPIRATION SLOTS
 // =====================================================================
 function SharePopover({
-  briefId, creatorUrl, teamUrl, isPrivate, privacySaving,
+  briefId, creatorUrl, teamUrl, isPrivate, isDraft, privacySaving,
   onTogglePrivacy, onAddPeople, open, setOpen,
 }) {
   const wrapRef = useRef(null);
@@ -3697,8 +3710,10 @@ function SharePopover({
                   <span>Access</span>
                   <span className="bl-bd-share-row-helper">
                     {isPrivate
-                      ? "Only people you add can open the link."
-                      : "Anyone with the link can open the brief."}
+                      ? isDraft
+                        ? "Only people you add can open the link. Public publishes it too."
+                        : "Only people you add can open the link."
+                      : "Anyone with the link can open the brief, and it is listed on your public briefs page."}
                   </span>
                 </div>
                 <div className="bl-bd-segmented">

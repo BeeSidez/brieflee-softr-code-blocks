@@ -3442,9 +3442,12 @@ function Style() {
       }
 
       /* Inspiration grid */
+      /* auto-FILL, not auto-fit: empty tracks stay, so one reference
+         video sits in a slot the size of a phone screen instead of
+         stretching across the whole card. */
       .bl-live-inspo-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
         gap: 12px;
       }
       .bl-live-video {
@@ -3581,6 +3584,7 @@ function Style() {
       /* Inspiration cards — now clickable when they're linked records */
       .bl-live-inspo-card {
         display: flex; flex-direction: column; gap: 8px;
+        max-width: 260px;
       }
       .bl-live-inspo-cardname {
         display: inline-flex; align-items: center; justify-content: space-between; gap: 6px;
@@ -4062,7 +4066,7 @@ function Style() {
           gap: 12px;
         }
         .bl-live-inspo-grid::-webkit-scrollbar { display: none; }
-        .bl-live-inspo-card { flex: 0 0 74%; scroll-snap-align: start; }
+        .bl-live-inspo-card { flex: 0 0 74%; max-width: none; scroll-snap-align: start; }
         .bl-live-html { font-size: 16px; }
         /* v3: panel + modal go full-screen on phones */
         .bl-up-overlay, .bl-info-overlay { padding: 0; align-items: stretch; }
