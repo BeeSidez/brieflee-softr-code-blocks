@@ -1240,6 +1240,36 @@ export default function Block() {
                       </div>
                     );
                   })}
+
+                  <div className="bl-sr-decide">
+                    <span className="bl-sr-decide-lab">{humanDecided ? decidedLine : "Your decision"}</span>
+                    <div className="bl-sr-decide-row">
+                      <button
+                        type="button"
+                        className={"bl-sr-decide-btn is-changes" + (humanLabel === "Changes Requested" ? " is-on" : "")}
+                        onClick={() => openAsk("changes")}
+                        disabled={deciding}
+                      >
+                        <Pencil size={14} /> Revise
+                      </button>
+                      <button
+                        type="button"
+                        className={"bl-sr-decide-btn is-approve" + (humanLabel === "Approve" ? " is-on" : "")}
+                        onClick={() => openAsk("approve")}
+                        disabled={deciding}
+                      >
+                        <Check size={14} /> Approve
+                      </button>
+                      <button
+                        type="button"
+                        className={"bl-sr-decide-btn is-reject" + (humanLabel === "Reject" ? " is-on" : "")}
+                        onClick={() => openAsk("reject")}
+                        disabled={deciding}
+                      >
+                        <X size={14} /> Reject
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -1683,6 +1713,19 @@ function Style() {
         background: #fff; color: ${MUTED}; font-size: 12.5px; font-weight: 600; cursor: pointer; text-align: left;
       }
       .bl-sr-passtoggle:hover { background: rgba(135,156,247,0.04); }
+      .bl-sr-decide { margin: 4px 0 2px; padding: 14px; border: 1px solid ${BORDER}; border-radius: 14px; background: #fff; }
+      .bl-sr-decide-lab { display: block; margin-bottom: 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: ${MUTED}; }
+      .bl-sr-decide-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .bl-sr-decide-btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+        padding: 10px 8px; border: 1px solid ${BORDER}; border-radius: 10px; background: #fff;
+        color: ${MUTED}; font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+        transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+      }
+      .bl-sr-decide-btn:disabled { opacity: 0.5; cursor: default; }
+      .bl-sr-decide-btn.is-changes:hover:not(:disabled), .bl-sr-decide-btn.is-changes.is-on { color: ${WARN_FG}; background: ${WARN_BG}; border-color: transparent; }
+      .bl-sr-decide-btn.is-approve:hover:not(:disabled), .bl-sr-decide-btn.is-approve.is-on { color: ${PASS_FG}; background: ${PASS_BG}; border-color: transparent; }
+      .bl-sr-decide-btn.is-reject:hover:not(:disabled), .bl-sr-decide-btn.is-reject.is-on { color: ${FAIL_FG}; background: ${FAIL_BG}; border-color: transparent; }
       .bl-sr-score-note { margin: 12px 0 0; font-size: 12.5px; font-weight: 300; color: ${MUTED}; line-height: 1.55; }
       .bl-sr-group {
         border: 1px solid ${BORDER}; border-radius: 14px; background: #fff;

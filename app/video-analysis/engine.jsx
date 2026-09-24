@@ -1,176 +1,53 @@
 // =====================================================================
-// /new · Dashboard chat v2 (lee-chat) — implements "Dashboard Chat Upgrade.dc.html"
+// Vibe Coding block: video-analysis — the shared review engine
 // =====================================================================
-// Two stages: COMPOSE (notes-first prompt box with starter pills, attach
-// menu, run-mode dropdown) then CHAT (user message, Lee confirm, grouped
-// Review Agents picker, then the scan frame with real preview + polling).
+// One block, every intake page. The same file sits on /review,
+// /videos, /new, /bulk, /brief/details/live and
+// /live/submissions; only the PAGE constant below differs. PAGES maps
+// each page to an actor (logged-in brand user or public creator), a
+// context (pick a workspace, a brief from the link, or the parent
+// submission of a revision) and whether it takes several videos.
 //
-// v3 (4 September 2026): the review runs INSIDE this block. Same screens,
-// same beats, same clicks as v2; the only change is what happens after
-// "Run agents": instead of creating a submission and polling for n8n, the
-// engine below (the same code as /review) gets the video, Cloudinary,
-// Gemini with the picked Review Agents and the workspace thresholds, then
-// writes the review, the submission, the report rows, the notifications and
-// the emails. The scan frame stays up until it finishes, then the ready
-// card appears. The plan and credit check reads the user's row directly.
+// THE WHOLE REVIEW RUNS IN THIS BLOCK. No workflow, no n8n.
 //
-// Data model (create-on-submit, matches app/submit-single-video + the
-// working create restructure):
-//   • notes            → submission_notes
-//   • link             → video_url        (TikTok / Instagram)
-//   • file             → video_file        (uploaded via useUpload)
-//   • run mode         → submission_type   (Review / Remix / Analyse)
-//   • review agents    → qa_checklist      (label → option UUID)
-//   • workspace        → accounts          (?workspace= or the user's account)
-//   • user             → users
+//   1. Gate — account present, users.status Active, videos_remaining > 0.
+//      Nothing runs and nothing is written until this passes.
+//   2. Source the mp4 — useUpload for files, the Auto Download REST
+//      source for TikTok / Instagram / YouTube / Facebook links.
+//   3. Cloudinary (unsigned preset, plain fetch) — playback URL plus the
+//      so_<seconds> frame transforms every criterion screenshot uses.
+//   4. Compressed copy under 2.5MB (four rungs) as inline base64. The
+//      Softr proxy carries text only and rejects bodies over ~4MB; Gemini
+//      samples at 1fps so the compression costs the review nothing.
+//   5. ONE Gemini call (native Gemini source) with the brief-aware
+//      prompt ported from the n8n engine, thresholds from the brief then
+//      the account, 26 Review Agents. Retry ladder from the checker.
+//   6. Parse, key every criterion by threshold_name (never by position).
+//   7. WRITE AT THE END, in order: review → submission (which links the
+//      review; the link is two-way) → one review_report row per agent →
+//      notifications → EmailIt by alias (retried on 429). A failed run
+//      writes no submission and charges nothing (the row is the credit).
 //
-// The real submission is CREATED when the user runs the agents. A thin
-// early record is created on Send ONLY to run the plan/credit check; it is
-// left un-"proceed" so the 20-min cleanup removes it.
+// SOFTR SOURCES on this block (Source tab): submissions, reviews,
+// review_report, accounts, briefs, users, notifications (Softr tables);
+// Emailit + Auto Download All In One + Cloudinary (REST); Gemini
+// (native). Cloudinary is called with plain fetch because FormData
+// cannot cross the proxy, so that REST source stays unused.
 //
-// SOFTR: Source tab → submissions; add the USERS table as a source so the
-// workspace read resolves. Read the URL workspace param in a useState lazy
-// initialiser only (analyzer requirement with useRecordCreate).
+// Decisions (Bev, 2 Sep 2026): no account → tell them to create one;
+// entitlement = users.status Active + credits, trial counts as Active;
+// no free first video; Pending treated as not entitled until told
+// otherwise. Copy: no em dashes. "Review Agents" throughout.
 // =====================================================================
 
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { useRecordCreate, useRecord, useUpload, useProxyFetch, q, datasource } from '@/lib/datasource';
-import { useTextSetting, useBooleanSetting } from '@/lib/editable-settings';
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  datasource, useRecord, useRecords, useRecordCreate, useUpload, useProxyFetch, q,
+} from "@/lib/datasource";
+import { useCurrentUser } from "@/lib/user";
+import { toast } from "sonner";
+import { Link2, Upload, Check, X, RotateCcw, ArrowRight } from "lucide-react";
 
-// Every hook names its source. The five Softr tables and the three services
-// are connected on this block's Source tab; the ids below are their connection ids.
-const ds = datasource.define({
-  submissions:   '8f2aa89b-b08e-46c2-acbb-eb325cc99bfb',
-  reviews:       '9d326bdc-e5c1-4b98-b250-90552c4d903f',
-  report:        '5cfa9868-7213-4db6-aca1-a68edf5a2477',
-  users:         'users',
-  accounts:      'accounts',
-  notifications: 'notifications',
-  emailit:       'b9510e33-51ce-4bf6-aaf1-25a975a24cae',
-  google:        '69e7708a-6d34-44df-bdd3-93f211f40694',
-  rapid:         'd8b15bba-7a47-40be-bc4b-96891d745600',
-});
-import { useCurrentUser } from '@/lib/user';
-import { toast } from 'sonner';
-
-// ─── Field maps ──────────────────────────────────────────────────────
-
-// Validation + polling lookups on the submission record.
-
-// users.accounts — resolves the active workspace when ?workspace= is unset.
-// Also carries the entitlement gate fields, read straight off the logged-in
-// user record:
-// — payment_status is the billing chain (users → billing.payment_status);
-//   any linked billing row at paid or trial passes.
-// — user_status must be Active or Pending (cancellation flips users to Inactive).
-// — is_internal bypasses the gate for staff + test users.
-const userAccountsSelect = q.select({
-  accounts: 'Nz6VX',
-  videos_remaining: '3kzMt',
-  payment_status: 'VKE2w',
-  org_status: 'SQuxf', // the workspace's plan status, shared by everyone on it
-  user_status: 'kClk9',
-  is_internal: 'gdFt4',
-});
-
-
-// platform_name choice UUIDs — drives the loading_code formula on the
-// submissions table so the videos page shows the matching analysing card.
-
-const LEE_AVATAR = 'https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png';
-const AGENT_ICON = 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png';
-
-// Agent groups — label, description, and the submissions qa_checklist UUID.
-const AGENT_GROUPS = [
-  {
-    key: 'compliance', title: 'Compliance & safety',
-    icon: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_padlock-sticker-blue-transparent_2026-05.png', agents: [
-      { id: '82baef6f-fd83-4eac-a159-1298fd71eb07', label: 'Copyright check', desc: 'Flags music, fonts, or clips that could break copyright.' },
-      { id: '5410f4ee-20f3-4356-8180-f73b1ae859df', label: 'Safe zones', desc: 'Keeps key content inside platform safe zones.' },
-    ]
-  },
-  {
-    key: 'hook', title: 'Hook & attention',
-    icon: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_help-icon_troubleshoot-lightning-bolt-sticker-blue-transparent_2026-05.png', agents: [
-      { id: 'f8968115-bdab-4360-afe5-fc4d53b26df3', label: 'Hook quality', desc: 'First 3 seconds grab attention without feeling like an ad.' },
-      { id: '94e77b01-88ec-4f9f-b6fb-7ca5b5be7b13', label: 'Visual hook', desc: 'A visual moment strong enough to stop the scroll.' },
-      { id: '8c96bc97-ebde-44f3-b4ee-65640e6ba8f6', label: 'Scene pacing', desc: 'Scenes change often enough to hold attention.' },
-      { id: '719b3047-73f8-4958-8080-05485b6859bd', label: 'CTA present', desc: "There's a clear ask to the viewer." },
-      { id: '15dfd7e3-226d-4ac3-bd2e-4383857ee08c', label: 'Watchable on mute', desc: 'Still makes sense with the sound off.' },
-    ]
-  },
-  {
-    key: 'brand', title: 'Brand & brief',
-    icon: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_simple-lined-clipboard-with-pen-transparent_2026-05.png', agents: [
-      { id: '5e36d433-92b5-4ad7-9447-abcaa5401991', label: 'Follows the brief', desc: 'Matches what the brief asked for.' },
-      { id: 'a1d164a9-3972-45bb-a444-34bba3757621', label: 'Brand name mentioned', desc: 'Brand name is said the agreed number of times.' },
-      { id: '873be85d-9d67-4286-b7d7-49dc35c45baa', label: 'Brand alignment', desc: "Matches the brand's voice, look, and feel." },
-      { id: '40946cb6-2638-4c13-9aa2-3f66d1ab8d15', label: 'Product visibility', desc: 'Product shows clearly enough across the video.' },
-      { id: '3f1ff82b-1fae-4ec8-b727-8ab4337d3d22', label: 'Product usage', desc: 'Product is shown being used the right way.' },
-      { id: '58615cda-8673-4d3d-a3ce-7ef871e81991', label: 'Creator visibility', desc: 'Creator is on camera enough for the format.' },
-      { id: 'a135797b-d452-4f83-9b39-9a40481f1411', label: 'Inspiration link match', desc: 'Matches the inspiration examples in the brief.' },
-    ]
-  },
-  {
-    key: 'production', title: 'Production quality',
-    icon: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_help-icon_videos-camcorder-camera-icon-blue-transparent_2026-05.png', agents: [
-      { id: '8b51a26d-6b1c-4b37-8939-b7339eb7f595', label: 'Lighting & camera', desc: 'Bright enough, steady, and in focus.' },
-      { id: 'fe7f6d81-eda9-4c23-8650-43c9351b7334', label: 'Setting & background', desc: 'Background is tidy and on-brand.' },
-      { id: 'dcb604cb-132e-4928-bab7-1a5dbfd61258', label: 'Audio clarity', desc: 'Audio is clean, no noise, echo, or hum.' },
-      { id: '664e176a-ac4b-469a-b3fb-efa0abd5409c', label: 'Audio delivery', desc: 'Spoken script is clear, natural, on-brand.' },
-      { id: '314d167a-7456-425b-aa9e-0cab135f06be', label: 'Music & sound balance', desc: "Music doesn't drown out the voice." },
-      { id: 'eac26e3c-8601-4c2a-a038-39b694084caf', label: 'Pronunciation', desc: 'Brand and product names are said right.' },
-      { id: 'c7b897ff-b5f8-4d4f-aaa4-07849c4c0fa6', label: 'Text legibility', desc: 'On-screen text is big enough to read.' },
-      { id: 'c1d3605d-e91c-4509-aad0-b337ff3ed898', label: 'Closed captions', desc: 'Captions are accurate and easy to follow.' },
-      { id: '641e6d1f-a3cd-451c-bbb8-c8e44c6aaf51', label: 'Distracting elements', desc: 'Nothing pulls attention from the product.' },
-      { id: '8ab22af0-53f5-45a1-856e-1dcbbb048e19', label: 'Energy & authenticity', desc: 'Feels real and engaging, not scripted.' },
-      { id: 'e9320bd8-73ac-4e89-95a6-70a87a40b3e0', label: 'Wardrobe & appearance', desc: 'Outfit fits the brand and looks intentional.' },
-    ]
-  },
-  {
-    key: 'other', title: 'Other checks',
-    icon: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_blue-multiple-stars-transparent_2026-05.png', agents: [
-      { id: 'ea740500-ef29-4246-aa61-1e1264cce230', label: 'Video length', desc: 'Runs the right length for the format.' },
-    ]
-  },
-];
-
-const PILLS = [
-  { chip: "Something's off", mode: 'review', prompt: "Not sure about this one, something feels off and I can't place it. Want your read before I reply to the creator." },
-  { chip: 'Gut-check this', mode: 'review', prompt: 'I think this is strong, but I want a second pair of eyes before it goes live.' },
-  { chip: 'Creator loves it', mode: 'review', prompt: "The creator's convinced this is their best cut. Is it as good as they think, or are they too close to it?" },
-  { chip: 'Tell me straight', mode: 'review', prompt: "I keep going back and forth on this one. Just tell me straight if it's good enough." },
-  { chip: 'Want this energy', mode: 'remix', prompt: 'Love how this brand nailed the pacing, I want this same energy for my audience.' },
-  { chip: 'Steal this hook', mode: 'remix', prompt: 'This hook stopped me dead, I want my own version of it for my product.' },
-  { chip: 'Make it mine', mode: 'remix', prompt: "This is exactly the vibe I've been trying to explain to my creators. Help me make it mine." },
-  { chip: "Why'd this blow up?", mode: 'analyse', prompt: 'This blew up for a tiny brand and I want to understand why before I borrow it.' },
-  { chip: 'What makes it work?', mode: 'analyse', prompt: "Everyone's copying this format. I want to know what actually makes it work." },
-  { chip: "Shouldn't work, but does", mode: 'analyse', prompt: "This shouldn't work but it clearly does. What am I missing?" },
-];
-
-const MODE_OPTIONS = [
-  { value: 'review', label: 'Review', confirm: "Perfect. I'll review this against your brief and quality standards." },
-  { value: 'remix', label: 'Remix', confirm: "Love it. I'll break down what works and remix it for your brand." },
-  { value: 'analyse', label: 'Analyse', confirm: "On it. I'll analyse the hook, pacing, and what's driving this." },
-];
-
-const STATUS_LINES = [
-  'Analysing your video', 'Checking the hook', 'Looking at pacing',
-  'Checking audio quality', 'Scanning for the product', 'Reading on-screen text',
-  'Checking brand alignment', 'Almost done',
-];
-
-const FALLBACK_ICON = {
-  upload: ['https://res.cloudinary.com/dchroynzv/image/upload/v1778145999/brieflee_icon_upload-cloud-engraving-transparent_2026-05.png', 'Analysing your upload'],
-  tiktok: ['https://res.cloudinary.com/dchroynzv/image/upload/v1777622929/brieflee_engraving_tiktok-logo-3d-musical-note-icon-grey-engraved_2026-03.png', 'Analysing your TikTok'],
-  instagram: ['https://res.cloudinary.com/dchroynzv/image/upload/v1777622956/brieflee_engraving_instagram-logo-camera-icon-3d-grey-bg-third-party-mark_2026-03.png', 'Analysing your Instagram video'],
-};
-
-// =====================================================================
-// The engine (verbatim from app/video-analysis/engine.jsx, PAGE review):
-// field maps, option ids, Review Agents, prompts, Cloudinary, Gemini,
-// writes, notifications, EmailIt. Only what this block uses survives.
-// =====================================================================
 // ─── Page ──────────────────────────────────────────────────────
 // The only line that changes between blocks.
 const PAGE = "review";
@@ -180,12 +57,33 @@ const PAGE = "review";
 //          "brief"      = ?recordId is the brief (creator brief page)
 //          "submission" = ?recordId is the parent submission (revision)
 // multi:   several videos in one go, two at a time
+const PAGES = {
+  review:             { actor: "user",    context: "workspace",  multi: false },
+  videos:             { actor: "user",    context: "workspace",  multi: false },
+  new:                { actor: "user",    context: "workspace",  multi: false },
+  bulk:               { actor: "user",    context: "workspace",  multi: true  },
+  "brief-live":       { actor: "creator", context: "brief",      multi: false },
+  "live-submissions": { actor: "creator", context: "submission", multi: false },
+};
+const MODE = PAGES[PAGE] || PAGES.review;
 // /review follows the native form's logic: workspace, upload, a context choice
 // (Brieflee brief, notes, or a PDF), the chosen detail, then the Review Agents
 // only when the workspace has none saved.
 const STEPPER = PAGE === "review";
 
 // ─── Datasources (connection ids from THIS block's Source tab) ──
+const ds = datasource.define({
+  submissions:   "4da41b0d-e56e-4701-8188-78f1686a7416",
+  reviews:       "98795613-37d4-4af0-a4b8-17ff5c715587",
+  report:        "8db468a5-9939-4873-9673-01f1b82c7c8f",
+  accounts:      "accounts",
+  briefs:        "briefs",
+  users:         "users",
+  notifications: "notifications",
+  emailit:       "fee4e358-cada-4962-924f-561382677d65",
+  google:        "c044105c-09cd-48ba-81d1-1b4c9316e4e6",
+  rapid:         "6c9b7e47-7290-4475-bd66-62428afa8c91",
+});
 
 // ─── Reads ─────────────────────────────────────────────────────
 // The logged-in user's own record: the gate and the workspace list.
@@ -201,6 +99,11 @@ const userSelect = q.select({
 });
 // The brand owner's row on the creator routes, read only when the brief
 // and parent lookups carry no status. Nothing personal is selected.
+const ownerSelect = q.select({
+  id:              "6stLd",
+  status:          "kClk9",
+  videosRemaining: "3kzMt",
+});
 
 // The chosen workspace: brand context, AI mode, thresholds, agents.
 const accountSelect = q.select({
@@ -223,8 +126,6 @@ const accountSelect = q.select({
   maxVideos:       "cNlUS",
   plan:            "YluGd",
   cycleEnd:        "eaa3X",
-  maxVideosOrg:    "faEMR", // LOOKUP usage → max_videos, plan plus add-ons
-  cycleEndOrg:     "aFWYm", // LOOKUP usage → cycle_end
   thProductScreen: "AFgpo",
   thHookSpeed:     "wthaW",
   thVisualHook:    "Nq4ZX",
@@ -237,8 +138,70 @@ const accountSelect = q.select({
 });
 
 // Briefs in the workspace (picker) and the chosen brief (prompt).
+const briefSelect = q.select({
+  name:            "z3lpx",
+  status:          "71Oud",
+  accounts:        "EhzVx",
+  projects:        "yrYvH",
+  aiMode:          "wm1jM",
+  qaChecklist:     "OFoS6",
+  description:     "FCBU5",
+  talkingPoints:   "YEfyw",
+  script:          "YLabB",
+  dos:             "CSbqb",
+  donts:           "I5wOP",
+  makeSure:        "SEksn",
+  captionHooks:    "8EyqU",
+  visualHooks:     "4dnWx",
+  voiceoverHooks:  "3QPLK",
+  productFeature:  "CSvl8",
+  exampleAnalysis: "hIFSE",
+  creatorName:     "oIsFn",
+  creatorEmail:    "Rogsr",
+  users:           "EdhwS",
+  ownerEmail:      "kNX0h",
+  ownerFirstName:  "oln9W",
+  videosRemainingCount: "YJljG",
+  usersStatus:     "7GTPj",
+  closeDate:       "M4hMa",
+  brandBio:        "zqP14",
+  thProductScreen: "7Zpeo",
+  thHookSpeed:     "CEkkg",
+  thVisualHook:    "Drp5T",
+  thCta:           "zo9Fo",
+  thFaceTime:      "jSDeR",
+  thTextLegibility:"aHH2x",
+  thAudioClarity:  "zXqtt",
+  thPacing:        "15284",
+});
 
 // The parent submission of a revision, and its review.
+const parentSelect = q.select({
+  name:           "XebTQ",
+  accounts:       "v94f0",
+  briefs:         "fqtit",
+  projects:       "M8O02",
+  users:          "DxNOa",
+  creatorName:    "9ZryL",
+  creatorEmail:   "INZs6",
+  revisionNumber: "jHVKv",
+  reviews:        "kdfMm",
+  notes:          "UzR32",
+  videoUrl:       "XrARi",
+  requestChanges: "gewdX",
+  usersStatus:    "Lx9pZ",
+  usersVideos:    "Ef7z6",
+  originalReviewId: "N1Gzr",
+});
+const parentReviewSelect = q.select({
+  name:              "Odw6q",
+  overallComment:    "Zqqx4",
+  decisionReasoning: "yp7ca",
+  recommendedAction: "j6SpS",
+  requestMessage:    "JF1tu",
+  aiDecision:        "pxln3",
+  failedList:        "hqASW",
+});
 
 // ─── Writes ────────────────────────────────────────────────────
 const submissionCreate = q.select({
@@ -431,9 +394,12 @@ const EMAIL_FROM = "Brieflee <support@brieflee.co>";
 const APP_ORIGIN = "https://www.brieflee.co";
 const DETAILS_PATH = "/submissions/details";
 const LIVE_PATH = "/live/submissions";
+const MAX_FILE_MB = 200;
 // Largest video body the Softr proxy will carry to Gemini once base64 encoded.
 const INLINE_MAX = 3 * 1024 * 1024;
 
+const UPGRADE_IMG = "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/ca989ee6-933c-4385-b957-6a9a6b2ca053.png";
+const EYES = "https://res.cloudinary.com/dchroynzv/image/upload/f_auto,q_auto/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png";
 
 // ─── The 26 Review Agents ──────────────────────────────────────
 // key: reviews column prefix (null = review_report only)
@@ -504,6 +470,11 @@ function idsOf(raw) {
   if (raw == null) return [];
   const arr = Array.isArray(raw) ? raw : [raw];
   return arr.map((x) => (typeof x === "string" ? x : x?.id || "")).filter(Boolean);
+}
+function num(raw) {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 function cleanText(text) {
   if (!text) return "";
@@ -932,8 +903,36 @@ function UserLoader({ recordId, onState }) {
   useEffect(() => { onState({ status, f: status === "success" ? (data?.fields || null) : null }); }, [data, status, onState]);
   return null;
 }
+function OwnerLoader({ recordId, onState }) {
+  const { data, status } = useRecord({ recordId, select: ownerSelect, from: ds.users });
+  useEffect(() => { onState({ status, f: status === "success" ? (data?.fields || null) : null }); }, [data, status, onState]);
+  return null;
+}
+function BriefLoader({ recordId, onState }) {
+  const { data, status } = useRecord({ recordId, select: briefSelect, from: ds.briefs });
+  useEffect(() => { onState({ status, f: status === "success" ? (data?.fields || null) : null }); }, [data, status, onState]);
+  return null;
+}
+function ParentLoader({ recordId, onState }) {
+  const { data, status } = useRecord({ recordId, select: parentSelect, from: ds.submissions });
+  useEffect(() => { onState({ status, f: status === "success" ? (data?.fields || null) : null }); }, [data, status, onState]);
+  return null;
+}
+function ReviewLoader({ recordId, onState }) {
+  const { data, status } = useRecord({ recordId, select: parentReviewSelect, from: ds.reviews });
+  useEffect(() => { onState({ status, f: status === "success" ? (data?.fields || null) : null }); }, [data, status, onState]);
+  return null;
+}
 // Briefs in the workspace for the picker. Mounted only in the
 // workspace context, so the public creator routes never list briefs.
+function BriefList({ workspaceId, onList }) {
+  const briefsQ = useRecords({ select: briefSelect, from: ds.briefs, count: 100 });
+  useEffect(() => {
+    const all = (briefsQ?.data?.pages?.flatMap((p) => p?.items ?? []) ?? []).map((b) => ({ id: b.id, f: b.fields || {} }));
+    onList(all.filter((b) => idsOf(b.f.accounts).includes(workspaceId)));
+  }, [briefsQ?.data, workspaceId, onList]);
+  return null;
+}
 
 // Reviews status columns take option ids only. Columns without a FLAGGED
 // choice record it as needs adjustment or as a fail, never as loose text.
@@ -949,254 +948,329 @@ function numericScore(s) {
 }
 // A page opened as a side panel keeps its own query inside the host page's
 // `modal` param (/videos?modal=%2Freview%3Furl%3D...), so look there too.
+function param(name) {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    const direct = sp.get(name);
+    if (direct) return direct;
+    const modal = sp.get("modal") || "";
+    const qi = modal.indexOf("?");
+    return qi >= 0 ? (new URLSearchParams(modal.slice(qi + 1)).get(name) || "") : "";
+  } catch { return ""; }
+}
+// The workspace the switcher last chose (it writes this key), so a panel
+// opened without ?workspace= still follows the page's workspace.
+function storedWorkspace() { try { return localStorage.getItem("bl-active-workspace") || ""; } catch { return ""; } }
+function hasNum(raw) { const v = Array.isArray(raw) ? raw[0] : raw; return v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)); }
+function emailOk(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || "").trim()); }
+function settled(status) { return status === "success" || status === "error"; }
 function cleanName(s) { return String(s || "").replace(/<[^>]*>/g, " ").replace(/https?:\/\/\S+/gi, " ").replace(/[^\p{L}\p{N} .,'&-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 60); }
+const PAUSED_TEXT = "This brief isn't taking submissions right now. Check back later or contact the brand.";
+const RETRY_TEXT = "We couldn't load this brief's details. Refresh and try again in a moment.";
+const LOADING = { ok: false, code: "loading", text: "" };
+const OK = { ok: true, code: "ok", text: "" };
+const MAX_BULK = 20;
 // The Review Agents step: every kind (Review, Analyse, Remix) shows it, pre-ticked
 // with the workspace's saved agents, and the AI needs at least three to check.
-
-
-// ─── Helpers ─────────────────────────────────────────────────────────
-function num(raw) {
-  const v = Array.isArray(raw) ? raw[0] : raw;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-function hasNum(raw) { const v = Array.isArray(raw) ? raw[0] : raw; return v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v)); }
-// Share of the plan used this cycle. Any use at all reads as at least 1%.
-function usagePercent(left, max) {
-  const l = Math.max(0, Number(left) || 0);
-  if (!(max > 0)) return l > 0 ? 0 : 100;
-  const used = Math.max(0, max - l);
-  return used === 0 ? 0 : Math.min(100, Math.max(1, Math.round((used / max) * 100)));
-}
-function extractFieldValue(raw) {
-  if (Array.isArray(raw) && raw.length > 0) return String(raw[0].label ?? raw[0] ?? '').trim().toLowerCase();
-  if (typeof raw === 'object' && raw !== null) return String(raw.label ?? '').trim().toLowerCase();
-  return String(raw ?? '').trim().toLowerCase();
-}
-function extractNumberValue(raw) {
-  const v = Array.isArray(raw) ? Number(raw[0] ?? 0) : Number(raw ?? 0);
-  return Number.isFinite(v) ? v : 0;
-}
-// Multi-row aware: returns ALL values of a lookup field, lowercased.
-function extractFieldValues(raw) {
-  if (Array.isArray(raw)) {
-    return raw.map((v) => String(v?.label ?? v ?? '').trim().toLowerCase()).filter(Boolean);
-  }
-  const one = extractFieldValue(raw);
-  return one ? [one] : [];
+const MIN_AGENTS = 3;
+function savedPicks(af) {
+  const n = (t) => String(t || "").toLowerCase().replace(/&/g, "and").replace(/visability/g, "visibility").replace(/\s+/g, " ").trim();
+  const have = new Set(unwrapAll(af?.qaChecklist).map(n));
+  return Object.keys(SUB_QA_IDS).filter((k) => have.has(n(k)));
 }
 
 // =====================================================================
+// Block
+// =====================================================================
 export default function Block() {
   const user = useCurrentUser();
-  // Top space above the welcome on the compose screen, editable from
-  // Content > Settings. With centring on, it scales with the viewport so the
-  // hero sits mid-screen; switch it off to use the pixel value typed below.
-  // Phones always get a small fixed space (.bc-shell.is-home in Style).
-  const heroAutoCentre = useBooleanSetting({
-    name: 'heroAutoCentre',
-    label: 'Centre the welcome on screen',
-    initialValue: true,
-  });
-  const heroTopSpace = useTextSetting({
-    name: 'heroTopSpace',
-    label: 'Top space in px (used when centring is off)',
-    initialValue: '200',
-  });
-  const typedTop = parseInt(String(heroTopSpace ?? '').replace(/[^0-9]/g, ''), 10);
-  const heroTop = heroAutoCentre
-    ? 'clamp(24px, calc(50vh - 285px), 280px)'
-    : `${Number.isFinite(typedTop) ? Math.min(typedTop, 600) : 200}px`;
-  const { uploadAsync } = useUpload();
-  // The engine's writes and services (see the engine section below).
+  // Who may open a user page is set on the page itself (Visibility), so the
+  // block never asks anyone to log in. Until the user record arrives it
+  // shows the same loading bar as the rest of the form.
+  if (MODE.actor === "user" && !user?.id) {
+    return (
+      <div className={STEPPER ? "bl-va bl-mid" : "bl-va"}><style>{CSS}</style>
+        <div className="bl-card"><div className="bl-loading"><div className="bl-bar"><b /></div><span>Loading your workspace</span></div></div>
+      </div>
+    );
+  }
+  return <Engine user={user || null} />;
+}
+
+function Engine({ user }) {
+  const { actor, context, multi } = MODE;
+  const isCreator = actor === "creator";
+
+  // Context from the URL (parsed inside initialisers, never at module level).
+  const [urlWorkspace] = useState(() => param("workspace") || storedWorkspace());
+  const [demo] = useState(() => param("demo"));
+  const [showCredits, setShowCredits] = useState(false);
+  const [urlBrief] = useState(() => param("brief") || param("briefId"));
+  const [urlRecord] = useState(() => param("recordId") || param("submission") || param("brief") || param("briefId"));
+  // A video handed in from the Discover library (/review?url=<file>&name=<title>)
+  // opens the New video panel on Analyse or Remix with the link already in place.
+  const [urlVideo] = useState(() => (STEPPER ? param("url").trim() : ""));
+  const [urlName] = useState(() => (STEPPER ? cleanName(param("name")) : ""));
+  const [urlKind] = useState(() => { const k = param("kind"); return STEPPER && (k === "analyse" || k === "remix") ? k : ""; });
+  const linkOk = (u) => isValidVideoUrl(u) || (!!urlVideo && u === urlVideo && isDirectVideoUrl(u));
+
+  // ── Reads, all through keyed loaders ─────────────────────────
+  const [meState, setMeState] = useState({ status: user ? "pending" : "none", f: null });
+  const mf = meState.f || {};
+  const myAccounts = useMemo(() => (Array.isArray(mf.accounts) ? mf.accounts : []).map((a) => ({ id: a?.id || "", name: unwrap(a) || "Untitled workspace" })).filter((a) => a.id), [mf.accounts]);
+
+  const parentId = context === "submission" ? urlRecord : "";
+  const [parentState, setParentState] = useState({ status: parentId ? "pending" : "none", f: null });
+  const parent = parentState.f;
+
+  const [briefState, setBriefState] = useState({ status: "none", f: null });
+  const [briefs, setBriefs] = useState([]);
+  const [briefId, setBriefId] = useState(context === "brief" ? urlRecord : "");
+  useEffect(() => {
+    if (context === "submission" && parent && !briefId) { const b = idsOf(parent.briefs)[0]; if (b) setBriefId(b); }
+  }, [context, parent, briefId]);
+  const urlBriefApplied = useRef(false);
+  useEffect(() => {
+    if (urlBriefApplied.current || context !== "workspace" || !urlBrief) return;
+    if (briefs.some((b) => b.id === urlBrief)) { urlBriefApplied.current = true; setBriefId(urlBrief); }
+  }, [context, briefs, urlBrief]);
+  const brief = context === "workspace" ? (briefs.find((b) => b.id === briefId)?.f || null) : briefState.f;
+  const briefLoading = context !== "workspace" && !!briefId && !settled(briefState.status);
+
+  const [workspaceId, setWorkspaceId] = useState("");
+  useEffect(() => {
+    if (workspaceId) return;
+    if (context === "workspace") {
+      if (myAccounts.length) setWorkspaceId((myAccounts.find((a) => a.id === urlWorkspace) || myAccounts[0]).id);
+      return;
+    }
+    const id = idsOf(parent?.accounts)[0] || idsOf(brief?.accounts)[0];
+    if (id) setWorkspaceId(id);
+  }, [context, workspaceId, myAccounts, urlWorkspace, parent, brief]);
+
+  const [afState, setAfState] = useState({ status: "none", f: null });
+  const af = afState.f;
+  useEffect(() => { setAfState({ status: "none", f: null }); }, [workspaceId]);
+
+  // The brand user's status comes from the brief or parent lookups; the
+  // owner row is only read when neither carries one.
+  const lookupStatus = unwrap(brief?.usersStatus) || unwrap(parent?.usersStatus);
+  const ownerId = isCreator && !lookupStatus ? (idsOf(brief?.users)[0] || idsOf(parent?.users)[0] || idsOf(af?.owner)[0] || "") : "";
+  const [ownerState, setOwnerState] = useState({ status: "none", f: null });
+  useEffect(() => { setOwnerState({ status: "none", f: null }); }, [ownerId]);
+
+  const parentReviewId = context === "submission" ? (idsOf(parent?.reviews)[0] || "") : "";
+  const [prevState, setPrevState] = useState({ status: "none", f: null });
+  useEffect(() => { setPrevState({ status: "none", f: null }); }, [parentReviewId]);
+  const previous = useMemo(() => {
+    if (context !== "submission" || !parent) return null;
+    const r = prevState.f || {};
+    return {
+      parentName: unwrap(parent.name) || "the earlier cut",
+      decision: unwrap(r.aiDecision),
+      reasoning: unwrap(r.decisionReasoning),
+      action: unwrap(r.recommendedAction),
+      request: unwrap(r.requestMessage) || unwrap(parent.requestChanges),
+      failed: unwrap(r.failedList),
+    };
+  }, [context, parent, prevState.f]);
+  const revisionNo = context === "submission" ? Math.min(10, (parseInt(unwrap(parent?.revisionNumber), 10) || 0) + 1) : 0;
+
+  // Writes.
   const createSubmission = useRecordCreate({ fields: submissionCreate, from: ds.submissions });
   const createReview = useRecordCreate({ fields: reviewCreate, from: ds.reviews });
   const createReport = useRecordCreate({ fields: reportCreate, from: ds.report });
   const createNotification = useRecordCreate({ fields: notificationCreate, from: ds.notifications });
+  const { uploadAsync } = useUpload();
   const proxyRapid = useProxyFetch(ds.rapid);
   const proxyGoogle = useProxyFetch(ds.google);
   const proxyEmailit = useProxyFetch(ds.emailit);
-  const [afState, setAfState] = useState({ status: 'none', f: null });
-  const af = afState.f;
-  const [meState, setMeState] = useState({ status: 'none', f: null });
-  const mf = meState.f || {};
+
+  // Intake state.
+  const [tab, setTab] = useState(STEPPER ? (urlVideo ? "url" : "file") : "url");
+  const [step, setStep] = useState(0);
+  const [ctxChoice, setCtxChoice] = useState("");
+  const [pdf, setPdf] = useState(null);
+  const [agents, setAgents] = useState([]);
+  const [kind, setKind] = useState(urlKind);
+  const [addCreator, setAddCreator] = useState(false);
+  const [url, setUrl] = useState(urlVideo);
+  const [urls, setUrls] = useState("");
+  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
+  const [notes, setNotes] = useState("");
+  const [creatorName, setCreatorName] = useState("");
+  const [creatorEmail, setCreatorEmail] = useState("");
+  // A creator resubmitting keeps the details the brand already has.
+  useEffect(() => {
+    if (!isCreator || !parent) return;
+    if (!creatorName && unwrap(parent.creatorName)) setCreatorName(unwrap(parent.creatorName));
+    if (!creatorEmail && unwrap(parent.creatorEmail)) setCreatorEmail(unwrap(parent.creatorEmail));
+  }, [isCreator, parent]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [page, setPage] = useState("input"); // input | processing | done | failure
+  const [error, setError] = useState("");
+  const [failReason, setFailReason] = useState("");
+  const [stage, setStage] = useState("");
+  const [elapsed, setElapsed] = useState(0);
+  const [procSrc, setProcSrc] = useState("");
+  const [result, setResult] = useState(null);
+  const [batch, setBatch] = useState([]);
   const runRef = useRef(0);
 
-  // Workspace param — read ONCE in a useState lazy init (analyzer-safe with
-  // useRecordCreate). See feedback_softr_vibe_no_url_parsing.
-  const [urlWorkspaceId] = useState(() => {
-    if (typeof window === 'undefined') return '';
-    const raw = new URL(window.location.href).searchParams.get('workspace') || '';
-    return raw.split(',').map((s) => s.trim()).filter(Boolean)[0] || '';
-  });
-  // Remembered workspace (written by the single-select switcher) — survives a
-  // fresh visit even when the URL has no ?workspace=.
-  const [storedWorkspaceId] = useState(() => {
-    try { return localStorage.getItem('bl-active-workspace') || ''; } catch { return ''; }
-  });
-  const userAccountsRead = useRecord({ recordId: user?.id, select: userAccountsSelect, enabled: !!user?.id, from: ds.users });
-  const userAccountIds = useMemo(() => {
-    const raw = userAccountsRead?.data?.fields?.accounts;
-    return Array.isArray(raw) ? raw.map((a) => a?.id || '').filter(Boolean) : [];
-  }, [userAccountsRead?.data]);
-  const activeWorkspaceId = useMemo(() => {
-    if (urlWorkspaceId && userAccountIds.includes(urlWorkspaceId)) return urlWorkspaceId;
-    if (storedWorkspaceId && userAccountIds.includes(storedWorkspaceId)) return storedWorkspaceId;
-    return userAccountIds[0] || null;
-  }, [urlWorkspaceId, storedWorkspaceId, userAccountIds]);
-
-  // ─── Compose state ───
-  const [stage, setStage] = useState('compose'); // 'compose' | 'chat'
-  const [notes, setNotes] = useState('');
-  const [attachType, setAttachType] = useState(null); // 'link' | 'file' | null
-  const [link, setLink] = useState('');
-  const [file, setFile] = useState(null);            // real File object
-  const [fileName, setFileName] = useState('');
-  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
-  const [selectedMode, setSelectedMode] = useState('review');
-  const [modeMenuOpen, setModeMenuOpen] = useState(false);
-  const [hoverPill, setHoverPill] = useState(null);
-
-  // ─── Chat state ───
-  const [typing, setTyping] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [showCredits, setShowCredits] = useState(false); // the credit ring's panel
-  const [showAgentsQ, setShowAgentsQ] = useState(false);
-  const [showAgents, setShowAgents] = useState(false);
-  const [selectedAgents, setSelectedAgents] = useState(['Hook quality', 'Visual hook', 'Product visibility', 'Follows the brief']);
-  const [openGroup, setOpenGroup] = useState('hook');
-  const [showAnalyseMsg, setShowAnalyseMsg] = useState(false);
-  const [showScan, setShowScan] = useState(false);
-  const [scanIdx, setScanIdx] = useState(0);
-  const [reviewReady, setReviewReady] = useState(false);
-  const [timedOut, setTimedOut] = useState(false);
-  const [notifMsg, setNotifMsg] = useState('');
-
-  // ─── Submission / validation state ───
-  const [validated, setValidated] = useState(false);
-  const [validationError, setValidationError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  const chatRef = useRef(null);
-  const pillsRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const previewUrlRef = useRef(null);
-  const timers = useRef([]);
-  const scanIntRef = useRef(null);
-  const t = (fn, ms) => { const id = setTimeout(fn, ms); timers.current.push(id); return id; };
-  const clearTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
-
-  useEffect(() => () => {
-    clearTimers();
-    if (scanIntRef.current) clearInterval(scanIntRef.current);
-    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-  }, []);
-
-  // Auto-scroll the chat to newest.
   useEffect(() => {
-    const el = chatRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [showConfirm, showAgentsQ, showAgents, showAnalyseMsg, showScan, reviewReady, timedOut, typing, validationError, selectedAgents, openGroup]);
+    if (page !== "processing") return;
+    const t0 = Date.now();
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [page]);
 
-  const firstName =
-    (user && (user.firstName || user.first_name || user.fullName?.split(' ')[0] || user.name?.split(' ')[0])) || '';
+  // ── Who the review belongs to ────────────────────────────────
+  const workspaceName = myAccounts.find((a) => a.id === workspaceId)?.name || unwrap(af?.name) || unwrap(brief?.accounts) || unwrap(parent?.accounts) || "";
+  const aiModeLabel = unwrap(brief?.aiMode) || unwrap(af?.aiMode) || "Hybrid";
+  const brandUserId = !isCreator ? (user?.id || "") : (idsOf(brief?.users)[0] || idsOf(af?.owner)[0] || idsOf(parent?.users)[0] || "");
+  const brandEmail = !isCreator ? (user?.email || unwrap(mf.email) || "") : (unwrap(brief?.ownerEmail) || unwrap(af?.ownerEmail) || "");
+  const brandFirstName = !isCreator ? (user?.firstName || unwrap(mf.firstName) || "there") : (unwrap(brief?.ownerFirstName) || unwrap(af?.ownerFirstName) || "there");
 
-  const hasAttach = attachType === 'file' || (attachType === 'link' && link.trim().length > 0);
-
-  // ─── Plan and credit check, straight off the logged-in user's row ───
-  useEffect(() => {
-    if (stage !== 'chat' || validated || validationError) return;
-    const gate = userAccountsRead?.data?.fields;
-    if (!gate) return; // still loading; the beats below keep playing
-    const isInternal = gate.is_internal === true;
-    if (!isInternal) {
-      // Billing is the source of truth: any linked billing row at paid or
-      // trial passes, and the user record itself must be Active or Pending.
-      // A team member's login carries no billing of its own, so the
-      // workspace's plan status and videos left count for everyone on it.
-      if (activeWorkspaceId && afState.status !== 'success' && afState.status !== 'error') return;
-      const paymentStatuses = [...extractFieldValues(gate.payment_status), ...extractFieldValues(gate.org_status)];
-      const userStatus = extractFieldValue(gate.user_status);
-      const videosRemaining = hasNum(af?.videosRemaining) ? num(af.videosRemaining) : extractNumberValue(gate.videos_remaining);
-      if (
-        !paymentStatuses.some((x) => ['paid', 'trial'].includes(x)) ||
-        !['active', 'pending'].includes(userStatus)
-      ) {
-        setValidationError('There is no active subscription on this account. Please upgrade to continue.');
-        setTyping(false);
-        return;
+  // ── The gate ─────────────────────────────────────────────────
+  const gate = useMemo(() => {
+    if (!isCreator && demo === "nocredits") return { ok: false, code: "noCredits", text: PAUSED_TEXT };
+    if (!isCreator && demo === "inactive") return { ok: false, code: "inactive", text: PAUSED_TEXT };
+    if (!isCreator) {
+      if (!settled(meState.status)) return LOADING;
+      if (myAccounts.length === 0) return { ok: false, code: "noAccount", text: "You need to create an account before we can review your submission." };
+      if (unwrap(mf.status) !== "Active") return { ok: false, code: "inactive", text: "Your account is inactive, so reviews are paused. Reactivate it to review videos." };
+      if (num(mf.videosRemaining) <= 0) return { ok: false, code: "noCredits", text: "You have used every video on your plan for this billing cycle." };
+      if (context === "submission") {
+        if (!parentId) return { ok: false, code: "noParent", text: "Open a video first, then start the revision from there." };
+        if (!settled(parentState.status)) return LOADING;
+        if (!parent) return { ok: false, code: "noParent", text: "We couldn't find the video this revision belongs to." };
+        if (briefLoading) return LOADING;
+        if (parentReviewId && !settled(prevState.status)) return LOADING;
+        if (revisionNo > 10) return { ok: false, code: "closed", text: "This video has reached its revision limit. Start a fresh review instead." };
       }
-      if (videosRemaining <= 0) {
-        setValidationError('You have used all your video credits for this billing cycle. Upgrade or wait until your next renewal.');
-        setTyping(false);
-        return;
-      }
+      if (!workspaceId) return LOADING;
+      return OK;
     }
-    setValidated(true);
-  }, [stage, userAccountsRead?.data, validated, validationError, activeWorkspaceId, afState.status, af]);
+    // Creator routes: the brief and its brand decide. Creators only ever
+    // see open or paused; the brand's plan and credits stay private.
+    if (context === "brief") {
+      if (!briefId) return { ok: false, code: "noBrief", text: "This link is missing its brief. Ask the brand for a fresh link." };
+      if (briefLoading) return LOADING;
+      if (!brief) return { ok: false, code: "noBrief", text: "This brief link isn't valid any more. Ask the brand for a fresh one." };
+    } else {
+      if (!parentId) return { ok: false, code: "noParent", text: "This link is missing its submission. Ask the brand for a fresh link." };
+      if (!settled(parentState.status)) return LOADING;
+      if (!parent) return { ok: false, code: "noParent", text: "We couldn't find the submission this revision belongs to." };
+      if (briefLoading) return LOADING;
+      if (parentReviewId && !settled(prevState.status)) return LOADING;
+      if (revisionNo > 10) return { ok: false, code: "closed", text: "This video has reached its revision limit. Ask the brand for a fresh brief link." };
+    }
+    if (brief) {
+      if (unwrap(brief.status) !== "Active") return { ok: false, code: "closed", text: "This brief is closed to new submissions." };
+      const close = Date.parse(unwrap(brief.closeDate));
+      if (Number.isFinite(close) && close + 86400000 < Date.now()) return { ok: false, code: "closed", text: "The submission window for this brief has closed." };
+    }
+    const accountId = idsOf(parent?.accounts)[0] || idsOf(brief?.accounts)[0];
+    if (!accountId) return { ok: false, code: "noAccount", text: PAUSED_TEXT };
+    if (!workspaceId || !settled(afState.status)) return LOADING;
+    let ownerStatus = lookupStatus;
+    if (!ownerStatus) {
+      if (!ownerId) return { ok: false, code: "noAccount", text: PAUSED_TEXT };
+      if (!settled(ownerState.status)) return LOADING;
+      if (ownerState.status === "error" || !ownerState.f) return { ok: false, code: "unknown", text: RETRY_TEXT };
+      ownerStatus = unwrap(ownerState.f.status);
+    }
+    if (ownerStatus !== "Active") return { ok: false, code: "inactive", text: PAUSED_TEXT };
+    const credits = brief && hasNum(brief.videosRemainingCount) ? num(brief.videosRemainingCount)
+      : parent && hasNum(parent.usersVideos) ? num(parent.usersVideos)
+      : ownerState.f && hasNum(ownerState.f.videosRemaining) ? num(ownerState.f.videosRemaining)
+      : af && hasNum(af.videosRemaining) ? num(af.videosRemaining) : null;
+    if (credits === null) return { ok: false, code: "unknown", text: RETRY_TEXT };
+    if (credits <= 0) return { ok: false, code: "noCredits", text: PAUSED_TEXT };
+    return OK;
+  }, [isCreator, context, meState.status, myAccounts.length, mf.status, mf.videosRemaining, parentId, parentState.status, parent, briefId, briefLoading, brief, workspaceId, afState.status, af, lookupStatus, ownerId, ownerState, parentReviewId, prevState.status, revisionNo]);
 
-  // ─── Compose handlers ───
-  const pickPill = (p) => { setNotes(p.prompt); setSelectedMode(p.mode); };
-  const scrollPills = (dir) => { const el = pillsRef.current; if (el) el.scrollBy({ left: dir * 220, behavior: 'smooth' }); };
-  const chooseLink = () => { setAttachType('link'); setAttachMenuOpen(false); };
-  const chooseFileClick = () => { setAttachMenuOpen(false); fileInputRef.current?.click(); };
-  const onFilePicked = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (!f.type.startsWith('video/')) { toast.error('Please choose a video file.'); return; }
-    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-    previewUrlRef.current = URL.createObjectURL(f);
-    setFile(f); setFileName(f.name); setAttachType('file');
+  // ── Items to review ──────────────────────────────────────────
+  const buildItems = () => {
+    if (!multi) return [tab === "file" ? { kind: "file", file, label: file?.name || "Video" } : { kind: "url", url: url.trim(), label: url.trim() }];
+    if (tab === "file") return files.map((f) => ({ kind: "file", file: f, label: f.name }));
+    return urls.split(/\r?\n/).map((s) => s.trim()).filter(Boolean).map((u) => ({ kind: "url", url: u, label: u }));
   };
-  const clearAttach = () => {
-    if (previewUrlRef.current) { URL.revokeObjectURL(previewUrlRef.current); previewUrlRef.current = null; }
-    setAttachType(null); setLink(''); setFile(null); setFileName('');
+  const pendingCount = multi ? buildItems().length : 1;
+
+  // The videos page opens this block in a side panel (?modal=/review), so
+  // this can be running inside an iframe. Moving the frame would draw the
+  // whole app, nav bar and all, inside the panel. Take the tab instead: the
+  // panel falls away and the result opens as a proper page.
+  const go = (r) => {
+    const path = isCreator ? LIVE_PATH : DETAILS_PATH;
+    const href = `${path}?recordId=${encodeURIComponent(r.subId)}`;
+    try {
+      if (window.top && window.top !== window.self) window.top.location.href = href;
+      else window.location.href = href;
+    } catch { try { window.location.href = href; } catch { /* stay */ } }
   };
 
-  // ─── Send: transition to chat; the plan/credit check runs in the effect above ───
-  const send = () => {
-    if (!hasAttach && !notes.trim()) return;
-    if (!user?.id) { toast.error('Please log in to continue.'); return; }
-    if (attachType === 'link' && !isValidVideoUrl(link.trim())) { toast.error(LINK_HINT); return; }
-    setStage('chat');
-    setAttachMenuOpen(false); setModeMenuOpen(false);
-    setTyping(true);
+  // ── Submit ───────────────────────────────────────────────────
+  const handleStart = async () => {
+    setError("");
+    if (!gate.ok) { setError(gate.text); return; }
+    if (!workspaceId || (!af && !brief)) { setError(isCreator ? RETRY_TEXT : (!settled(afState.status) ? "Your workspace is still loading. Try again in a moment." : "We couldn't load your workspace. Refresh and try again.")); return; }
+    const items = buildItems();
+    if (items.length === 0) { setError(tab === "url" ? "Paste at least one video link." : "Choose a video file to upload."); return; }
+    for (const it of items) {
+      if (it.kind === "url" && !linkOk(it.url)) { setError(`${multi ? it.url + ": " : ""}${LINK_HINT}`); return; }
+      if (it.kind === "file" && !it.file) { setError("Choose a video file to upload."); return; }
+      if (it.kind === "file" && it.file.size > MAX_FILE_MB * 1024 * 1024) { setError(`${it.file.name} is over ${MAX_FILE_MB}MB. Trim or compress it and try again.`); return; }
+    }
+    if (multi && items.length > MAX_BULK) { setError(`Up to ${MAX_BULK} videos at a time.`); return; }
+    if (multi && num(mf.videosRemaining) < items.length) { setError(`You have ${num(mf.videosRemaining)} video${num(mf.videosRemaining) === 1 ? "" : "s"} left this cycle. Remove ${items.length - num(mf.videosRemaining)} and try again.`); return; }
+    if (isCreator) {
+      if (!creatorName.trim()) { setError("Add your name so the brand knows who sent this."); return; }
+      if (!emailOk(creatorEmail)) { setError("Add the email you'd like the result sent to."); return; }
+    } else if (creatorEmail && !emailOk(creatorEmail)) { setError("That creator email does not look right."); return; }
+    if (!createSubmission.enabled || !createReview.enabled) { setError("We can't start the review right now. Refresh and try again."); return; }
 
-    // Conversation beats (Lee confirm → agents question → picker).
-    t(() => { setTyping(false); setShowConfirm(true); }, 1300);
-    t(() => setTyping(true), 1650);
-    t(() => { setTyping(false); setShowAgentsQ(true); }, 2600);
-    t(() => setShowAgents(true), 2850);
+    const myRun = ++runRef.current;
+    setPage("processing"); setStage("Getting the video"); setElapsed(0); setProcSrc(""); setFailReason(""); setResult(null);
+
+    if (!multi) {
+      try {
+        const r = await runPipeline(items[0], myRun, { stage: setStage, preview: setProcSrc });
+        if (runRef.current !== myRun) return;
+        setResult(r); setPage("done");
+        go(r);
+      } catch (e) {
+        if (runRef.current !== myRun) return;
+        console.error("=== video-analysis failed:", e);
+        setFailReason(String(e?.message || e));
+        setPage("failure");
+      }
+      return;
+    }
+
+    // Bulk: two at a time, each with its own row, its own write and its own emails.
+    setBatch(items.map((it, i) => ({ key: i, label: it.label, status: "queued", stage: "", subId: "", decision: "", error: "" })));
+    const patch = (i, p) => setBatch((prev) => prev.map((r) => (r.key === i ? { ...r, ...p } : r)));
+    let next = 0;
+    const worker = async () => {
+      while (next < items.length) {
+        const i = next++;
+        if (runRef.current !== myRun) return;
+        patch(i, { status: "running", stage: "Getting the video" });
+        try {
+          const r = await runPipeline(items[i], myRun, { stage: (s) => patch(i, { stage: s }), preview: () => {} });
+          patch(i, { status: "done", stage: "", subId: r.subId, decision: r.decision });
+        } catch (e) {
+          console.error("=== bulk item failed:", items[i].label, e);
+          patch(i, { status: "failed", stage: "", error: String(e?.message || e) });
+        }
+      }
+    };
+    await Promise.all([worker(), worker()]);
+    if (runRef.current !== myRun) return;
+    setPage("done");
   };
-
-  const toggleGroup = (key) => setOpenGroup((cur) => (cur === key ? null : key));
-  const toggleAgent = (label) =>
-    setSelectedAgents((cur) => (cur.includes(label) ? cur.filter((x) => x !== label) : [...cur, label]));
-
-  // ─── The engine's view of this chat ───
-  // The pipeline below is the same code as /review. These locals give it
-  // the chat's state under the names it expects: one video, one workspace,
-  // no brief, no creator details, no revision.
-  const workspaceId = activeWorkspaceId || '';
-  const kind = selectedMode;            // review | remix | analyse
-  const agents = selectedAgents;        // the picked Review Agents (labels)
-  const brief = null; const briefId = ''; const parent = null; const parentId = ''; const parentReviewId = '';
-  const previous = null; const revisionNo = 0; const context = 'workspace'; const isCreator = false; const multi = false;
-  const pdf = null; const creatorName = ''; const creatorEmail = ''; const urlName = '';
-  const workspaceName = unwrap(af?.name) || '';
-  const aiModeLabel = unwrap(af?.aiMode) || 'Hybrid';
-  const brandUserId = user?.id || '';
-  const brandEmail = user?.email || unwrap(mf.email) || '';
-  const brandFirstName = user?.firstName || unwrap(mf.firstName) || 'there';
-  // The credit ring (same as the New video panel) fills as the workspace's
-  // videos get used: blue, then amber from 75%, red from 90%.
-  const creditsLeft = hasNum(af?.videosRemaining) ? num(af.videosRemaining) : num(mf.videosRemaining);
-  const maxVideos = num(af?.maxVideosOrg) || num(af?.maxVideos) || 0;
-  const usedPct = usagePercent(creditsLeft, maxVideos);
-  const ringPct = usedPct / 100;
-  const usageTone = usedPct >= 90 ? "low" : usedPct >= 75 ? "warn" : "ok";
-  const planName = unwrap(af?.plan) || '';
-  const cycleEnd = String(unwrap(af?.cycleEndOrg) || unwrap(af?.cycleEnd) || '').slice(0, 10);
 
   // ── Gemini video part (inline base64, sized for the proxy) ───
   // The proxy carries text only and caps bodies near 4MB, so the video
@@ -1218,11 +1292,18 @@ export default function Block() {
     const acct = af || (brief ? { brandBio: brief.brandBio } : null);
 
     // 1. Source the mp4
-    let mp4 = ""; let handle = ""; let duration = 0; let uploaded = null; let pdfUploaded = null;
+    let mp4 = ""; let handle = ""; let duration = 0; let uploaded = item.uploaded || null; let pdfUploaded = null;
     if (isFile) {
-      const [up] = await uploadAsync(theFile);
-      if (!up || up.status !== "completed" || !up.url) throw new Error("The video upload didn't complete. Try again.");
-      uploaded = { filename: up.file?.name || theFile.name || "video.mp4", url: up.url };
+      // A caller that already uploaded hands the result over, so the
+      // same file never travels twice.
+      if (!uploaded) {
+        // Named, because this is the longest silent stretch a creator
+        // sits through and it runs before any other stage fires.
+        ui.stage("Uploading your video");
+        const [up] = await uploadAsync(theFile);
+        if (!up || up.status !== "completed" || !up.url) throw new Error("The video upload didn't complete. Try again.");
+        uploaded = { filename: up.file?.name || theFile.name || "video.mp4", url: up.url };
+      }
       try { ui.preview(URL.createObjectURL(theFile)); } catch { /* no preview */ }
       if (STEPPER && pdf) {
         const [pu] = await uploadAsync(pdf);
@@ -1547,462 +1628,518 @@ export default function Block() {
     return { subId, reviewId, decision, title: videoTitle, failed, checks: byName.size, thumb: cldThumb(publicId) };
   }
 
-  // ─── Run agents: the Review Agents run here, then the ready card ───
-  const startAnalyse = async () => {
-    if (selectedAgents.length < 3 || submitting) return;
-    if (validationError) return;
-    if (!workspaceId || !af) { toast.error('Your workspace is still loading', { description: 'Try again in a moment.' }); return; }
-    if (!createSubmission.enabled || !createReview.enabled) { toast.error("We can't start the review right now", { description: 'Refresh and try again.' }); return; }
-    const item = attachType === 'file' && file
-      ? { kind: 'file', file, label: file.name }
-      : { kind: 'url', url: link.trim(), label: link.trim() };
-    if (item.kind === 'url' && !isValidVideoUrl(item.url)) { toast.error(LINK_HINT); return; }
-    setSubmitting(true);
-    setShowAgents(false);
-    setTyping(true);
-    const myRun = ++runRef.current;
-    const stopScan = () => { if (scanIntRef.current) { clearInterval(scanIntRef.current); scanIntRef.current = null; } };
+  const reset = () => { runRef.current += 1; setStep(0); setCtxChoice(""); setPdf(null); setAgents(savedPicks(af)); setKind(""); setAddCreator(false); setPage("input"); setError(""); setFailReason(""); setProcSrc(""); setResult(null); setBatch([]); };
 
-    // Analysing message → scan frame (same beats as before); the run is
-    // already under way behind them.
-    t(() => { setTyping(false); setShowAnalyseMsg(true); }, 1000);
-    t(() => {
-      setShowScan(true);
-      setScanIdx(0);
-      scanIntRef.current = setInterval(() => setScanIdx((i) => i + 1), 1300);
-    }, 1400);
-    // A long run shows the "still processing" card; the ready card replaces it.
-    const slow = t(() => { if (runRef.current === myRun) setTimedOut(true); }, 240000);
-
-    try {
-      const r = await runPipeline(item, myRun, { stage: () => {}, preview: () => {} });
-      if (runRef.current !== myRun || !r) return;
-      clearTimeout(slow);
-      stopScan();
-      setTimedOut(false);
-      setNotifMsg(`${r.title}: ${r.decision.toLowerCase()} by the Review Agents${r.failed.length ? ` (${r.failed.length} flagged)` : ''}.`);
-      setReviewReady(true);
-    } catch (e) {
-      if (runRef.current !== myRun) return;
-      clearTimeout(slow);
-      console.error('Analyse failed:', e);
-      toast.error('Something went wrong', { description: e?.message || 'Try again.' });
-      stopScan();
-      setShowScan(false); setShowAnalyseMsg(false); setTimedOut(false);
-      setTyping(false);
-      setShowAgents(true);
-      setSubmitting(false);
-    }
+  // ─────────────────────────────────────────────────────────────
+  const title = STEPPER ? "New video" : context === "submission" ? "Submit a revision" : isCreator ? "Submit your video" : multi ? "Review videos in bulk" : "Review a video";
+  const blurb = STEPPER
+    ? (urlVideo ? `Analyse it for a breakdown, or remix it into a script for ${workspaceName || "your brand"}.` : `Review, analyse or remix a video. Everything is filed under ${workspaceName || "your workspace"}.`)
+    : isCreator
+    ? `The Review Agents watch it frame by frame against ${brief ? "the brief" : "the brand"} and send ${workspaceName || "the brand"} the result.`
+    : `The Review Agents watch ${multi ? "each one" : "it"} frame by frame against ${brief ? "the brief" : "your brand"} and file the review under ${workspaceName || "your workspace"}.`;
+  const ctaLabel = multi ? `Review ${pendingCount || ""} video${pendingCount === 1 ? "" : "s"}`.replace(/\s+/g, " ") : context === "submission" ? "Submit revision" : isCreator ? "Submit for review" : "Review this video";
+  const gateTitle = isCreator
+    ? ({ noBrief: "Brief not found", noParent: "Video not found", unknown: "Try again in a moment" }[gate.code] || "Not taking submissions")
+    : ({ noAccount: "No account yet", inactive: "Account inactive", noCredits: "No videos left", closed: "Revision limit reached", noParent: "Video not found" }[gate.code] || "Paused");
+  const creditsLeft = isCreator ? null : num(mf.videosRemaining);
+  const maxVideos = num(af?.maxVideos) || 0;
+  const ringPct = maxVideos > 0 ? Math.max(0, Math.min(1, (creditsLeft || 0) / maxVideos)) : (creditsLeft > 0 ? 1 : 0);
+  const planName = unwrap(af?.plan) || "";
+  const cycleEnd = String(unwrap(af?.cycleEnd) || "").slice(0, 10);
+  useEffect(() => { if (STEPPER) setAgents(savedPicks(af)); }, [af]);
+  const manyWs = myAccounts.length > 1;
+  const handed = STEPPER && !!urlVideo;
+  const order = !kind ? ["kind"]
+    : kind === "review" ? ["kind", manyWs ? "workspace" : null, "upload", "context", ctxChoice ? "detail" : null, "qa"].filter(Boolean)
+    : ["kind", manyWs ? "workspace" : null, handed ? null : "source", "notes", "qa"].filter(Boolean);
+  const KIND_COPY = {
+    review: "Check a video against your brand or a brief before it goes out.",
+    analyse: "Break down a video that is already out there and keep it in your workspace.",
+    remix: "Take a video you like and get a script for your brand.",
   };
-
-  // ─── Derived render values ───
-  const modeObj = MODE_OPTIONS.find((m) => m.value === selectedMode) || MODE_OPTIONS[0];
-  const count = selectedAgents.length;
-  const canAnalyse = count >= 3;
-  const scanning = showScan && !reviewReady && !timedOut;
-  const linkLower = (link || '').toLowerCase();
-  const fkSource = attachType === 'file' ? 'upload' : (linkLower.includes('tiktok') ? 'tiktok' : 'instagram');
-  // Real preview only for local files; links fall back to the branded icon
-  // until a server-side thumbnail is wired (TikTok/Instagram can't be
-  // previewed client-side reliably).
-  const showPreviewMedia = scanning && attachType === 'file';
-  const showFallbackMedia = scanning && attachType !== 'file';
-  const attachLabel = attachType === 'link' ? (link.trim() || 'Video link') : (fileName || 'Video');
+  const pickKind = (k) => { setKind(k); setTab(k === "review" ? "file" : "url"); setError(""); };
+  const stepKey = order[Math.min(step, order.length - 1)];
+  const isLast = step >= order.length - 1;
+  const goNext = () => setStep((n) => Math.min(n + 1, order.length - 1));
+  const goBack = () => setStep((n) => Math.max(n - 1, 0));
+  const toggleAgent = (label) => setAgents((list) => (list.includes(label) ? list.filter((l) => l !== label) : [...list, label]));
+  const detailHref = (id) => `${isCreator ? LIVE_PATH : DETAILS_PATH}?recordId=${encodeURIComponent(id)}`;
 
   return (
-    <>
+    <div className={STEPPER ? "bl-va bl-mid" : "bl-va"}>
+      <style>{CSS}</style>
       {user?.id ? <UserLoader recordId={user.id} onState={setMeState} /> : null}
-      {workspaceId ? <AccountLoader key={workspaceId} recordId={workspaceId} onState={setAfState} /> : null}
-      {(
-    // Height follows the content. This used to be minHeight 100vh, which
-    // left a viewport of empty space under the chat and pushed the quick
-    // links below the fold. Page background is already #FAFBFF, so the
-    // block ending here leaves no seam. On the compose screen the top
-    // padding is heroTop (the two hero settings), so the hero, the prompt
-    // box and the quick links below sit in the middle of the screen with
-    // Recent submissions peeking under them. The chat stage drops back to
-    // 24px so the 66vh chat window keeps its room.
-    <div className={stage === 'compose' ? 'bc-shell is-home' : 'bc-shell'} style={{ paddingTop: stage === 'compose' ? heroTop : 24, paddingLeft: 20, paddingRight: 20, paddingBottom: 20, background: '#FAFBFF', fontFamily: "'Inter', system-ui, sans-serif", color: '#001364' }}>
-      <Style />
-      <input ref={fileInputRef} type="file" accept="video/*" onChange={onFilePicked} style={{ display: 'none' }} />
+      {parentId ? <ParentLoader recordId={parentId} onState={setParentState} /> : null}
+      {parentReviewId && prevState.status !== "error" ? <ReviewLoader key={parentReviewId} recordId={parentReviewId} onState={setPrevState} /> : null}
+      {context !== "workspace" && briefId ? <BriefLoader key={briefId} recordId={briefId} onState={setBriefState} /> : null}
+      {context === "workspace" && workspaceId ? <BriefList workspaceId={workspaceId} onList={setBriefs} /> : null}
+      {workspaceId && afState.status !== "error" ? <AccountLoader key={workspaceId} recordId={workspaceId} onState={setAfState} /> : null}
+      {ownerId && ownerState.status !== "error" ? <OwnerLoader key={`owner-${ownerId}`} recordId={ownerId} onState={setOwnerState} /> : null}
 
-      <div style={{ maxWidth: 640, margin: '0 auto' }}>
-
-        {/* Hero */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, margin: '8px 0 24px' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, borderRadius: 11, background: '#EEF1FE' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="#879CF7"><path d="M12 2c.4 3.9 1.7 6.1 4 7.1 1.4.6 3 .9 6 .9-3 0-4.6.3-6 .9-2.3 1-3.6 3.2-4 7.1-.4-3.9-1.7-6.1-4-7.1-1.4-.6-3-.9-6-.9 3 0 4.6-.3 6-.9 2.3-1 3.6-3.2 4-7.1Z" /></svg>
-          </span>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', color: '#001364' }}>
-            Welcome back{firstName ? `, ${firstName}` : ''}
-          </h1>
-        </div>
-
-        {/* ============ COMPOSE ============ */}
-        {stage === 'compose' && (
-          <div className="bc-enter">
-            {/* Pills */}
-            <div style={{ position: 'relative', marginBottom: 14 }}>
-              {hoverPill != null && (
-                <div style={{ position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, right: 0, display: 'flex', justifyContent: 'center', zIndex: 6, pointerEvents: 'none' }}>
-                  <div style={{ maxWidth: 480, padding: '8px 12px', borderRadius: 10, background: '#001364', color: '#fff', fontSize: 12, lineHeight: 1.45, boxShadow: '0 10px 26px -12px rgba(16,24,64,0.55)' }}>{PILLS[hoverPill].prompt}</div>
-                </div>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <button className="bc-round" onClick={() => scrollPills(-1)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg></button>
-                <div ref={pillsRef} className="bc-noscroll" style={{ flex: '1 1 auto', display: 'flex', gap: 8, overflowX: 'auto', scrollBehavior: 'smooth', padding: '2px 0' }}>
-                  {PILLS.map((p, i) => (
-                    <button key={i} className="bc-pill" onClick={() => pickPill(p)} onMouseEnter={() => setHoverPill(i)} onMouseLeave={() => setHoverPill(null)}>{p.chip}</button>
-                  ))}
-                </div>
-                <button className="bc-round" onClick={() => scrollPills(1)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg></button>
+      {page === "input" && STEPPER && (
+        <div className="bl-card">
+          {gate.ok || gate.code === "loading" || (gate.code !== "noCredits" && gate.code !== "inactive") ? (
+            <div className="bl-head">
+              <div>
+                <h2>{title}</h2>
+                <p>{blurb}</p>
               </div>
             </div>
+          ) : null}
 
-            {/* Input card */}
-            <div style={{ borderRadius: 14, background: '#FFFFFF', border: '1px solid #D8DEF0', boxShadow: '0 1px 2px rgba(16,24,64,0.04), 0 6px 18px -12px rgba(16,24,64,0.14)', padding: '16px 16px 12px' }}>
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Tell me about this video, or what you want done with it…" rows={3}
-                style={{ width: '100%', border: 'none', outline: 'none', resize: 'none', fontFamily: 'inherit', fontSize: 14.5, fontWeight: 400, lineHeight: 1.5, color: '#001364', background: 'transparent' }} />
+          {gate.code === "loading" ? (
+            <div className="bl-loading"><div className="bl-bar"><b /></div><span>Loading your workspace</span></div>
+          ) : null}
 
-              {attachType === 'link' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0', padding: '9px 12px', borderRadius: 10, background: '#FAFBFF', border: '1px solid #E6EAF5' }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#879CF7" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
-                  <input type="url" value={link} onChange={(e) => setLink(e.target.value)} placeholder="Paste a TikTok or Instagram link" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 400, color: '#001364' }} />
-                </div>
-              )}
+          {!gate.ok && gate.code !== "loading" && (gate.code === "noCredits" || gate.code === "inactive") ? (
+            <div className="bl-upgrade">
+              <img src={UPGRADE_IMG} alt="" draggable={false} />
+              <h2>Upgrade your account</h2>
+              <p>Update your payment method to activate your account and access your videos and features.</p>
+              <a className="bl-btn bl-primary" href="/billing">Update payment method</a>
+            </div>
+          ) : null}
 
-              {attachType === 'file' && (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, margin: '4px 0', padding: '6px 10px 6px 7px', borderRadius: 9, background: '#F5F7FF', border: '1px solid #E6EAF5' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: 6, background: '#EEF1FE', color: '#879CF7' }}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="m22 8-6 4 6 4V8Z" /><rect width="14" height="12" x="2" y="6" rx="2" /></svg></span>
-                  <span style={{ fontSize: 12.5, fontWeight: 500, color: '#001364' }}>{fileName}</span>
-                  <button onClick={clearAttach} style={{ display: 'inline-flex', border: 'none', background: 'transparent', cursor: 'pointer', color: '#97A0BA', padding: 2 }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button>
-                </div>
-              )}
+          {!gate.ok && gate.code !== "loading" && gate.code !== "noCredits" && gate.code !== "inactive" ? (
+            <div className="bl-gate">
+              <b>{gateTitle}</b>
+              <span>{gate.text}</span>
+              {gate.code === "noAccount" ? <a className="bl-btn bl-primary" href="/set-up">Create your account</a> : null}
+            </div>
+          ) : null}
 
-              {/* Toolbar */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
-                <div style={{ position: 'relative' }}>
-                  <button className="bc-tool" onClick={() => { setAttachMenuOpen((o) => !o); setModeMenuOpen(false); }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#879CF7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
-                    Add a video
-                  </button>
-                  {attachMenuOpen && (
-                    <div className="bc-enter" style={{ position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, zIndex: 20, width: 206, padding: 5, borderRadius: 11, background: '#fff', border: '1px solid #E6EAF5', boxShadow: '0 12px 32px -14px rgba(16,24,64,0.28)' }}>
-                      <button className="bc-menu-item" onClick={chooseLink}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#879CF7" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
-                        Paste a link
-                      </button>
-                      <button className="bc-menu-item" onClick={chooseFileClick}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#879CF7" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></svg>
-                        Upload a file
-                      </button>
+          {gate.ok ? (
+            <>
+              <span className="bl-stepno">Step {Math.min(step, order.length - 1) + 1} of {order.length}</span>
+
+              {stepKey === "kind" ? (
+                <div className="bl-step">
+                  {handed ? (
+                    <div className="bl-handed">
+                      <video src={urlVideo} muted playsInline preload="metadata" />
+                      <div><b>{urlName || "Video from Discover"}</b><span>From the Discover library</span></div>
                     </div>
+                  ) : null}
+                  <label className="bl-field"><span>{handed ? "What do you want to do with it?" : "What do you want to do?"}</span></label>
+                  <div className="bl-tabs" role="radiogroup" aria-label="What do you want to do">
+                    {handed ? null : <button type="button" role="radio" aria-selected={kind === "review"} onClick={() => pickKind("review")}>Review</button>}
+                    <button type="button" role="radio" aria-selected={kind === "analyse"} onClick={() => pickKind("analyse")}>Analyse</button>
+                    <button type="button" role="radio" aria-selected={kind === "remix"} onClick={() => pickKind("remix")}>Remix</button>
+                  </div>
+                  {kind ? <span className="bl-meta">{KIND_COPY[kind]}</span> : null}
+                </div>
+              ) : null}
+
+              {stepKey === "workspace" ? (
+                <div className="bl-step">
+                  <label className="bl-field">
+                    <span>Workspace</span>
+                    <select value={workspaceId} onChange={(e) => { setWorkspaceId(e.target.value); setBriefId(""); setAgents([]); }}>
+                      {myAccounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  </label>
+                </div>
+              ) : null}
+
+              {stepKey === "upload" ? (
+                <div className="bl-step">
+                  <label className="bl-field"><span>Upload the video</span></label>
+                  <label className="bl-drop" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const list = Array.from(e.dataTransfer?.files || []); if (list.length) { setFile(list[0]); setError(""); } }}>
+                    <Upload size={18} />
+                    <b>{file ? file.name : "Drop the video here, or click to choose"}</b>
+                    <span>MP4 or MOV, up to {MAX_FILE_MB}MB</span>
+                    <input type="file" accept="video/mp4,video/quicktime" hidden onChange={(e) => { const list = Array.from(e.target.files || []); setFile(list[0] || null); setError(""); }} />
+                  </label>
+                  <label className="bl-check"><input type="checkbox" checked={addCreator} onChange={(e) => { setAddCreator(e.target.checked); if (!e.target.checked) { setCreatorName(""); setCreatorEmail(""); } }} />Add the creator's details</label>
+                  {addCreator ? (
+                    <div className="bl-grid">
+                      <label className="bl-field"><span>Creator name</span><input value={creatorName} onChange={(e) => setCreatorName(e.target.value)} placeholder="Who made it" /></label>
+                      <label className="bl-field"><span>Creator email</span><input type="email" value={creatorEmail} onChange={(e) => setCreatorEmail(e.target.value)} placeholder="So they get the result" /></label>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {stepKey === "source" ? (
+                <div className="bl-step">
+                  <div className="bl-tabs" role="tablist">
+                    <button type="button" role="tab" aria-selected={tab === "url"} onClick={() => { setTab("url"); setError(""); }}><Link2 size={14} />Paste a link</button>
+                    <button type="button" role="tab" aria-selected={tab === "file"} onClick={() => { setTab("file"); setError(""); }}><Upload size={14} />Upload a file</button>
+                  </div>
+                  {tab === "url" ? (
+                    <label className="bl-field">
+                      <span>Video link</span>
+                      <input value={url} onChange={(e) => { setUrl(e.target.value); setError(""); }} placeholder="https://www.tiktok.com/@creator/video/..." />
+                      <span className="bl-meta">{url.trim() && !isValidVideoUrl(url) ? LINK_HINT : "TikTok, Instagram Reel, Facebook Reel or YouTube Short."}</span>
+                    </label>
+                  ) : (
+                    <label className="bl-drop" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const list = Array.from(e.dataTransfer?.files || []); if (list.length) { setFile(list[0]); setError(""); } }}>
+                      <Upload size={18} />
+                      <b>{file ? file.name : "Drop the video here, or click to choose"}</b>
+                      <span>MP4 or MOV, up to {MAX_FILE_MB}MB</span>
+                      <input type="file" accept="video/mp4,video/quicktime" hidden onChange={(e) => { const list = Array.from(e.target.files || []); setFile(list[0] || null); setError(""); }} />
+                    </label>
                   )}
                 </div>
+              ) : null}
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span className="bc-ringwrap">
-                    <button type="button" className="bc-ring" onClick={() => { setShowCredits((v) => !v); setModeMenuOpen(false); setAttachMenuOpen(false); }} title={`${usedPct}% used · ${creditsLeft} video${creditsLeft === 1 ? '' : 's'} left this cycle`} aria-label="Videos used this cycle" aria-expanded={showCredits}>
-                      <svg viewBox="0 0 36 36" width="18" height="18" aria-hidden="true"><circle cx="18" cy="18" r="15" className="bc-ring-track" /><circle cx="18" cy="18" r="15" className={`bc-ring-bar is-${usageTone}`} style={{ strokeDasharray: `${(ringPct * 94.2).toFixed(1)} 94.2`, opacity: usedPct > 0 ? 1 : 0 }} /></svg>
+              {stepKey === "notes" ? (
+                <div className="bl-step">
+                  <label className="bl-field"><span>Notes <i>optional</i></span><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={kind === "remix" ? "What to keep, and what to change for your brand" : "Anything you want the breakdown to focus on"} /></label>
+                </div>
+              ) : null}
+
+              {stepKey === "context" ? (
+                <div className="bl-step">
+                  <label className="bl-field"><span>Want to add any context for this review? <i>optional</i></span></label>
+                  <div className="bl-tabs" role="radiogroup" aria-label="Context">
+                    <button type="button" role="radio" aria-selected={ctxChoice === "brief"} onClick={() => setCtxChoice(ctxChoice === "brief" ? "" : "brief")}>Brieflee brief</button>
+                    <button type="button" role="radio" aria-selected={ctxChoice === "notes"} onClick={() => setCtxChoice(ctxChoice === "notes" ? "" : "notes")}>Add notes</button>
+                    <button type="button" role="radio" aria-selected={ctxChoice === "pdf"} onClick={() => setCtxChoice(ctxChoice === "pdf" ? "" : "pdf")}>Attach a brief</button>
+                  </div>
+                </div>
+              ) : null}
+
+              {stepKey === "detail" && ctxChoice === "brief" ? (
+                <div className="bl-step">
+                  <label className="bl-field">
+                    <span>Add to brief <i>optional</i></span>
+                    <select value={briefId} onChange={(e) => setBriefId(e.target.value)}>
+                      <option value="">Select a brief</option>
+                      {briefs.map((b) => <option key={b.id} value={b.id}>{unwrap(b.f.name) || "Untitled brief"}{unwrap(b.f.status) && unwrap(b.f.status) !== "Active" ? ` (${unwrap(b.f.status)})` : ""}</option>)}
+                    </select>
+                  </label>
+                </div>
+              ) : null}
+
+              {stepKey === "detail" && ctxChoice === "notes" ? (
+                <div className="bl-step">
+                  <label className="bl-field"><span>Brief details <i>optional</i></span><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the Review Agents should know about this video" /></label>
+                </div>
+              ) : null}
+
+              {stepKey === "detail" && ctxChoice === "pdf" ? (
+                <div className="bl-step">
+                  <label className="bl-field"><span>Brief document <i>optional</i></span></label>
+                  <label className="bl-drop" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const list = Array.from(e.dataTransfer?.files || []); if (list.length) setPdf(list[0]); }}>
+                    <Upload size={18} />
+                    <b>{pdf ? pdf.name : "Drop the PDF here, or click to choose"}</b>
+                    <span>PDF, up to 20MB</span>
+                    <input type="file" accept="application/pdf" hidden onChange={(e) => { const list = Array.from(e.target.files || []); setPdf(list[0] || null); }} />
+                  </label>
+                </div>
+              ) : null}
+
+              {stepKey === "qa" ? (
+                <div className="bl-step">
+                  <label className="bl-field"><span>What would you like AI to check?</span></label>
+                  <div className="bl-picks" role="group" aria-label="Review Agents">
+                    {Object.keys(SUB_QA_IDS).map((label) => (
+                      <button type="button" key={label} className="bl-chip" aria-pressed={agents.includes(label)} onClick={() => toggleAgent(label)}>{label}</button>
+                    ))}
+                  </div>
+                  <span className="bl-meta">{agents.length < MIN_AGENTS ? `Pick at least ${MIN_AGENTS} things for the AI to check.` : `${agents.length} picked`}</span>
+                </div>
+              ) : null}
+
+              {error ? <p className="bl-error" role="alert">{error}</p> : null}
+
+              <div className="bl-actions">
+                <span />
+                <span className="bl-foot">
+                  {step > 0 ? <button type="button" className="bl-btn bl-neutral" onClick={() => { setError(""); goBack(); }}>Back</button> : null}
+                  {stepKey === "context" ? <button type="button" className="bl-btn bl-neutral" onClick={() => { setCtxChoice(""); setError(""); goNext(); }}>Skip</button> : null}
+                  <button
+                    type="button"
+                    className="bl-btn bl-primary"
+                    disabled={(stepKey === "kind" && !kind) || (stepKey === "workspace" && !workspaceId) || (stepKey === "upload" && !file) || (stepKey === "source" && (tab === "url" ? !isValidVideoUrl(url.trim()) : !file)) || (stepKey === "context" && !ctxChoice && !isLast) || (stepKey === "qa" && agents.length < MIN_AGENTS)}
+                    onClick={() => {
+                      setError("");
+                      if (stepKey === "upload" && file && file.size > MAX_FILE_MB * 1024 * 1024) { setError(`${file.name} is over ${MAX_FILE_MB}MB. Trim or compress it and try again.`); return; }
+                      if (stepKey === "upload" && addCreator && creatorEmail && !emailOk(creatorEmail)) { setError("That creator email does not look right."); return; }
+                      if (stepKey === "source" && tab === "url" && !isValidVideoUrl(url.trim())) { setError(LINK_HINT); return; }
+                      if (stepKey === "source" && tab === "file" && file && file.size > MAX_FILE_MB * 1024 * 1024) { setError(`${file.name} is over ${MAX_FILE_MB}MB. Trim or compress it and try again.`); return; }
+                      if (stepKey === "detail" && ctxChoice === "pdf" && pdf && pdf.size > 20 * 1024 * 1024) { setError("That PDF is over 20MB."); return; }
+                      if (isLast) handleStart(); else goNext();
+                    }}
+                  >{isLast && kind ? (kind === "analyse" ? "Analyse" : kind === "remix" ? "Remix" : "Review") : "Next"}<ArrowRight size={14} /></button>
+                  <span className="bl-ringwrap">
+                    <button type="button" className="bl-ring" onClick={() => setShowCredits((v) => !v)} title={`${creditsLeft} video${creditsLeft === 1 ? "" : "s"} left this cycle`} aria-label="Videos left this cycle" aria-expanded={showCredits}>
+                      <svg viewBox="0 0 36 36" width="18" height="18" aria-hidden="true"><circle cx="18" cy="18" r="15" className="bl-ring-track" /><circle cx="18" cy="18" r="15" className="bl-ring-bar" style={{ strokeDasharray: `${(ringPct * 94.2).toFixed(1)} 94.2` }} /></svg>
                     </button>
-                    {showCredits && (
-                      <div className="bc-pop bc-enter" role="dialog" aria-label="Videos this cycle">
-                        <div className="bc-pop-row"><span>Videos this cycle</span><b>{usedPct}% used</b></div>
-                        <div className="bc-pop-bar"><i className={`is-${usageTone}`} style={{ width: `${usedPct}%` }} /></div>
-                        <div className="bc-pop-row"><span>Videos left</span><b>{creditsLeft}{maxVideos ? ` of ${maxVideos}` : ''}</b></div>
-                        {planName ? <div className="bc-pop-row"><span>Plan</span><b>{planName}</b></div> : null}
-                        <div className="bc-pop-row"><span>Review mode</span><b>{aiModeLabel}</b></div>
-                        {cycleEnd ? <div className="bc-pop-row"><span>Resets</span><b>{cycleEnd}</b></div> : null}
-                        <a className="bc-pop-link" href="/settings#tab2">See your plan</a>
+                    {showCredits ? (
+                      <div className="bl-pop" role="dialog" aria-label="Videos this cycle">
+                        <div className="bl-pop-row"><span>Videos this cycle</span><b>{creditsLeft}{maxVideos ? ` of ${maxVideos}` : ""} left</b></div>
+                        <div className="bl-pop-bar"><i style={{ width: `${Math.round(ringPct * 100)}%` }} /></div>
+                        {planName ? <div className="bl-pop-row"><span>Plan</span><b>{planName}</b></div> : null}
+                        <div className="bl-pop-row"><span>Review mode</span><b>{aiModeLabel}</b></div>
+                        {cycleEnd ? <div className="bl-pop-row"><span>Resets</span><b>{cycleEnd}</b></div> : null}
+                        <a className="bl-pop-link" href="/settings#tab2">See your plan</a>
                       </div>
-                    )}
+                    ) : null}
                   </span>
-                  <div style={{ position: 'relative' }}>
-                    <button className="bc-mode" onClick={() => { setModeMenuOpen((o) => !o); setAttachMenuOpen(false); setShowCredits(false); }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#879CF7" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="16" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="12" y2="18" /><circle cx="19" cy="6" r="2" fill="#879CF7" stroke="none" /></svg>
-                      {modeObj.label}
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#97A0BA" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'transform 0.2s', transform: `rotate(${modeMenuOpen ? 180 : 0}deg)` }}><polyline points="18 15 12 9 6 15" /></svg>
-                    </button>
-                    {modeMenuOpen && (
-                      <div className="bc-enter" style={{ position: 'absolute', bottom: 'calc(100% + 8px)', right: 0, zIndex: 20, width: 176, padding: 5, borderRadius: 11, background: '#fff', border: '1px solid #E6EAF5', boxShadow: '0 12px 32px -14px rgba(16,24,64,0.28)' }}>
-                        <div style={{ padding: '6px 10px 4px', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#97A0BA' }}>Run mode</div>
-                        {MODE_OPTIONS.map((m) => (
-                          <button key={m.value} className="bc-menu-item" onClick={() => { setSelectedMode(m.value); setModeMenuOpen(false); }} style={{ justifyContent: 'space-between' }}>
-                            {m.label}
-                            {selectedMode === m.value && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#879CF7" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <button onClick={send} disabled={!hasAttach}
-                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, border: 'none', borderRadius: 10, transition: 'all 0.15s', background: hasAttach ? '#879CF7' : '#EDEFF6', color: hasAttach ? '#fff' : '#AEB6CE', cursor: hasAttach ? 'pointer' : 'not-allowed' }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 14 0" /><path d="m13 6 6 6-6 6" /></svg>
-                  </button>
-                </div>
+                </span>
               </div>
-            </div>
-            <p style={{ textAlign: 'center', margin: '12px 0 0', fontSize: 12, fontWeight: 400, color: '#97A0BA' }}>Add a video, set the run mode, then send. I'll pick it up from there.</p>
-          </div>
-        )}
-
-        {/* ============ CHAT ============ */}
-        {stage === 'chat' && (
-          <div ref={chatRef} className="bc-scrollbar" style={{ maxHeight: '66vh', overflowY: 'auto', overscrollBehavior: 'contain', borderRadius: 14, border: '1px solid #E6EAF5', background: '#FFFFFF', boxShadow: '0 1px 2px rgba(16,24,64,0.04), 0 8px 24px -18px rgba(16,24,64,0.16)' }}>
-            <div style={{ padding: '22px 24px 26px' }}>
-
-              {/* User message */}
-              <div className="bc-enter" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-                <div style={{ maxWidth: '80%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 7 }}>
-                  {notes.trim() && (
-                    <div style={{ padding: '11px 14px', borderRadius: 12, borderBottomRightRadius: 4, background: '#EEF1FE', border: '1px solid #DFE4FA', color: '#001364', fontSize: 14, fontWeight: 400, lineHeight: 1.5 }}>{notes}</div>
-                  )}
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 11px 6px 7px', borderRadius: 9, background: '#F5F7FF', border: '1px solid #E6EAF5' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 6, background: '#EEF1FE', color: '#879CF7' }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 8-6 4 6 4V8Z" /><rect width="14" height="12" x="2" y="6" rx="2" /></svg></span>
-                    <span style={{ fontSize: 12, fontWeight: 500, color: '#3C4767' }}>{attachLabel}</span>
-                    <span style={{ width: 1, height: 12, background: '#DDE3F2' }} />
-                    <span style={{ fontSize: 11, fontWeight: 600, color: '#879CF7' }}>{modeObj.label}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Validation failed */}
-              {validationError && (
-                <div className="bc-enter" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 14 }}>
-                  <img src={LEE_AVATAR} alt="Lee" style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0 }} />
-                  <div style={{ maxWidth: '82%', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={{ padding: '11px 15px', borderRadius: 12, borderTopLeftRadius: 4, background: '#FFFFFF', border: '1px solid #E6EAF5' }}>
-                      <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: '#001364' }}>{validationError}</p>
-                    </div>
-                    <a href="/settings" style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', height: 36, padding: '0 16px', borderRadius: 10, background: '#879CF7', color: '#fff', fontSize: 13.5, fontWeight: 600, textDecoration: 'none' }}>Manage your plan in Settings</a>
-                  </div>
-                </div>
-              )}
-
-              {/* Lee confirm */}
-              {showConfirm && !validationError && <LeeBubble>{modeObj.confirm}</LeeBubble>}
-
-              {/* Agents question */}
-              {showAgentsQ && !validationError && <LeeBubble>First, which Review Agents should run? Pick at least 3, each one watches for one specific thing.</LeeBubble>}
-
-              {/* Agents picker */}
-              {showAgents && !validationError && (
-                <div className="bc-enter" style={{ margin: '0 0 14px 40px', maxWidth: 480 }}>
-                  <div style={{ borderRadius: 12, border: '1px solid #E6EAF5', background: '#fff', overflow: 'hidden' }}>
-                    {AGENT_GROUPS.map((g) => {
-                      const gCount = g.agents.filter((a) => selectedAgents.includes(a.label)).length;
-                      const isOpen = openGroup === g.key;
-                      return (
-                        <div key={g.key} style={{ borderBottom: '1px solid #EEF1F8' }}>
-                          <button className="bc-group-head" onClick={() => toggleGroup(g.key)}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: '#F1F4FF' }}>
-                              <img src={g.icon} alt="" style={{ width: 19, height: 19, objectFit: 'contain' }} />
-                            </span>
-                            <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: '#001364' }}>{g.title}</span>
-                            {gCount > 0 && (
-                              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 18, height: 18, padding: '0 6px', borderRadius: 999, background: '#EEF1FE', color: '#5B6FD8', fontSize: 11, fontWeight: 600 }}>{gCount}</span>
-                            )}
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#AEB6CE" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'transform 0.2s', transform: `rotate(${isOpen ? 180 : 0}deg)` }}><polyline points="6 9 12 15 18 9" /></svg>
-                          </button>
-                          {isOpen && (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, padding: '2px 14px 14px' }}>
-                              {g.agents.map((a) => {
-                                const on = selectedAgents.includes(a.label);
-                                return (
-                                  <button key={a.id} onClick={() => toggleAgent(a.label)}
-                                    style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 7, width: '100%', minHeight: 104, textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer', borderRadius: 12, transition: 'all 0.15s', padding: '12px 12px 13px', background: on ? '#F5F7FF' : '#fff', border: on ? '1px solid #879CF7' : '1px solid #E6EAF5' }}>
-                                    <img src={AGENT_ICON} alt="" draggable="false" style={{ width: 32, height: 32, objectFit: 'contain', flexShrink: 0, transform: 'rotate(-12deg)', filter: 'drop-shadow(0 3px 5px rgba(135,156,247,0.28))' }} />
-                                    <span style={{ flex: 1, minWidth: 0 }}>
-                                      <span style={{ display: 'block', fontSize: 12.5, fontWeight: 500, color: '#001364' }}>{a.label}</span>
-                                      <span style={{ display: 'block', marginTop: 2, fontSize: 10.5, fontWeight: 400, lineHeight: 1.35, color: '#8A93AC' }}>{a.desc}</span>
-                                    </span>
-                                    <span style={{ position: 'absolute', top: 10, right: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 6, flexShrink: 0, background: on ? '#879CF7' : '#fff', border: on ? '1px solid #879CF7' : '1px solid #CFD6EA' }}>
-                                      {on && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
-                                    </span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 12 }}>
-                    <span style={{ fontSize: 12, fontWeight: 500, color: canAnalyse ? '#2FA463' : '#B7791F' }}>{canAnalyse ? `${count} agents selected` : `Pick at least 3 · ${count} selected`}</span>
-                    <button onClick={startAnalyse} disabled={!canAnalyse || submitting}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 36, padding: '0 16px', border: 'none', borderRadius: 10, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, transition: 'all 0.15s', background: canAnalyse ? '#879CF7' : '#EDEFF6', color: canAnalyse ? '#fff' : '#AEB6CE', cursor: canAnalyse ? 'pointer' : 'not-allowed' }}>
-                      {canAnalyse ? `Run ${count} agents` : 'Pick at least 3'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Analysing message */}
-              {showAnalyseMsg && <LeeBubble>{`On it. Running ${count} agents on your video now.`}</LeeBubble>}
-
-              {/* Scan / result frame */}
-              {showScan && (
-                <div className="bc-enter" style={{ margin: '0 0 6px 40px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 13 }}>
-                  <div style={{ position: 'relative', width: 208, height: 370, borderRadius: 16, overflow: 'hidden', background: '#FFFFFF', border: '1px solid #E6EAF5' }}>
-
-                    {showPreviewMedia && previewUrlRef.current && (
-                      <video autoPlay muted loop playsInline src={previewUrlRef.current} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(2px) brightness(0.85)' }} />
-                    )}
-
-                    {showFallbackMedia && (
-                      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18, background: 'linear-gradient(180deg, #F5F6FB 0%, #FFFFFF 100%)' }}>
-                        <div style={{ position: 'relative', width: 112, height: 112, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <span className="bc-pulse" style={{ position: 'absolute', inset: -4, borderRadius: 26, background: 'rgba(135,156,247,0.26)' }} />
-                          <span className="bc-pulse bc-pulse2" style={{ position: 'absolute', inset: -4, borderRadius: 26, background: 'rgba(135,156,247,0.26)' }} />
-                          <img src={FALLBACK_ICON[fkSource][0]} alt="" draggable="false" style={{ position: 'relative', width: 112, height: 112, objectFit: 'contain', borderRadius: 22, background: '#ECEEF4', boxShadow: '0 8px 22px -10px rgba(16,24,64,0.30)' }} />
-                        </div>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: '#5B6FD8' }}>{FALLBACK_ICON[fkSource][1]}</span>
-                      </div>
-                    )}
-
-                    {/* Scan overlays (preview only) */}
-                    {showPreviewMedia && (
-                      <>
-                        <div className="bc-scanline">
-                          <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 2, transform: 'translateY(-1px)', background: 'linear-gradient(90deg, rgba(180,196,255,0) 0%, #C3D0FF 50%, rgba(180,196,255,0) 100%)', boxShadow: '0 0 14px 2px rgba(135,156,247,0.7)' }} />
-                        </div>
-                        <div style={{ position: 'absolute', inset: 10, pointerEvents: 'none' }}>
-                          <span style={{ position: 'absolute', top: 0, left: 0, width: 15, height: 15, borderTop: '2px solid rgba(195,208,255,0.85)', borderLeft: '2px solid rgba(195,208,255,0.85)', borderTopLeftRadius: 5 }} />
-                          <span style={{ position: 'absolute', top: 0, right: 0, width: 15, height: 15, borderTop: '2px solid rgba(195,208,255,0.85)', borderRight: '2px solid rgba(195,208,255,0.85)', borderTopRightRadius: 5 }} />
-                          <span style={{ position: 'absolute', bottom: 0, left: 0, width: 15, height: 15, borderBottom: '2px solid rgba(195,208,255,0.85)', borderLeft: '2px solid rgba(195,208,255,0.85)', borderBottomLeftRadius: 5 }} />
-                          <span style={{ position: 'absolute', bottom: 0, right: 0, width: 15, height: 15, borderBottom: '2px solid rgba(195,208,255,0.85)', borderRight: '2px solid rgba(195,208,255,0.85)', borderBottomRightRadius: 5 }} />
-                        </div>
-                        <div style={{ position: 'absolute', top: 11, left: 11, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 9px', borderRadius: 999, background: 'rgba(14,20,48,0.72)', border: '1px solid rgba(255,255,255,0.14)' }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#879CF7' }} />
-                          <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>Scanning</span>
-                        </div>
-                      </>
-                    )}
-
-                    {reviewReady && (
-                      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 9, padding: 22, textAlign: 'center', background: '#FFFFFF' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 48, height: 48, borderRadius: '50%', background: '#E9F8EE', color: '#2FA463' }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg></span>
-                        <span style={{ fontSize: 15, fontWeight: 700, color: '#001364' }}>Review complete</span>
-                        <span style={{ fontSize: 12, lineHeight: 1.45, color: '#64708C' }}>{notifMsg || 'Your video has been analysed.'}</span>
-                      </div>
-                    )}
-
-                    {timedOut && (
-                      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 9, padding: 22, textAlign: 'center', background: '#FFFFFF' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 48, height: 48, borderRadius: '50%', background: '#EEF1FE', color: '#879CF7' }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg></span>
-                        <span style={{ fontSize: 15, fontWeight: 700, color: '#001364' }}>Still processing</span>
-                        <span style={{ fontSize: 12, lineHeight: 1.45, color: '#64708C' }}>We'll email you when it's ready.</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {scanning && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 500, color: '#3C4767' }}>{STATUS_LINES[scanIdx % STATUS_LINES.length]}</span>
-                      <div style={{ display: 'flex', gap: 7 }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: '#E9F8EE', color: '#2FA463', fontSize: 11, fontWeight: 500 }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>Fetched</span>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: '#F3F5FB', color: '#5B6FD8', fontSize: 11, fontWeight: 500 }}><span className="bc-spin" style={{ width: 11, height: 11, border: '2px solid #C7CFE6', borderTopColor: '#879CF7', borderRadius: '50%' }} />Analysing</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {reviewReady && (
-                    <a href="/videos" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 38, padding: '0 16px', borderRadius: 10, background: '#879CF7', color: '#fff', fontSize: 13.5, fontWeight: 600, textDecoration: 'none' }}>View my results<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 14 0" /><path d="m13 6 6 6-6 6" /></svg></a>
-                  )}
-                  {timedOut && (
-                    <a href="/videos" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 38, padding: '0 16px', borderRadius: 10, background: '#879CF7', color: '#fff', fontSize: 13.5, fontWeight: 600, textDecoration: 'none' }}>Go to dashboard<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 14 0" /><path d="m13 6 6 6-6 6" /></svg></a>
-                  )}
-                </div>
-              )}
-
-              {/* Typing */}
-              {typing && (
-                <div className="bc-enter" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 8 }}>
-                  <img src={LEE_AVATAR} alt="Lee" style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0 }} />
-                  <div style={{ display: 'flex', gap: 5, padding: '13px 15px', borderRadius: 12, borderTopLeftRadius: 4, background: '#FFFFFF', border: '1px solid #E6EAF5' }}>
-                    <span className="bc-bounce" style={{ width: 6, height: 6, borderRadius: '50%', background: '#879CF7' }} />
-                    <span className="bc-bounce" style={{ width: 6, height: 6, borderRadius: '50%', background: '#879CF7', animationDelay: '0.2s' }} />
-                    <span className="bc-bounce" style={{ width: 6, height: 6, borderRadius: '50%', background: '#879CF7', animationDelay: '0.4s' }} />
-                  </div>
-                </div>
-              )}
-
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+            </>
+          ) : null}
+        </div>
       )}
-    </>
-  );
-}
 
-// ─── Module-scope pieces (stable identity, no remount) ───
-function LeeBubble({ children }) {
-  return (
-    <div className="bc-enter" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 14 }}>
-      <img src={LEE_AVATAR} alt="Lee" style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0 }} />
-      <div style={{ padding: '11px 15px', borderRadius: 12, borderTopLeftRadius: 4, background: '#FFFFFF', border: '1px solid #E6EAF5', maxWidth: '82%' }}>
-        <p style={{ margin: 0, fontSize: 14, fontWeight: 400, lineHeight: 1.5, color: '#001364' }}>{children}</p>
-      </div>
+      {page === "input" && !STEPPER && (
+        <div className="bl-card">
+          <div className="bl-head">
+            <div>
+              <h2>{title}</h2>
+              <p>{blurb}</p>
+            </div>
+          </div>
+
+          {gate.code === "loading" ? (
+            <div className="bl-loading"><div className="bl-bar"><b /></div><span>{isCreator ? "Loading the brief" : "Loading your workspace"}</span></div>
+          ) : null}
+
+          {!gate.ok && gate.code !== "loading" ? (
+            <div className="bl-gate">
+              <b>{gateTitle}</b>
+              <span>{gate.text}</span>
+              {!isCreator && gate.code === "noAccount" ? <a className="bl-btn bl-primary" href="/set-up">Create your account</a> : null}
+              {!isCreator && (gate.code === "noCredits" || gate.code === "inactive") ? <a className="bl-btn bl-primary" href="/settings#tab2">See your plan</a> : null}
+            </div>
+          ) : null}
+
+          {gate.ok ? (
+            <>
+              {context !== "workspace" ? (
+                <div className="bl-strip">
+                  {workspaceName ? <span>Brand <b>{workspaceName}</b></span> : null}
+                  {brief ? <span>Brief <b>{unwrap(brief.name) || "Untitled brief"}</b></span> : null}
+                  {previous ? <span>Revision <b>{revisionNo}</b> of <b>{previous.parentName}</b></span> : null}
+                </div>
+              ) : null}
+              {previous && previous.request ? <div className="bl-quote">{previous.request}</div> : null}
+
+              {context === "workspace" ? (
+                <div className="bl-grid">
+                  {myAccounts.length > 1 ? (
+                    <label className="bl-field">
+                      <span>Workspace</span>
+                      <select value={workspaceId} onChange={(e) => { setWorkspaceId(e.target.value); setBriefId(""); }}>
+                        {myAccounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      </select>
+                    </label>
+                  ) : null}
+                  <label className="bl-field">
+                    <span>Brief <i>optional</i></span>
+                    <select value={briefId} onChange={(e) => setBriefId(e.target.value)}>
+                      <option value="">No brief, review against the brand</option>
+                      {briefs.map((b) => <option key={b.id} value={b.id}>{unwrap(b.f.name) || "Untitled brief"}{unwrap(b.f.status) && unwrap(b.f.status) !== "Active" ? ` (${unwrap(b.f.status)})` : ""}</option>)}
+                    </select>
+                  </label>
+                </div>
+              ) : null}
+
+              <div className="bl-tabs" role="tablist">
+                <button type="button" role="tab" aria-selected={tab === "url"} onClick={() => { setTab("url"); setError(""); }}><Link2 size={14} />{multi ? "Paste links" : "Paste a link"}</button>
+                <button type="button" role="tab" aria-selected={tab === "file"} onClick={() => { setTab("file"); setError(""); }}><Upload size={14} />{multi ? "Upload files" : "Upload a file"}</button>
+              </div>
+
+              {tab === "url" ? (
+                multi ? (
+                  <label className="bl-field">
+                    <span>Video links <i>one per line, up to {MAX_BULK}</i></span>
+                    <textarea rows={4} value={urls} onChange={(e) => setUrls(e.target.value)} placeholder={"https://www.tiktok.com/@creator/video/...\nhttps://www.instagram.com/reel/..."} />
+                  </label>
+                ) : (
+                  <label className="bl-field">
+                    <span>Video link</span>
+                    <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.tiktok.com/@creator/video/..." onKeyDown={(e) => { if (e.key === "Enter") handleStart(); }} />
+                  </label>
+                )
+              ) : (
+                <label className="bl-drop" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const list = Array.from(e.dataTransfer?.files || []); if (!list.length) return; if (multi) setFiles(list.slice(0, MAX_BULK)); else setFile(list[0]); }}>
+                  <Upload size={18} />
+                  <b>{multi ? (files.length ? `${files.length} file${files.length === 1 ? "" : "s"} chosen` : "Drop the videos here, or click to choose") : (file ? file.name : "Drop the video here, or click to choose")}</b>
+                  <span>MP4 or MOV, up to {MAX_FILE_MB}MB{multi ? ` each, up to ${MAX_BULK} at a time` : ""}</span>
+                  {multi && files.length ? <div className="bl-files">{files.map((f) => <span key={f.name + f.size}>{f.name}</span>)}</div> : null}
+                  <input type="file" accept="video/mp4,video/quicktime" multiple={!!multi} hidden onChange={(e) => { const list = Array.from(e.target.files || []); if (multi) setFiles(list.slice(0, MAX_BULK)); else setFile(list[0] || null); }} />
+                </label>
+              )}
+
+              <div className="bl-grid">
+                <label className="bl-field"><span>{isCreator ? "Your name" : "Creator name"}{isCreator ? null : <i>optional</i>}</span><input value={creatorName} onChange={(e) => setCreatorName(e.target.value)} placeholder={isCreator ? "So the brand knows who sent it" : "Who made it"} /></label>
+                <label className="bl-field"><span>{isCreator ? "Your email" : "Creator email"}{isCreator ? null : <i>optional</i>}</span><input type="email" value={creatorEmail} onChange={(e) => setCreatorEmail(e.target.value)} placeholder={isCreator ? "Where the result goes" : "So they get the result"} /></label>
+              </div>
+              <label className="bl-field"><span>{context === "submission" ? "What changed in this cut" : "Notes for the Review Agents"} <i>optional</i></span><textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={context === "submission" ? "Tell the Review Agents what you changed since the last review" : "Anything the Review Agents should know about this video"} /></label>
+
+              {error ? <p className="bl-error" role="alert">{error}</p> : null}
+
+              <div className="bl-actions">
+                <span className="bl-meta">{isCreator ? `${workspaceName || "The brand"} · ${aiModeLabel === "Autonomous" ? "your result comes straight to you" : "the brand confirms the result"}` : `${creditsLeft} video${creditsLeft === 1 ? "" : "s"} left this cycle · ${aiModeLabel} mode`}</span>
+                <button type="button" className="bl-btn bl-primary" onClick={handleStart}>{ctaLabel}<ArrowRight size={14} /></button>
+              </div>
+            </>
+          ) : null}
+        </div>
+      )}
+
+      {page === "processing" && !multi && (
+        <div className="bl-card bl-proc">
+          {procSrc ? <div className="bl-scan"><video src={procSrc} muted autoPlay loop playsInline onError={() => setProcSrc("")} /><i /></div> : <img src={EYES} alt="" className="bl-eyes-lg" draggable={false} />}
+          <h2>Review Agents watching</h2>
+          <p className="bl-stage">{stage}</p>
+          <div className="bl-bar"><b /></div>
+          <p className="bl-meta">{elapsed}s · usually under 2 minutes. Keep this tab open.</p>
+        </div>
+      )}
+
+      {(page === "processing" || page === "done") && multi && (
+        <div className="bl-card bl-proc">
+          <img src={EYES} alt="" className="bl-eyes-lg" draggable={false} />
+          <h2>{page === "done" ? (batch.some((r) => r.status === "done") ? "Reviews finished" : "The reviews didn't complete") : "Review Agents watching"}</h2>
+          <p className="bl-meta">{page === "done" ? `${batch.filter((r) => r.status === "done").length} of ${batch.length} reviewed` : `${batch.filter((r) => r.status === "done").length} of ${batch.length} done · ${elapsed}s · two at a time. Keep this tab open.`}</p>
+          {page === "processing" ? <div className="bl-bar"><b /></div> : null}
+          <div className="bl-list">
+            {batch.map((r) => (
+              <div className="bl-row" key={r.key}>
+                <span className="bl-name" title={r.label}>{r.label}</span>
+                {r.status === "queued" ? <span className="bl-chip">Queued</span> : null}
+                {r.status === "running" ? <span className="bl-chip bl-run">{r.stage || "Working"}</span> : null}
+                {r.status === "done" ? <a className="bl-chip bl-ok" target="_top" href={detailHref(r.subId)}>{r.decision === "APPROVED" ? "Approved" : r.decision === "REJECTED" ? "Rejected" : "Flagged"} · open</a> : null}
+                {r.status === "failed" ? <span className="bl-chip bl-bad">Didn't complete</span> : null}
+                {r.status === "failed" && r.error ? <span className="bl-err">{r.error} No video was used.</span> : null}
+              </div>
+            ))}
+          </div>
+          {page === "done" ? (
+            <div className="bl-actions bl-center">
+              <button type="button" className="bl-btn bl-neutral" onClick={reset}><RotateCcw size={14} />Review more</button>
+              {!isCreator ? <a className="bl-btn bl-primary" href="/videos">See all videos<ArrowRight size={14} /></a> : null}
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {page === "done" && !multi && result && (
+        <div className="bl-card bl-proc">
+          <span className="bl-tick"><Check size={20} /></span>
+          <h2>{STEPPER && kind === "analyse" ? "Breakdown ready" : STEPPER && kind === "remix" ? "Remix ready" : result.decision === "APPROVED" ? "Approved" : result.decision === "REJECTED" ? "Rejected" : "Flagged for review"}</h2>
+          <p className="bl-stage">{result.title} · {result.checks} checks · {result.failed.length} flagged</p>
+          <a className="bl-btn bl-primary" target="_top" href={detailHref(result.subId)}>{isCreator ? "See your result" : STEPPER && kind === "analyse" ? "Open the breakdown" : STEPPER && kind === "remix" ? "Open the remix" : "Open the review"}<ArrowRight size={14} /></a>
+        </div>
+      )}
+
+      {page === "failure" && (
+        <div className="bl-card bl-proc">
+          <span className="bl-tick bl-fail"><X size={20} /></span>
+          <h2>The review didn't complete</h2>
+          <p className="bl-stage">No video was used and nothing was added to your library. {failReason ? <em>{failReason}</em> : null}</p>
+          <div className="bl-actions bl-center">
+            <button type="button" className="bl-btn bl-neutral" onClick={reset}><RotateCcw size={14} />Start again</button>
+            <button type="button" className="bl-btn bl-primary" onClick={() => { setPage("input"); setTimeout(handleStart, 50); }}>Retry</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function Style() {
-  return (
-    <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-      @keyframes bcSpin { to { transform: rotate(360deg); } }
-      @keyframes bcBounce { 0%,80%,100% { transform: translateY(0); opacity: 0.5; } 40% { transform: translateY(-5px); opacity: 1; } }
-      @keyframes bcFadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-      .bc-ringwrap { position: relative; display: inline-flex; align-items: center; }
-      .bc-ring { display: inline-grid; place-items: center; width: 30px; height: 30px; background: transparent; border: 0; padding: 0; cursor: pointer; border-radius: 8px; }
-      .bc-ring:hover { background: #F3F5FB; }
-      .bc-ring svg { transform: rotate(-90deg); display: block; }
-      .bc-ring-track { fill: none; stroke: rgba(0,19,100,0.1); stroke-width: 3.5; }
-      .bc-ring-bar { fill: none; stroke: #879CF7; stroke-width: 3.5; stroke-linecap: round; transition: stroke-dasharray 0.3s ease; }
-      .bc-pop { position: absolute; right: 0; bottom: calc(100% + 8px); width: 250px; background: #fff; border: 1px solid #E6EAF5; border-radius: 11px; box-shadow: 0 12px 32px -14px rgba(16,24,64,0.35); padding: 12px; display: flex; flex-direction: column; gap: 8px; z-index: 20; text-align: left; }
-      .bc-pop-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: #64708C; }
-      .bc-pop-row b { color: #001364; font-weight: 600; white-space: nowrap; }
-      .bc-pop-bar { height: 5px; border-radius: 99px; background: #F3F5FB; overflow: hidden; }
-      .bc-pop-bar i { display: block; height: 100%; background: #879CF7; border-radius: 99px; transition: width 0.3s ease; }
-      .bc-ring-bar.is-warn { stroke: #E8A13A; }
-      .bc-ring-bar.is-low { stroke: #E5484D; }
-      .bc-pop-bar i.is-warn { background: #E8A13A; }
-      .bc-pop-bar i.is-low { background: #E5484D; }
-      .bc-pop-link { font-size: 12px; font-weight: 600; color: #3C4767; text-decoration: none; margin-top: 2px; }
-      .bc-pop-link:hover { color: #001364; }
-      @keyframes bcScan { from { top: 7%; } to { top: 93%; } }
-      @keyframes bcPulse { 0% { transform: scale(0.7); opacity: 0.55; } 70% { transform: scale(1.5); opacity: 0; } 100% { opacity: 0; } }
-      .bc-enter { animation: bcFadeUp 0.45s cubic-bezier(0.32,0.72,0,1) both; }
-      .bc-shell { transition: padding-top 0.45s cubic-bezier(0.32,0.72,0,1); }
-      @media (max-width: 640px) { .bc-shell.is-home { padding-top: clamp(24px, 6vh, 56px) !important; } }
-      .bc-spin { animation: bcSpin 0.8s linear infinite; }
-      .bc-bounce { animation: bcBounce 1.4s infinite; }
-      .bc-pulse { animation: bcPulse 2.2s ease-out infinite; }
-      .bc-pulse2 { animation-delay: 1.1s; }
-      .bc-scanline { position: absolute; left: 0; right: 0; height: 54px; margin-top: -27px; background: linear-gradient(180deg, rgba(135,156,247,0) 0%, rgba(135,156,247,0.30) 48%, rgba(135,156,247,0.30) 52%, rgba(135,156,247,0) 100%); animation: bcScan 2.4s ease-in-out infinite alternate; pointer-events: none; }
-      .bc-scrollbar::-webkit-scrollbar { width: 8px; }
-      .bc-scrollbar::-webkit-scrollbar-track { background: transparent; }
-      .bc-scrollbar::-webkit-scrollbar-thumb { background: #DDE3F2; border-radius: 8px; }
-      .bc-noscroll::-webkit-scrollbar { display: none; }
-      .bc-noscroll { scrollbar-width: none; }
-      textarea::placeholder, input::placeholder { color: #97A0BA; }
-      .bc-round { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; border: 1px solid #E6EAF5; background: #fff; color: #64708C; cursor: pointer; }
-      .bc-round:hover { background: #F5F7FF; color: #001364; }
-      .bc-pill { flex: 0 0 auto; white-space: nowrap; height: 32px; padding: 0 13px; border-radius: 9px; border: 1px solid #E6EAF5; background: #fff; color: #3C4767; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
-      .bc-pill:hover { background: #F5F7FF; border-color: #D8DEF0; color: #001364; }
-      .bc-tool { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px 0 10px; border-radius: 9px; border: 1px solid #E6EAF5; background: #fff; color: #3C4767; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; }
-      .bc-tool:hover { background: #F5F7FF; color: #001364; }
-      .bc-mode { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 10px; border-radius: 9px; border: 1px solid #E6EAF5; background: #fff; color: #001364; font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
-      .bc-mode:hover { background: #F5F7FF; }
-      .bc-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: none; border-radius: 8px; background: transparent; color: #001364; font-family: inherit; font-size: 13px; font-weight: 500; text-align: left; cursor: pointer; }
-      .bc-menu-item:hover { background: #F5F7FF; }
-      .bc-group-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px; border: none; background: transparent; font-family: inherit; cursor: pointer; text-align: left; }
-      .bc-group-head:hover { background: #FAFBFF; }
-    `}</style>
-  );
-}
+// ─── Styles (app family: #FAFBFF card, Inter, calm surfaces) ──
+const CSS = `
+.bl-va{--navy:#001364;--label:#334283;--peri:#879CF7;--peri2:#6C7CC5;--peri3:#515D94;--fill:rgba(0,0,0,0.05);--muted:#6B7280;--fail:#c8443c;--pass:#2daa63;font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--navy);width:100%;max-width:720px;margin:0 auto;padding:16px 16px 28px;box-sizing:border-box}
+.bl-va *{box-sizing:border-box}
+.bl-va.bl-mid{min-height:calc(100vh - 140px);display:flex;flex-direction:column;justify-content:center}
+.bl-va h2{margin:0;font-size:18px;font-weight:600;color:var(--navy);letter-spacing:-.01em}
+.bl-va p{margin:0}
+.bl-card{background:#FAFBFF;border-radius:14px;padding:22px;box-shadow:0 10px 30px -22px rgba(0,19,100,.35);display:flex;flex-direction:column;gap:14px}
+.bl-head{display:flex;gap:14px;align-items:flex-start}
+.bl-head p{font-size:13px;color:var(--muted);line-height:1.5;margin-top:4px}
+.bl-eyes{width:52px;height:52px;flex:none}
+.bl-eyes-lg{width:96px;height:96px;margin:0 auto}
+.bl-gate{background:#fff;border:1px solid rgba(0,0,0,.06);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.bl-gate b{font-size:14px;font-weight:600}
+.bl-gate span{font-size:13px;color:var(--muted);line-height:1.5}
+.bl-grid{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:620px){.bl-grid{grid-template-columns:1fr 1fr}}
+.bl-field{display:flex;flex-direction:column;gap:6px}
+.bl-field>span{font-size:12px;font-weight:500;color:var(--label)}
+.bl-field>span i{font-style:normal;font-weight:400;color:var(--muted);margin-left:4px}
+.bl-field input,.bl-field select,.bl-field textarea{font:inherit;font-size:13px;color:var(--navy);background:var(--fill);border:0;border-radius:8px;padding:9px 11px;outline:none;width:100%}
+.bl-field textarea{resize:vertical;min-height:44px}
+.bl-field input:focus,.bl-field select:focus,.bl-field textarea:focus{box-shadow:0 0 0 2px rgba(0,19,100,.16)}
+.bl-tabs{display:inline-flex;gap:2px;padding:3px;background:var(--fill);border-radius:999px;align-self:flex-start}
+.bl-tabs button{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;font:inherit;font-size:12px;font-weight:600;color:var(--label);padding:6px 12px;border-radius:999px;cursor:pointer}
+.bl-tabs button[aria-selected="true"]{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(0,19,100,.12)}
+.bl-drop{border:0;border-radius:8px;background:var(--fill);padding:18px 14px;text-align:center;display:flex;flex-direction:column;gap:4px;align-items:center;cursor:pointer;color:var(--label)}
+.bl-drop:hover{background:rgba(0,0,0,.07)}
+.bl-drop b{font-size:13px;font-weight:600;color:var(--navy)}
+.bl-drop span{font-size:12px;color:var(--muted)}
+.bl-error{font-size:12.5px;color:var(--fail)}
+.bl-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.bl-actions.bl-center{justify-content:center}
+.bl-meta{font-size:12px;color:var(--muted)}
+.bl-handed{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.bl-handed video{width:40px;height:56px;object-fit:cover;border-radius:8px;background:var(--fill);flex:none}
+.bl-handed div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.bl-handed b{font-size:13px;font-weight:600;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bl-handed span{font-size:12px;color:var(--muted)}
+.bl-btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;height:32px;padding:6px 12px;border-radius:8px;font:inherit;font-size:13px;line-height:20px;font-weight:600;cursor:pointer;text-decoration:none;transition:background .15s ease-in-out;border:0}
+.bl-btn.bl-primary{background:var(--peri);color:#fff}
+.bl-btn.bl-primary:hover{background:var(--peri2)}
+.bl-btn.bl-primary:active{background:var(--peri3)}
+.bl-btn.bl-neutral{background:#fff;color:var(--navy);border:1px solid rgba(0,0,0,.1)}
+.bl-btn.bl-neutral:hover{background:#F2F2F2}
+.bl-proc{align-items:center;text-align:center;padding:32px 22px}
+.bl-stage{font-size:13.5px;font-weight:600;color:var(--label)}
+.bl-stage em{display:block;font-style:normal;font-weight:400;color:var(--muted);margin-top:6px;font-size:12.5px}
+.bl-bar{width:100%;max-width:280px;height:6px;border-radius:99px;background:var(--fill);overflow:hidden;position:relative}
+.bl-bar b{position:absolute;top:0;bottom:0;width:42%;border-radius:99px;background:var(--peri);animation:blSlide 1.9s cubic-bezier(.45,0,.55,1) infinite}
+@keyframes blSlide{0%{left:-45%}100%{left:100%}}
+.bl-scan{position:relative;width:150px;aspect-ratio:9/16;border-radius:12px;overflow:hidden;background:#d5dcf0}
+.bl-scan video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.bl-scan i{position:absolute;left:0;right:0;top:0;height:24%;background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.35) 55%,rgba(255,255,255,.65));border-bottom:2px solid rgba(255,255,255,.9);animation:blScan 3s ease-in-out infinite alternate}
+@keyframes blScan{0%{transform:translateY(-100%)}100%{transform:translateY(416%)}}
+.bl-tick{width:44px;height:44px;border-radius:50%;background:rgba(45,170,99,.12);color:var(--pass);display:grid;place-items:center}
+.bl-tick.bl-fail{background:rgba(200,68,60,.10);color:var(--fail)}
+.bl-strip{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--muted);background:#fff;border:1px solid rgba(0,0,0,.06);border-radius:10px;padding:10px 12px}
+.bl-strip b{color:var(--navy);font-weight:600}
+.bl-quote{font-size:13px;color:var(--navy);background:#fff;border:1px solid rgba(0,0,0,.06);border-radius:10px;padding:12px 14px;line-height:1.5;white-space:pre-wrap}
+.bl-list{display:flex;flex-direction:column;gap:8px;width:100%;text-align:left}
+.bl-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:#fff;border:1px solid rgba(0,0,0,.06);border-radius:10px;padding:10px 12px;font-size:13px}
+.bl-err{flex-basis:100%;font-size:12px;color:var(--fail);line-height:1.4}
+.bl-loading{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--muted)}
+.bl-loading .bl-bar{max-width:140px}
+.bl-loading .bl-bar b{background:rgba(0,19,100,.22)}
+.bl-row .bl-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--navy)}
+.bl-chip{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--fill);color:var(--label);text-decoration:none;white-space:nowrap}
+.bl-chip.bl-run{background:var(--fill);color:var(--navy)}
+.bl-chip.bl-ok{background:rgba(45,170,99,.12);color:var(--pass)}
+.bl-chip.bl-bad{background:rgba(200,68,60,.10);color:var(--fail)}
+.bl-files{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted);margin-top:4px}
+.bl-step{display:flex;flex-direction:column;gap:12px}
+.bl-stepno{font-size:12px;font-weight:500;color:var(--muted)}
+.bl-foot{display:inline-flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap}
+.bl-btn:disabled{opacity:.45;cursor:not-allowed}
+.bl-picks{display:flex;flex-wrap:wrap;gap:6px}
+.bl-check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer}
+.bl-upgrade{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:20px 12px 8px}
+.bl-upgrade img{width:64px;height:64px;border-radius:14px;object-fit:cover}
+.bl-upgrade h2{font-size:22px;font-weight:600;letter-spacing:-.01em}
+.bl-upgrade p{font-size:13.5px;color:var(--muted);max-width:420px;line-height:1.5}
+.bl-ringwrap{position:relative;display:inline-flex;align-items:center;margin-left:4px}
+.bl-ring{display:inline-grid;place-items:center;width:28px;height:28px;background:transparent;border:0;padding:0;cursor:pointer;border-radius:8px}
+.bl-ring:hover{background:var(--fill)}
+.bl-ring svg{transform:rotate(-90deg);display:block}
+.bl-ring-track{fill:none;stroke:rgba(0,19,100,.1);stroke-width:3.5}
+.bl-ring-bar{fill:none;stroke:var(--peri);stroke-width:3.5;stroke-linecap:round;transition:stroke-dasharray .3s ease}
+.bl-pop{position:absolute;right:0;bottom:calc(100% + 8px);width:250px;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:10px;box-shadow:0 10px 30px -18px rgba(0,19,100,.35);padding:12px;display:flex;flex-direction:column;gap:8px;z-index:5;text-align:left}
+.bl-pop-row{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted)}
+.bl-pop-row b{color:var(--navy);font-weight:600;white-space:nowrap}
+.bl-pop-bar{height:5px;border-radius:99px;background:var(--fill);overflow:hidden}
+.bl-pop-bar i{display:block;height:100%;background:var(--peri);border-radius:99px}
+.bl-pop-link{font-size:12px;font-weight:600;color:var(--label);text-decoration:none;margin-top:2px}
+.bl-pop-link:hover{color:var(--navy)}
+.bl-check input{accent-color:var(--peri);width:15px;height:15px;margin:0}
+button.bl-chip{border:0;font:inherit;font-size:11px;font-weight:600;cursor:pointer;line-height:18px}
+button.bl-chip[aria-pressed="true"]{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(0,19,100,.12)}
+@media (prefers-reduced-motion:reduce){.bl-bar b,.bl-scan i{animation:none}}
+`;

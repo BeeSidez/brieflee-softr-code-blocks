@@ -1,170 +1,578 @@
-// =====================================================================
-// /new · Dashboard chat v2 (lee-chat) — implements "Dashboard Chat Upgrade.dc.html"
-// =====================================================================
-// Two stages: COMPOSE (notes-first prompt box with starter pills, attach
-// menu, run-mode dropdown) then CHAT (user message, Lee confirm, grouped
-// Review Agents picker, then the scan frame with real preview + polling).
-//
-// v3 (4 September 2026): the review runs INSIDE this block. Same screens,
-// same beats, same clicks as v2; the only change is what happens after
-// "Run agents": instead of creating a submission and polling for n8n, the
-// engine below (the same code as /review) gets the video, Cloudinary,
-// Gemini with the picked Review Agents and the workspace thresholds, then
-// writes the review, the submission, the report rows, the notifications and
-// the emails. The scan frame stays up until it finishes, then the ready
-// card appears. The plan and credit check reads the user's row directly.
-//
-// Data model (create-on-submit, matches app/submit-single-video + the
-// working create restructure):
-//   • notes            → submission_notes
-//   • link             → video_url        (TikTok / Instagram)
-//   • file             → video_file        (uploaded via useUpload)
-//   • run mode         → submission_type   (Review / Remix / Analyse)
-//   • review agents    → qa_checklist      (label → option UUID)
-//   • workspace        → accounts          (?workspace= or the user's account)
-//   • user             → users
-//
-// The real submission is CREATED when the user runs the agents. A thin
-// early record is created on Send ONLY to run the plan/credit check; it is
-// left un-"proceed" so the 20-min cleanup removes it.
-//
-// SOFTR: Source tab → submissions; add the USERS table as a source so the
-// workspace read resolves. Read the URL workspace param in a useState lazy
-// initialiser only (analyzer requirement with useRecordCreate).
-// =====================================================================
+import { useState, useRef, useEffect, useMemo } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+import { datasource, useRecordCreate, useRecords, useRecord, useUpload, useProxyFetch, q } from "@/lib/datasource";
+import { useCurrentUser } from "@/lib/user";
+import { ChevronRight, AlertCircle, Check, X, DownloadCloud, Video, ChevronDown, ChevronUp, FileText, Building2, Loader2, Search, Paperclip, ClipboardList } from "lucide-react";
 
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { useRecordCreate, useRecord, useUpload, useProxyFetch, q, datasource } from '@/lib/datasource';
-import { useTextSetting, useBooleanSetting } from '@/lib/editable-settings';
-
-// Every hook names its source. The five Softr tables and the three services
-// are connected on this block's Source tab; the ids below are their connection ids.
+// =====================================================================
+// Bulk upload v2 (4 September 2026): the same five steps and the same
+// review table as before; the difference is what "Submit" does. It used
+// to create a submission row and wait for n8n. It now runs the review
+// engine (the same code as /review) here in the block for each video,
+// one after the other: Cloudinary, Gemini with that video's Review Agents
+// and the workspace thresholds, then the review, the submission, the
+// report rows, the notifications and the emails. Review only: Content
+// Review, or Brief when a brief is picked.
+// Every hook names its source; the ids are this block's connection ids.
+// =====================================================================
 const ds = datasource.define({
-  submissions:   '8f2aa89b-b08e-46c2-acbb-eb325cc99bfb',
-  reviews:       '9d326bdc-e5c1-4b98-b250-90552c4d903f',
-  report:        '5cfa9868-7213-4db6-aca1-a68edf5a2477',
-  users:         'users',
-  accounts:      'accounts',
-  notifications: 'notifications',
-  emailit:       'b9510e33-51ce-4bf6-aaf1-25a975a24cae',
-  google:        '69e7708a-6d34-44df-bdd3-93f211f40694',
-  rapid:         'd8b15bba-7a47-40be-bc4b-96891d745600',
-});
-import { useCurrentUser } from '@/lib/user';
-import { toast } from 'sonner';
-
-// ─── Field maps ──────────────────────────────────────────────────────
-
-// Validation + polling lookups on the submission record.
-
-// users.accounts — resolves the active workspace when ?workspace= is unset.
-// Also carries the entitlement gate fields, read straight off the logged-in
-// user record:
-// — payment_status is the billing chain (users → billing.payment_status);
-//   any linked billing row at paid or trial passes.
-// — user_status must be Active or Pending (cancellation flips users to Inactive).
-// — is_internal bypasses the gate for staff + test users.
-const userAccountsSelect = q.select({
-  accounts: 'Nz6VX',
-  videos_remaining: '3kzMt',
-  payment_status: 'VKE2w',
-  org_status: 'SQuxf', // the workspace's plan status, shared by everyone on it
-  user_status: 'kClk9',
-  is_internal: 'gdFt4',
+  submissions:   "0234021d-fdc1-45ea-a9e5-18a70532a2ef",
+  accounts:      "22a5e0ff-ea78-464a-9161-f9c8d5235dde",
+  briefs:        "briefs",
+  reviews:       "reviews",
+  report:        "report",
+  users:         "users",
+  notifications: "notifications",
+  emailit:       "e0356811-ccfc-489d-b325-3c029b7659da",
+  google:        "a934af4b-5072-4f40-a3c6-b081d202fd7c",
 });
 
-
-// platform_name choice UUIDs — drives the loading_code formula on the
-// submissions table so the videos page shows the matching analysing card.
-
-const LEE_AVATAR = 'https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png';
-const AGENT_ICON = 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png';
-
-// Agent groups — label, description, and the submissions qa_checklist UUID.
-const AGENT_GROUPS = [
-  {
-    key: 'compliance', title: 'Compliance & safety',
-    icon: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_padlock-sticker-blue-transparent_2026-05.png', agents: [
-      { id: '82baef6f-fd83-4eac-a159-1298fd71eb07', label: 'Copyright check', desc: 'Flags music, fonts, or clips that could break copyright.' },
-      { id: '5410f4ee-20f3-4356-8180-f73b1ae859df', label: 'Safe zones', desc: 'Keeps key content inside platform safe zones.' },
-    ]
-  },
-  {
-    key: 'hook', title: 'Hook & attention',
-    icon: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_help-icon_troubleshoot-lightning-bolt-sticker-blue-transparent_2026-05.png', agents: [
-      { id: 'f8968115-bdab-4360-afe5-fc4d53b26df3', label: 'Hook quality', desc: 'First 3 seconds grab attention without feeling like an ad.' },
-      { id: '94e77b01-88ec-4f9f-b6fb-7ca5b5be7b13', label: 'Visual hook', desc: 'A visual moment strong enough to stop the scroll.' },
-      { id: '8c96bc97-ebde-44f3-b4ee-65640e6ba8f6', label: 'Scene pacing', desc: 'Scenes change often enough to hold attention.' },
-      { id: '719b3047-73f8-4958-8080-05485b6859bd', label: 'CTA present', desc: "There's a clear ask to the viewer." },
-      { id: '15dfd7e3-226d-4ac3-bd2e-4383857ee08c', label: 'Watchable on mute', desc: 'Still makes sense with the sound off.' },
-    ]
-  },
-  {
-    key: 'brand', title: 'Brand & brief',
-    icon: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_simple-lined-clipboard-with-pen-transparent_2026-05.png', agents: [
-      { id: '5e36d433-92b5-4ad7-9447-abcaa5401991', label: 'Follows the brief', desc: 'Matches what the brief asked for.' },
-      { id: 'a1d164a9-3972-45bb-a444-34bba3757621', label: 'Brand name mentioned', desc: 'Brand name is said the agreed number of times.' },
-      { id: '873be85d-9d67-4286-b7d7-49dc35c45baa', label: 'Brand alignment', desc: "Matches the brand's voice, look, and feel." },
-      { id: '40946cb6-2638-4c13-9aa2-3f66d1ab8d15', label: 'Product visibility', desc: 'Product shows clearly enough across the video.' },
-      { id: '3f1ff82b-1fae-4ec8-b727-8ab4337d3d22', label: 'Product usage', desc: 'Product is shown being used the right way.' },
-      { id: '58615cda-8673-4d3d-a3ce-7ef871e81991', label: 'Creator visibility', desc: 'Creator is on camera enough for the format.' },
-      { id: 'a135797b-d452-4f83-9b39-9a40481f1411', label: 'Inspiration link match', desc: 'Matches the inspiration examples in the brief.' },
-    ]
-  },
-  {
-    key: 'production', title: 'Production quality',
-    icon: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_help-icon_videos-camcorder-camera-icon-blue-transparent_2026-05.png', agents: [
-      { id: '8b51a26d-6b1c-4b37-8939-b7339eb7f595', label: 'Lighting & camera', desc: 'Bright enough, steady, and in focus.' },
-      { id: 'fe7f6d81-eda9-4c23-8650-43c9351b7334', label: 'Setting & background', desc: 'Background is tidy and on-brand.' },
-      { id: 'dcb604cb-132e-4928-bab7-1a5dbfd61258', label: 'Audio clarity', desc: 'Audio is clean, no noise, echo, or hum.' },
-      { id: '664e176a-ac4b-469a-b3fb-efa0abd5409c', label: 'Audio delivery', desc: 'Spoken script is clear, natural, on-brand.' },
-      { id: '314d167a-7456-425b-aa9e-0cab135f06be', label: 'Music & sound balance', desc: "Music doesn't drown out the voice." },
-      { id: 'eac26e3c-8601-4c2a-a038-39b694084caf', label: 'Pronunciation', desc: 'Brand and product names are said right.' },
-      { id: 'c7b897ff-b5f8-4d4f-aaa4-07849c4c0fa6', label: 'Text legibility', desc: 'On-screen text is big enough to read.' },
-      { id: 'c1d3605d-e91c-4509-aad0-b337ff3ed898', label: 'Closed captions', desc: 'Captions are accurate and easy to follow.' },
-      { id: '641e6d1f-a3cd-451c-bbb8-c8e44c6aaf51', label: 'Distracting elements', desc: 'Nothing pulls attention from the product.' },
-      { id: '8ab22af0-53f5-45a1-856e-1dcbbb048e19', label: 'Energy & authenticity', desc: 'Feels real and engaging, not scripted.' },
-      { id: 'e9320bd8-73ac-4e89-95a6-70a87a40b3e0', label: 'Wardrobe & appearance', desc: 'Outfit fits the brand and looks intentional.' },
-    ]
-  },
-  {
-    key: 'other', title: 'Other checks',
-    icon: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_blue-multiple-stars-transparent_2026-05.png', agents: [
-      { id: 'ea740500-ef29-4246-aa61-1e1264cce230', label: 'Video length', desc: 'Runs the right length for the format.' },
-    ]
-  },
+// QA option IDs for the SUBMISSIONS table
+const QA_OPTIONS = [
+  { id: "40946cb6-2638-4c13-9aa2-3f66d1ab8d15", label: "Product visibility" },
+  { id: "3f1ff82b-1fae-4ec8-b727-8ab4337d3d22", label: "Product usage" },
+  { id: "f8968115-bdab-4360-afe5-fc4d53b26df3", label: "Hook quality" },
+  { id: "94e77b01-88ec-4f9f-b6fb-7ca5b5be7b13", label: "Visual hook" },
+  { id: "dcb604cb-132e-4928-bab7-1a5dbfd61258", label: "Audio clarity" },
+  { id: "664e176a-ac4b-469a-b3fb-efa0abd5409c", label: "Audio delivery" },
+  { id: "eac26e3c-8601-4c2a-a038-39b694084caf", label: "Pronunciation" },
+  { id: "314d167a-7456-425b-aa9e-0cab135f06be", label: "Music & sound balance" },
+  { id: "5e36d433-92b5-4ad7-9447-abcaa5401991", label: "Follows the brief" },
+  { id: "a1d164a9-3972-45bb-a444-34bba3757621", label: "Brand name mentioned" },
+  { id: "8b51a26d-6b1c-4b37-8939-b7339eb7f595", label: "Lighting & camera" },
+  { id: "fe7f6d81-eda9-4c23-8650-43c9351b7334", label: "Setting & background" },
+  { id: "641e6d1f-a3cd-451c-bbb8-c8e44c6aaf51", label: "Distracting elements" },
+  { id: "c7b897ff-b5f8-4d4f-aaa4-07849c4c0fa6", label: "Text legibility" },
+  { id: "c1d3605d-e91c-4509-aad0-b337ff3ed898", label: "Closed captions" },
+  { id: "5410f4ee-20f3-4356-8180-f73b1ae859df", label: "Safe zones" },
+  { id: "8c96bc97-ebde-44f3-b4ee-65640e6ba8f6", label: "Scene pacing" },
+  { id: "ea740500-ef29-4246-aa61-1e1264cce230", label: "Video length" },
+  { id: "15dfd7e3-226d-4ac3-bd2e-4383857ee08c", label: "Watchable on mute" },
+  { id: "58615cda-8673-4d3d-a3ce-7ef871e81991", label: "Creator visibility" },
+  { id: "8ab22af0-53f5-45a1-856e-1dcbbb048e19", label: "Energy & authenticity" },
+  { id: "e9320bd8-73ac-4e89-95a6-70a87a40b3e0", label: "Wardrobe & appearance" },
+  { id: "719b3047-73f8-4958-8080-05485b6859bd", label: "CTA present" },
+  { id: "873be85d-9d67-4286-b7d7-49dc35c45baa", label: "Brand alignment" },
+  { id: "82baef6f-fd83-4eac-a159-1298fd71eb07", label: "Copyright check" },
+  { id: "a135797b-d452-4f83-9b39-9a40481f1411", label: "Inspiration link match" },
 ];
 
-const PILLS = [
-  { chip: "Something's off", mode: 'review', prompt: "Not sure about this one, something feels off and I can't place it. Want your read before I reply to the creator." },
-  { chip: 'Gut-check this', mode: 'review', prompt: 'I think this is strong, but I want a second pair of eyes before it goes live.' },
-  { chip: 'Creator loves it', mode: 'review', prompt: "The creator's convinced this is their best cut. Is it as good as they think, or are they too close to it?" },
-  { chip: 'Tell me straight', mode: 'review', prompt: "I keep going back and forth on this one. Just tell me straight if it's good enough." },
-  { chip: 'Want this energy', mode: 'remix', prompt: 'Love how this brand nailed the pacing, I want this same energy for my audience.' },
-  { chip: 'Steal this hook', mode: 'remix', prompt: 'This hook stopped me dead, I want my own version of it for my product.' },
-  { chip: 'Make it mine', mode: 'remix', prompt: "This is exactly the vibe I've been trying to explain to my creators. Help me make it mine." },
-  { chip: "Why'd this blow up?", mode: 'analyse', prompt: 'This blew up for a tiny brand and I want to understand why before I borrow it.' },
-  { chip: 'What makes it work?', mode: 'analyse', prompt: "Everyone's copying this format. I want to know what actually makes it work." },
-  { chip: "Shouldn't work, but does", mode: 'analyse', prompt: "This shouldn't work but it clearly does. What am I missing?" },
+
+// ACCOUNTS table: the workspaces the logged-in user belongs to
+const accountsSelect = q.select({
+  name: "aAKkT",
+});
+
+// BRIEFS table: scoped to the logged-in user on the Source tab
+const briefsSelect = q.select({
+  name: "z3lpx",
+  accounts: "EhzVx",
+  status: "71Oud",
+  contentType: "EO7S4",
+});
+
+const BRIEF_MODES = [
+  { id: "existing", label: "Pick a brief", hint: "From this workspace", icon: FileText },
+  { id: "paste", label: "Paste it in", hint: "Copy your brief text", icon: ClipboardList },
+  { id: "pdf", label: "Attach a PDF", hint: "Upload a document", icon: Paperclip },
+  { id: "none", label: "No brief", hint: "Go straight to review", icon: X },
 ];
 
-const MODE_OPTIONS = [
-  { value: 'review', label: 'Review', confirm: "Perfect. I'll review this against your brief and quality standards." },
-  { value: 'remix', label: 'Remix', confirm: "Love it. I'll break down what works and remix it for your brand." },
-  { value: 'analyse', label: 'Analyse', confirm: "On it. I'll analyse the hook, pacing, and what's driving this." },
-];
-
-const STATUS_LINES = [
-  'Analysing your video', 'Checking the hook', 'Looking at pacing',
-  'Checking audio quality', 'Scanning for the product', 'Reading on-screen text',
-  'Checking brand alignment', 'Almost done',
-];
-
-const FALLBACK_ICON = {
-  upload: ['https://res.cloudinary.com/dchroynzv/image/upload/v1778145999/brieflee_icon_upload-cloud-engraving-transparent_2026-05.png', 'Analysing your upload'],
-  tiktok: ['https://res.cloudinary.com/dchroynzv/image/upload/v1777622929/brieflee_engraving_tiktok-logo-3d-musical-note-icon-grey-engraved_2026-03.png', 'Analysing your TikTok'],
-  instagram: ['https://res.cloudinary.com/dchroynzv/image/upload/v1777622956/brieflee_engraving_instagram-logo-camera-icon-3d-grey-bg-third-party-mark_2026-03.png', 'Analysing your Instagram video'],
+const readText = (raw: any): string => {
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw)) return raw.map(readText).filter(Boolean).join(", ");
+  if (raw && typeof raw === "object") return raw.label ?? raw.value ?? raw.title ?? raw.name ?? "";
+  return raw == null ? "" : String(raw);
 };
+
+// Softr caps uploads from a published app at 128 MB
+const MAX_UPLOAD_MB = 128;
+const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+
+const UPLOAD_BAR_CSS = `@keyframes blUploadSlide { 0% { transform: translateX(-110%); } 100% { transform: translateX(320%); } }`;
+
+function StepIndicator({ step }) {
+  const steps = [
+    { num: 1, label: "Upload" },
+    { num: 2, label: "Workspace" },
+    { num: 3, label: "QA Checklist" },
+    { num: 4, label: "Brief" },
+    { num: 5, label: "Review" },
+  ];
+  return (
+    <div className="flex items-center justify-center gap-0 mb-8">
+      {steps.map((s, i) => (
+        <div key={s.num} className="flex items-center">
+          <div className="flex flex-col items-center">
+            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${step > s.num ? "bg-primary text-primary-foreground" : step === s.num ? "bg-primary text-primary-foreground ring-4 ring-primary/20" : "bg-muted text-muted-foreground"}`}>
+              {step > s.num ? <Check className="w-4 h-4" /> : s.num}
+            </div>
+            <span className={`text-xs mt-1 font-medium whitespace-nowrap ${step === s.num ? "text-primary" : "text-muted-foreground"}`}>{s.label}</span>
+          </div>
+          {i < steps.length - 1 && <div className={`w-10 h-0.5 mx-1 mb-4 transition-all ${step > s.num ? "bg-primary" : "bg-border"}`} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function UploadStep({ videos, onUpload, onRemove, onNext }) {
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef(null);
+  const uploadingCount = videos.filter((v) => v.status === "uploading").length;
+  const readyCount = videos.filter((v) => v.status === "completed").length;
+  return (
+    <div className="flex flex-col items-center justify-center">
+      <style>{UPLOAD_BAR_CSS}</style>
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); onUpload(e.dataTransfer.files); }}
+        onClick={() => inputRef.current?.click()}
+        className={`w-full max-w-lg border-2 border-dashed rounded-2xl p-12 flex flex-col items-center gap-4 cursor-pointer transition-all ${dragging ? "border-primary bg-primary/5 scale-[1.02]" : "border-border hover:border-primary/50 hover:bg-muted/40"}`}
+      >
+        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-all ${dragging ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+          <DownloadCloud className="w-8 h-8" />
+        </div>
+        <div className="text-center">
+          <p className="font-semibold text-foreground text-lg">Drop your video files here</p>
+          <p className="text-muted-foreground text-sm mt-1">or click to browse from your computer</p>
+        </div>
+        <Badge variant="secondary" className="text-xs">Video files only, up to {MAX_UPLOAD_MB} MB each</Badge>
+        <input ref={inputRef} type="file" accept="video/*" multiple className="hidden" onChange={(e) => { onUpload(e.target.files); e.target.value = ""; }} />
+      </div>
+      {videos.length > 0 && (
+        <div className="w-full max-w-lg mt-6 space-y-2">
+          <p className="text-sm font-semibold text-foreground">
+            {uploadingCount > 0 ? `${readyCount} of ${videos.length} ready` : `${readyCount} video${readyCount !== 1 ? "s" : ""} ready`}
+          </p>
+          {videos.map((v) => (
+            <div key={v.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${v.status === "error" ? "border-destructive/40 bg-destructive/5" : "bg-card"}`}>
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${v.status === "completed" ? "bg-primary/10 text-primary" : v.status === "error" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}`}>
+                {v.status === "completed" ? <Check className="w-4 h-4" /> : v.status === "error" ? <AlertCircle className="w-4 h-4" /> : <Video className="w-4 h-4" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium truncate">{v.file.name}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">{(v.file.size / 1024 / 1024).toFixed(1)} MB</span>
+                </div>
+                {v.status === "uploading" && (
+                  <>
+                    <div className="mt-1.5 h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{ width: Math.max(3, v.pct || 0) + "%", transition: "width 180ms linear" }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1 tabular-nums">Uploading {Math.round(v.pct || 0)}%</p>
+                  </>
+                )}
+                {v.status === "completed" && <p className="text-xs text-primary mt-0.5">Ready</p>}
+                {v.status === "error" && <p className="text-xs text-destructive mt-0.5">{v.error || "Upload failed"}</p>}
+              </div>
+              <button onClick={(e) => { e.stopPropagation(); onRemove(v.id); }} className="w-6 h-6 rounded-full bg-red-100 hover:bg-red-200 text-red-600 flex items-center justify-center transition-all shrink-0">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="w-full max-w-lg mt-6">
+        <Button onClick={onNext} disabled={readyCount === 0 || uploadingCount > 0} className="w-full">
+          {uploadingCount > 0 ? `Uploading ${uploadingCount} video${uploadingCount !== 1 ? "s" : ""}...` : "Continue"}
+          {uploadingCount === 0 && <ChevronRight className="w-4 h-4 ml-1" />}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceStep({ accounts, isLoading, selectedAccount, onSelect, onNext, onBack }) {
+  const single = accounts.length === 1 ? accounts[0] : null;
+  return (
+    <div className="w-full max-w-lg mx-auto space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-foreground">{single ? "Confirm Workspace" : "Select Workspace"}</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          {single ? "These videos will be added to your workspace." : "Choose which account these videos belong to."}
+        </p>
+      </div>
+
+      {isLoading && (
+        <div className="flex items-center gap-2 p-4 rounded-xl border bg-card text-sm text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+          Loading your workspaces...
+        </div>
+      )}
+
+      {!isLoading && single && (
+        <div className="flex items-center gap-3 p-4 rounded-xl border bg-card">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <Building2 className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-muted-foreground">Workspace</p>
+            <p className="font-semibold text-foreground truncate">{single.title}</p>
+          </div>
+          <Check className="w-5 h-5 text-primary ml-auto shrink-0" />
+        </div>
+      )}
+
+      {!isLoading && accounts.length > 1 && (
+        <Select value={selectedAccount || ""} onValueChange={onSelect}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Choose an account..." />
+          </SelectTrigger>
+          <SelectContent>
+            {accounts.map((acc) => (
+              <SelectItem key={acc.id} value={acc.id}>{acc.title}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+
+      {!isLoading && accounts.length === 0 && (
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+          <AlertCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+          <div className="text-sm text-destructive">No accounts found for your user. Contact your admin.</div>
+        </div>
+      )}
+
+      <div className="flex justify-between">
+        <Button variant="outline" onClick={onBack}>Back</Button>
+        <Button onClick={onNext} disabled={!selectedAccount}>
+          {single ? "Confirm" : "Continue"} <ChevronRight className="w-4 h-4 ml-1" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function QAChecklistStep({ selected, onToggle, onSelectAll, onDeselectAll, onNext, onBack }) {
+  const allSelected = selected.length === QA_OPTIONS.length;
+  return (
+    <div className="w-full max-w-2xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-foreground">QA Checklist</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">Select what you'd like us to check on each video.</p>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-bold text-primary">{selected.length}</div>
+          <div className="text-xs text-muted-foreground">Selected</div>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" onClick={onSelectAll} disabled={allSelected}>Select All</Button>
+        <Button variant="outline" size="sm" onClick={onDeselectAll} disabled={selected.length === 0}>Deselect All</Button>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-72 overflow-y-auto p-3 border rounded-xl">
+        {QA_OPTIONS.map((opt) => {
+          const isChecked = selected.includes(opt.id);
+          return (
+            <div key={opt.id} className={`flex items-center space-x-2 p-2 rounded-lg cursor-pointer transition-all ${isChecked ? "bg-primary/10" : "hover:bg-muted/50"}`} onClick={() => onToggle(opt.id)}>
+              <Checkbox id={`qa-batch-${opt.id}`} checked={isChecked} onCheckedChange={() => onToggle(opt.id)} />
+              <label htmlFor={`qa-batch-${opt.id}`} className="text-sm cursor-pointer">{opt.label}</label>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex justify-between">
+        <Button variant="outline" onClick={onBack}>Back</Button>
+        <Button onClick={onNext} disabled={selected.length === 0}>Continue <ChevronRight className="w-4 h-4 ml-1" /></Button>
+      </div>
+    </div>
+  );
+}
+
+function BriefStep({ briefs, briefsLoading, briefMode, onModeChange, batchBrief, onSelectBrief, batchNotes, onNotesChange, batchPdf, onPdfUpload, isUploading, onNext, onBack }) {
+  const [search, setSearch] = useState("");
+  const pdfRef = useRef(null);
+  const term = search.trim().toLowerCase();
+  const visibleBriefs = term ? briefs.filter((b) => b.title.toLowerCase().includes(term)) : briefs;
+  const canContinue =
+    briefMode === "none" ? true :
+    briefMode === "existing" ? !!batchBrief :
+    briefMode === "paste" ? batchNotes.trim().length > 0 :
+    briefMode === "pdf" ? !!batchPdf : false;
+
+  return (
+    <div className="w-full max-w-2xl mx-auto space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-foreground">Add a brief</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">Pick how you want to give us the brief for this batch.</p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {BRIEF_MODES.map((m) => {
+          const Icon = m.icon;
+          const active = briefMode === m.id;
+          return (
+            <button
+              key={m.id}
+              onClick={() => onModeChange(active ? null : m.id)}
+              className={`p-4 rounded-2xl border-2 text-center flex flex-col items-center gap-2 transition-all ${active ? "border-primary bg-primary/5" : "border-border hover:border-primary/40 hover:bg-muted/40"}`}
+            >
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                <Icon className="w-5 h-5" />
+              </div>
+              <span className="text-sm font-semibold text-foreground leading-tight">{m.label}</span>
+              <span className="text-xs text-muted-foreground leading-tight">{m.hint}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {briefMode === "existing" && (
+        <div className="rounded-xl border bg-card p-3 space-y-3">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search your briefs..." className="pl-9" />
+          </div>
+          {briefsLoading && (
+            <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading your briefs...
+            </div>
+          )}
+          {!briefsLoading && visibleBriefs.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              {briefs.length === 0 ? "No briefs on this workspace yet." : "No briefs match that search."}
+            </p>
+          )}
+          {!briefsLoading && visibleBriefs.length > 0 && (
+            <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+              {visibleBriefs.map((b) => {
+                const active = batchBrief === b.id;
+                const meta = [b.account, b.contentType].filter(Boolean).join(" · ");
+                return (
+                  <button
+                    key={b.id}
+                    onClick={() => onSelectBrief(active ? null : b.id)}
+                    className={`w-full text-left p-3 rounded-lg border flex items-center gap-3 transition-all ${active ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground truncate">{b.title}</p>
+                      {meta && <p className="text-xs text-muted-foreground truncate mt-0.5">{meta}</p>}
+                    </div>
+                    {b.status && <Badge variant="secondary" className="text-xs shrink-0">{b.status}</Badge>}
+                    {active && <Check className="w-4 h-4 text-primary shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {briefMode === "paste" && (
+        <div className="rounded-xl border bg-card p-3 space-y-2">
+          <Textarea value={batchNotes} onChange={(e) => onNotesChange(e.target.value)} placeholder="Paste your brief here..." rows={8} />
+          <p className="text-xs text-muted-foreground">This is attached to every video in this batch.</p>
+        </div>
+      )}
+
+      {briefMode === "pdf" && (
+        <div className="rounded-xl border bg-card p-3 space-y-3">
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); onPdfUpload(e.dataTransfer.files?.[0] || null); }}
+            onClick={() => pdfRef.current?.click()}
+            className="border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-2 cursor-pointer transition-all border-border hover:border-primary/50 hover:bg-muted/40"
+          >
+            <div className="w-12 h-12 rounded-xl bg-muted text-muted-foreground flex items-center justify-center">
+              <Paperclip className="w-5 h-5" />
+            </div>
+            <p className="text-sm font-semibold text-foreground">Choose a PDF</p>
+            <p className="text-xs text-muted-foreground">or drop it here</p>
+            <input ref={pdfRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => { onPdfUpload(e.target.files?.[0] || null); e.target.value = ""; }} />
+          </div>
+          {isUploading && (
+            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="w-3 h-3 animate-spin" /> Uploading PDF...
+            </div>
+          )}
+          {batchPdf && (
+            <div className="flex items-center gap-3 p-3 rounded-lg border bg-card">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <FileText className="w-4 h-4" />
+              </div>
+              <span className="text-sm truncate flex-1 text-foreground">{batchPdf.filename}</span>
+              <Check className="w-4 h-4 text-primary shrink-0" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {briefMode === "none" && (
+        <div className="p-4 rounded-xl bg-muted/50 border border-dashed text-center">
+          <p className="text-sm text-muted-foreground">No brief will be attached. You can still add one per video in the review step.</p>
+        </div>
+      )}
+
+      <div className="flex justify-between">
+        <Button variant="outline" onClick={onBack}>Back</Button>
+        <Button onClick={onNext} disabled={!canContinue}>Continue to Review <ChevronRight className="w-4 h-4 ml-1" /></Button>
+      </div>
+    </div>
+  );
+}
+
+function ReviewStep({ videos, updateVideo, briefs, user, createEnabled, onSubmitOne, isSubmitting, onBack, creditsLeft }) {
+  const [rowStates, setRowStates] = useState(() => videos.map(() => "pending"));
+  const [importedIds, setImportedIds] = useState(new Set());
+  const [runningIds, setRunningIds] = useState(new Set());
+  const markRunning = (i, on) => setRunningIds((prev) => { const next = new Set(prev); if (on) next.add(i); else next.delete(i); return next; });
+  const [expandedQa, setExpandedQa] = useState(null);
+  const toggleRow = (i, state) => { setRowStates((prev) => { const next = [...prev]; next[i] = state; return next; }); };
+  const acceptedRows = videos.filter((_, i) => rowStates[i] === "pending" && !importedIds.has(i));
+  const rejectedCount = rowStates.filter((s) => s === "rejected").length;
+  const creditsNow = () => Math.max(0, (creditsLeft || 0) - importedIds.size);
+  const importRow = async (video, i) => {
+    if (creditsNow() <= 0) { toast.error("No videos left this cycle.", { description: "Upgrade or wait until your next renewal." }); return; }
+    markRunning(i, true);
+    try {
+      const r = await onSubmitOne(video);
+      setImportedIds((prev) => new Set([...prev, i]));
+      toast.success(`Video ${i + 1} reviewed: ${String(r?.decision || "").toLowerCase() || "done"}`);
+    } catch (e) {
+      toast.error(`Video ${i + 1} failed`, { description: e.message || "Unknown error" });
+    } finally {
+      markRunning(i, false);
+    }
+  };
+  const importAll = async () => {
+    const left = creditsNow();
+    if (acceptedRows.length > left) { toast.error(`You have ${left} video${left === 1 ? "" : "s"} left this cycle.`, { description: `Remove ${acceptedRows.length - left} and try again.` }); return; }
+    let success = 0; let fail = 0;
+    for (let i = 0; i < videos.length; i++) {
+      if (rowStates[i] === "rejected" || importedIds.has(i)) continue;
+      markRunning(i, true);
+      try { await onSubmitOne(videos[i]); setImportedIds((prev) => new Set([...prev, i])); success++; }
+      catch (e) { fail++; toast.error(`Video ${i + 1} failed`, { description: e.message || "Unknown error" }); }
+      finally { markRunning(i, false); }
+    }
+    if (success > 0) toast.success(`${success} video${success > 1 ? "s" : ""} reviewed`);
+    if (fail > 0) toast.error(`${fail} video${fail > 1 ? "s" : ""} failed.`);
+  };
+  return (
+    <div className="w-full max-w-6xl mx-auto">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div>
+          <h2 className="text-xl font-bold text-foreground">Review Videos</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            <span className="text-primary font-medium">{acceptedRows.length} to submit</span>
+            {rejectedCount > 0 && <span className="text-muted-foreground"> | {rejectedCount} rejected</span>}
+            {importedIds.size > 0 && <span className="text-green-600 font-medium"> | {importedIds.size} done</span>}
+          </p>
+          {!user?.id && <p className="text-xs text-destructive mt-1 font-medium">Warning: User not detected. Please log in.</p>}
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={onBack} size="sm">Back</Button>
+          <Button onClick={importAll} disabled={isSubmitting || acceptedRows.length === 0 || !createEnabled || !user?.id} size="sm">
+            {isSubmitting || runningIds.size > 0 ? "Reviewing..." : `Submit All (${acceptedRows.length})`}
+          </Button>
+        </div>
+      </div>
+      <div className="rounded-xl border overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted/60 border-b">
+                <th className="text-left px-4 py-3 font-semibold text-muted-foreground w-10">#</th>
+                <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Video</th>
+                <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Creator</th>
+                <th className="text-left px-4 py-3 font-semibold text-muted-foreground">QA Checklist</th>
+                <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Brief</th>
+                <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Notes</th>
+                <th className="text-center px-4 py-3 font-semibold text-muted-foreground w-28">Status</th>
+                <th className="text-center px-4 py-3 font-semibold text-muted-foreground w-28">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {videos.map((video, i) => {
+                const state = rowStates[i];
+                const imported = importedIds.has(i);
+                const qaExpanded = expandedQa === video.id;
+                return (
+                  <tr key={video.id} className={`border-b last:border-0 transition-all ${state === "rejected" ? "opacity-40 bg-muted/20" : imported ? "bg-green-50/50" : "hover:bg-muted/20"}`}>
+                    <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{i + 1}</td>
+                    <td className="px-4 py-3 max-w-[160px]">
+                      <div className="flex items-center gap-2">
+                        <Video className="w-4 h-4 text-primary shrink-0" />
+                        <span className="truncate text-foreground text-sm font-medium">{video.file.name}</span>
+                      </div>
+                      <span className="text-[11px] text-muted-foreground">{(video.file.size / 1024 / 1024).toFixed(1)} MB</span>
+                    </td>
+                    <td className="px-4 py-3 min-w-[160px]">
+                      <div className="space-y-1">
+                        <Input value={video.creatorName} onChange={(e) => updateVideo(video.id, { creatorName: e.target.value })} className="h-7 text-xs" placeholder="Name" />
+                        <Input value={video.creatorEmail} onChange={(e) => updateVideo(video.id, { creatorEmail: e.target.value })} className="h-7 text-xs" placeholder="Email" />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 min-w-[140px]">
+                      <button onClick={() => setExpandedQa(qaExpanded ? null : video.id)} className="flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">{video.qaChecklist.length}</Badge>
+                        <span>item{video.qaChecklist.length !== 1 ? "s" : ""}</span>
+                        {qaExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      </button>
+                      {qaExpanded && (
+                        <div className="mt-2 grid grid-cols-1 gap-0.5 max-h-40 overflow-y-auto p-2 border rounded-lg bg-background shadow-sm">
+                          {QA_OPTIONS.map((opt) => (
+                            <div key={opt.id} className="flex items-center space-x-1.5 py-0.5">
+                              <Checkbox id={`${video.id}-${opt.id}`} checked={video.qaChecklist.includes(opt.id)} onCheckedChange={() => {
+                                const newList = video.qaChecklist.includes(opt.id) ? video.qaChecklist.filter((x) => x !== opt.id) : [...video.qaChecklist, opt.id];
+                                updateVideo(video.id, { qaChecklist: newList });
+                              }} />
+                              <label htmlFor={`${video.id}-${opt.id}`} className="text-[11px] cursor-pointer">{opt.label}</label>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 min-w-[140px]">
+                      <Select value={video.brief || "__none__"} onValueChange={(val) => updateVideo(video.id, { brief: val === "__none__" ? null : val })}>
+                        <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__"><span className="text-muted-foreground italic">None</span></SelectItem>
+                          {briefs.map((b) => <SelectItem key={b.id} value={b.id}>{b.title}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="px-4 py-3 min-w-[140px]">
+                      <Textarea value={video.notes} onChange={(e) => updateVideo(video.id, { notes: e.target.value })} className="h-14 text-xs resize-none" placeholder="Notes..." />
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {imported ? <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">Reviewed</Badge> : runningIds.has(i) ? <Badge variant="secondary" className="text-xs"><Loader2 className="w-3 h-3 animate-spin mr-1 inline" />Reviewing</Badge> : state === "rejected" ? <Badge variant="destructive" className="text-xs">Rejected</Badge> : <Badge variant="secondary" className="text-xs">Pending</Badge>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {!imported && (
+                        <div className="flex items-center justify-center gap-1.5">
+                          {state !== "rejected" && (
+                            <>
+                              <button onClick={() => importRow(video, i)} disabled={isSubmitting || runningIds.has(i) || !createEnabled || !user?.id} className="w-7 h-7 rounded-full bg-green-100 hover:bg-green-200 text-green-700 flex items-center justify-center transition-all disabled:opacity-50" title="Submit"><Check className="w-3.5 h-3.5" /></button>
+                              <button onClick={() => toggleRow(i, "rejected")} className="w-7 h-7 rounded-full bg-red-100 hover:bg-red-200 text-red-600 flex items-center justify-center transition-all" title="Reject"><X className="w-3.5 h-3.5" /></button>
+                            </>
+                          )}
+                          {state === "rejected" && <button onClick={() => toggleRow(i, "pending")} className="text-xs text-primary underline hover:no-underline">Restore</button>}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // =====================================================================
 // The engine (verbatim from app/video-analysis/engine.jsx, PAGE review):
@@ -223,8 +631,6 @@ const accountSelect = q.select({
   maxVideos:       "cNlUS",
   plan:            "YluGd",
   cycleEnd:        "eaa3X",
-  maxVideosOrg:    "faEMR", // LOOKUP usage → max_videos, plan plus add-ons
-  cycleEndOrg:     "aFWYm", // LOOKUP usage → cycle_end
   thProductScreen: "AFgpo",
   thHookSpeed:     "wthaW",
   thVisualHook:    "Nq4ZX",
@@ -237,6 +643,42 @@ const accountSelect = q.select({
 });
 
 // Briefs in the workspace (picker) and the chosen brief (prompt).
+const briefSelect = q.select({
+  name:            "z3lpx",
+  status:          "71Oud",
+  accounts:        "EhzVx",
+  projects:        "yrYvH",
+  aiMode:          "wm1jM",
+  qaChecklist:     "OFoS6",
+  description:     "FCBU5",
+  talkingPoints:   "YEfyw",
+  script:          "YLabB",
+  dos:             "CSbqb",
+  donts:           "I5wOP",
+  makeSure:        "SEksn",
+  captionHooks:    "8EyqU",
+  visualHooks:     "4dnWx",
+  voiceoverHooks:  "3QPLK",
+  productFeature:  "CSvl8",
+  exampleAnalysis: "hIFSE",
+  creatorName:     "oIsFn",
+  creatorEmail:    "Rogsr",
+  users:           "EdhwS",
+  ownerEmail:      "kNX0h",
+  ownerFirstName:  "oln9W",
+  videosRemainingCount: "YJljG",
+  usersStatus:     "7GTPj",
+  closeDate:       "M4hMa",
+  brandBio:        "zqP14",
+  thProductScreen: "7Zpeo",
+  thHookSpeed:     "CEkkg",
+  thVisualHook:    "Drp5T",
+  thCta:           "zo9Fo",
+  thFaceTime:      "jSDeR",
+  thTextLegibility:"aHH2x",
+  thAudioClarity:  "zXqtt",
+  thPacing:        "15284",
+});
 
 // The parent submission of a revision, and its review.
 
@@ -505,6 +947,11 @@ function idsOf(raw) {
   const arr = Array.isArray(raw) ? raw : [raw];
   return arr.map((x) => (typeof x === "string" ? x : x?.id || "")).filter(Boolean);
 }
+function num(raw) {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
 function cleanText(text) {
   if (!text) return "";
   return String(text)
@@ -522,17 +969,6 @@ function isDirectVideoUrl(input) { return /^https?:\/\/\S+\.(mp4|mov|m4v|webm)(\
 // A pasted link has to be a video on one of the four platforms: a TikTok,
 // an Instagram Reel, a Facebook Reel or a YouTube Short. Profiles, feeds
 // and long-form YouTube links are turned away.
-const VIDEO_LINKS = [
-  /^https?:\/\/(www\.|m\.)?tiktok\.com\/@[\w.-]+\/video\/\d+/i,
-  /^https?:\/\/(www\.|m\.)?tiktok\.com\/(t|v)\/[\w-]+/i,
-  /^https?:\/\/vm\.tiktok\.com\/[\w-]+/i,
-  /^https?:\/\/(www\.)?instagram\.com\/(reel|reels)\/[\w-]+/i,
-  /^https?:\/\/(www\.|m\.|web\.)?facebook\.com\/(reel\/\d+|share\/r\/[\w-]+)/i,
-  /^https?:\/\/fb\.watch\/[\w-]+/i,
-  /^https?:\/\/(www\.|m\.)?youtube\.com\/shorts\/[\w-]+/i,
-];
-const LINK_HINT = "Paste a TikTok, Instagram Reel, Facebook Reel or YouTube Short link.";
-function isValidVideoUrl(input) { const u = (input || "").trim(); return VIDEO_LINKS.some((re) => re.test(u)); }
 function detectPlatform(input) {
   const v = (input || "").toLowerCase();
   if (v.includes("tiktok.com")) return "TikTok";
@@ -934,6 +1370,14 @@ function UserLoader({ recordId, onState }) {
 }
 // Briefs in the workspace for the picker. Mounted only in the
 // workspace context, so the public creator routes never list briefs.
+function BriefList({ workspaceId, onList }) {
+  const briefsQ = useRecords({ select: briefSelect, from: ds.briefs, count: 100 });
+  useEffect(() => {
+    const all = (briefsQ?.data?.pages?.flatMap((p) => p?.items ?? []) ?? []).map((b) => ({ id: b.id, f: b.fields || {} }));
+    onList(all.filter((b) => idsOf(b.f.accounts).includes(workspaceId)));
+  }, [briefsQ?.data, workspaceId, onList]);
+  return null;
+}
 
 // Reviews status columns take option ids only. Columns without a FLAGGED
 // choice record it as needs adjustment or as a fail, never as loose text.
@@ -949,254 +1393,230 @@ function numericScore(s) {
 }
 // A page opened as a side panel keeps its own query inside the host page's
 // `modal` param (/videos?modal=%2Freview%3Furl%3D...), so look there too.
+// The workspace the switcher last chose (it writes this key), so a panel
+// opened without ?workspace= still follows the page's workspace.
 function cleanName(s) { return String(s || "").replace(/<[^>]*>/g, " ").replace(/https?:\/\/\S+/gi, " ").replace(/[^\p{L}\p{N} .,'&-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 60); }
 // The Review Agents step: every kind (Review, Analyse, Remix) shows it, pre-ticked
 // with the workspace's saved agents, and the AI needs at least three to check.
 
 
-// ─── Helpers ─────────────────────────────────────────────────────────
-function num(raw) {
-  const v = Array.isArray(raw) ? raw[0] : raw;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-function hasNum(raw) { const v = Array.isArray(raw) ? raw[0] : raw; return v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v)); }
-// Share of the plan used this cycle. Any use at all reads as at least 1%.
-function usagePercent(left, max) {
-  const l = Math.max(0, Number(left) || 0);
-  if (!(max > 0)) return l > 0 ? 0 : 100;
-  const used = Math.max(0, max - l);
-  return used === 0 ? 0 : Math.min(100, Math.max(1, Math.round((used / max) * 100)));
-}
-function extractFieldValue(raw) {
-  if (Array.isArray(raw) && raw.length > 0) return String(raw[0].label ?? raw[0] ?? '').trim().toLowerCase();
-  if (typeof raw === 'object' && raw !== null) return String(raw.label ?? '').trim().toLowerCase();
-  return String(raw ?? '').trim().toLowerCase();
-}
-function extractNumberValue(raw) {
-  const v = Array.isArray(raw) ? Number(raw[0] ?? 0) : Number(raw ?? 0);
-  return Number.isFinite(v) ? v : 0;
-}
-// Multi-row aware: returns ALL values of a lookup field, lowercased.
-function extractFieldValues(raw) {
-  if (Array.isArray(raw)) {
-    return raw.map((v) => String(v?.label ?? v ?? '').trim().toLowerCase()).filter(Boolean);
-  }
-  const one = extractFieldValue(raw);
-  return one ? [one] : [];
-}
+// The credit ring and the Upgrade card, the same pieces as the New video form.
+const UPGRADE_IMG = "https://assets.softr-files.com/applications/5c5521fd-af6f-4488-9edf-1add48539912/assets/ca989ee6-933c-4385-b957-6a9a6b2ca053.png";
+const CREDIT_CSS = `
+.bu-ringwrap{position:relative;display:inline-flex;align-items:center;flex:none}
+.bu-ring{display:inline-grid;place-items:center;width:34px;height:34px;background:transparent;border:0;padding:0;cursor:pointer;border-radius:8px}
+.bu-ring:hover{background:rgba(0,19,100,.05)}
+.bu-ring svg{transform:rotate(-90deg);display:block}
+.bu-ring-track{fill:none;stroke:rgba(0,19,100,.1);stroke-width:3.5}
+.bu-ring-bar{fill:none;stroke:#879CF7;stroke-width:3.5;stroke-linecap:round;transition:stroke-dasharray .3s ease}
+.bu-pop{position:absolute;right:0;top:calc(100% + 8px);width:250px;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:10px;box-shadow:0 10px 30px -18px rgba(0,19,100,.35);padding:12px;display:flex;flex-direction:column;gap:8px;z-index:20;text-align:left}
+.bu-pop-row{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:#64708C}
+.bu-pop-row b{color:#001364;font-weight:600;white-space:nowrap}
+.bu-pop-bar{height:5px;border-radius:99px;background:rgba(0,19,100,.05);overflow:hidden}
+.bu-pop-bar i{display:block;height:100%;background:#879CF7;border-radius:99px}
+.bu-pop-link{font-size:12px;font-weight:600;color:#334283;text-decoration:none;margin-top:2px}
+.bu-pop-link:hover{color:#001364}
+.bu-upgrade{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:40px 12px 24px;max-width:520px;margin:0 auto}
+.bu-upgrade img{width:64px;height:64px;border-radius:14px;object-fit:cover}
+.bu-upgrade h2{font-size:22px;font-weight:600;letter-spacing:-.01em;color:#001364;margin:0}
+.bu-upgrade p{font-size:13.5px;color:#64708C;max-width:420px;line-height:1.5;margin:0}
+.bu-upgrade a{display:inline-flex;align-items:center;height:32px;padding:6px 12px;border-radius:8px;background:#879CF7;color:#fff;font-size:13px;font-weight:600;text-decoration:none;margin-top:6px}
+.bu-upgrade a:hover{background:#6C7CC5}
+`;
 
-// =====================================================================
 export default function Block() {
-  const user = useCurrentUser();
-  // Top space above the welcome on the compose screen, editable from
-  // Content > Settings. With centring on, it scales with the viewport so the
-  // hero sits mid-screen; switch it off to use the pixel value typed below.
-  // Phones always get a small fixed space (.bc-shell.is-home in Style).
-  const heroAutoCentre = useBooleanSetting({
-    name: 'heroAutoCentre',
-    label: 'Centre the welcome on screen',
-    initialValue: true,
+  const [step, setStep] = useState(1);
+  const [selectedAccount, setSelectedAccount] = useState(null);
+  const [batchQaChecklist, setBatchQaChecklist] = useState([]);
+  const [batchBrief, setBatchBrief] = useState(null);
+  const [briefMode, setBriefMode] = useState(null);
+  const [batchNotes, setBatchNotes] = useState("");
+  const [batchPdf, setBatchPdf] = useState(null);
+  const [videos, setVideos] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const user = useCurrentUser({
+    properties: {
+      accounts: "Nz6VX",
+    },
   });
-  const heroTopSpace = useTextSetting({
-    name: 'heroTopSpace',
-    label: 'Top space in px (used when centring is off)',
-    initialValue: '200',
-  });
-  const typedTop = parseInt(String(heroTopSpace ?? '').replace(/[^0-9]/g, ''), 10);
-  const heroTop = heroAutoCentre
-    ? 'clamp(24px, calc(50vh - 285px), 280px)'
-    : `${Number.isFinite(typedTop) ? Math.min(typedTop, 600) : 200}px`;
-  const { uploadAsync } = useUpload();
-  // The engine's writes and services (see the engine section below).
+  const uploadSeq = useRef(0);
+  const { uploadAsync, isUploading } = useUpload();
+  // The engine's writes and services (see the engine section above).
   const createSubmission = useRecordCreate({ fields: submissionCreate, from: ds.submissions });
   const createReview = useRecordCreate({ fields: reviewCreate, from: ds.reviews });
   const createReport = useRecordCreate({ fields: reportCreate, from: ds.report });
   const createNotification = useRecordCreate({ fields: notificationCreate, from: ds.notifications });
-  const proxyRapid = useProxyFetch(ds.rapid);
   const proxyGoogle = useProxyFetch(ds.google);
   const proxyEmailit = useProxyFetch(ds.emailit);
-  const [afState, setAfState] = useState({ status: 'none', f: null });
+  // Bulk takes uploaded files only, so the link scraper is never reached.
+  const proxyRapid = async () => { throw new Error("Bulk upload takes video files, not links."); };
+  const [afState, setAfState] = useState({ status: "none", f: null });
   const af = afState.f;
-  const [meState, setMeState] = useState({ status: 'none', f: null });
+  const [meState, setMeState] = useState({ status: "none", f: null });
   const mf = meState.f || {};
+  const [briefsFull, setBriefsFull] = useState([]);
+  const [showCredits, setShowCredits] = useState(false);
   const runRef = useRef(0);
 
-  // Workspace param — read ONCE in a useState lazy init (analyzer-safe with
-  // useRecordCreate). See feedback_softr_vibe_no_url_parsing.
-  const [urlWorkspaceId] = useState(() => {
-    if (typeof window === 'undefined') return '';
-    const raw = new URL(window.location.href).searchParams.get('workspace') || '';
-    return raw.split(',').map((s) => s.trim()).filter(Boolean)[0] || '';
-  });
-  // Remembered workspace (written by the single-select switcher) — survives a
-  // fresh visit even when the URL has no ?workspace=.
-  const [storedWorkspaceId] = useState(() => {
-    try { return localStorage.getItem('bl-active-workspace') || ''; } catch { return ''; }
-  });
-  const userAccountsRead = useRecord({ recordId: user?.id, select: userAccountsSelect, enabled: !!user?.id, from: ds.users });
-  const userAccountIds = useMemo(() => {
-    const raw = userAccountsRead?.data?.fields?.accounts;
-    return Array.isArray(raw) ? raw.map((a) => a?.id || '').filter(Boolean) : [];
-  }, [userAccountsRead?.data]);
-  const activeWorkspaceId = useMemo(() => {
-    if (urlWorkspaceId && userAccountIds.includes(urlWorkspaceId)) return urlWorkspaceId;
-    if (storedWorkspaceId && userAccountIds.includes(storedWorkspaceId)) return storedWorkspaceId;
-    return userAccountIds[0] || null;
-  }, [urlWorkspaceId, storedWorkspaceId, userAccountIds]);
+  // Read workspaces straight from the accounts table, which is already scoped to the logged-in user on the Source tab
+  const { data: accountsData, status: accountsStatus } = useRecords({ from: ds.accounts, select: accountsSelect, count: 100 });
+  const { data: briefsData, status: briefsStatus } = useRecords({ from: ds.briefs, select: briefsSelect, count: 100 });
 
-  // ─── Compose state ───
-  const [stage, setStage] = useState('compose'); // 'compose' | 'chat'
-  const [notes, setNotes] = useState('');
-  const [attachType, setAttachType] = useState(null); // 'link' | 'file' | null
-  const [link, setLink] = useState('');
-  const [file, setFile] = useState(null);            // real File object
-  const [fileName, setFileName] = useState('');
-  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
-  const [selectedMode, setSelectedMode] = useState('review');
-  const [modeMenuOpen, setModeMenuOpen] = useState(false);
-  const [hoverPill, setHoverPill] = useState(null);
+  const allAccounts = useMemo(
+    () => (accountsData?.pages.flatMap((p) => p.items) ?? []).map((a: any) => ({ id: a.id, title: readText(a.fields.name) })),
+    [accountsData]
+  );
+  const allBriefs = useMemo(
+    () => (briefsData?.pages.flatMap((p) => p.items) ?? []).map((b: any) => ({
+      id: b.id,
+      title: readText(b.fields.name) || "Untitled brief",
+      account: readText(b.fields.accounts),
+      status: readText(b.fields.status),
+      contentType: readText(b.fields.contentType),
+    })),
+    [briefsData]
+  );
 
-  // ─── Chat state ───
-  const [typing, setTyping] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [showCredits, setShowCredits] = useState(false); // the credit ring's panel
-  const [showAgentsQ, setShowAgentsQ] = useState(false);
-  const [showAgents, setShowAgents] = useState(false);
-  const [selectedAgents, setSelectedAgents] = useState(['Hook quality', 'Visual hook', 'Product visibility', 'Follows the brief']);
-  const [openGroup, setOpenGroup] = useState('hook');
-  const [showAnalyseMsg, setShowAnalyseMsg] = useState(false);
-  const [showScan, setShowScan] = useState(false);
-  const [scanIdx, setScanIdx] = useState(0);
-  const [reviewReady, setReviewReady] = useState(false);
-  const [timedOut, setTimedOut] = useState(false);
-  const [notifMsg, setNotifMsg] = useState('');
+  // The user's own accounts, held as ids or as names depending on how the linked field comes back
+  const userAccountKeys = useMemo(() => {
+    const raw: any = user?.properties.accounts;
+    const list: any[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    return list.map((r: any) => (r && typeof r === "object" ? r.id ?? r.label ?? r.title ?? r.name ?? "" : String(r))).filter(Boolean);
+  }, [user?.properties.accounts]);
 
-  // ─── Submission / validation state ───
-  const [validated, setValidated] = useState(false);
-  const [validationError, setValidationError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  // Narrow to the user's own workspaces, keeping the source-filtered list when the keys match nothing
+  const filteredAccounts = useMemo(() => {
+    if (userAccountKeys.length === 0) return allAccounts;
+    const matched = allAccounts.filter((acc) => userAccountKeys.includes(acc.id) || userAccountKeys.includes(acc.title));
+    return matched.length > 0 ? matched : allAccounts;
+  }, [allAccounts, userAccountKeys]);
 
-  const chatRef = useRef(null);
-  const pillsRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const previewUrlRef = useRef(null);
-  const timers = useRef([]);
-  const scanIntRef = useRef(null);
-  const t = (fn, ms) => { const id = setTimeout(fn, ms); timers.current.push(id); return id; };
-  const clearTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
+  const accountsLoading = accountsStatus === "pending";
+  const briefsLoading = briefsStatus === "pending";
 
-  useEffect(() => () => {
-    clearTimers();
-    if (scanIntRef.current) clearInterval(scanIntRef.current);
-    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-  }, []);
+  const selectedAccountTitle = useMemo(
+    () => filteredAccounts.find((a) => a.id === selectedAccount)?.title || "",
+    [filteredAccounts, selectedAccount]
+  );
 
-  // Auto-scroll the chat to newest.
+  // Narrow to the chosen workspace where a brief carries one, keeping the user-scoped list when nothing matches
+  const briefs = useMemo(() => {
+    if (!selectedAccountTitle) return allBriefs;
+    const matched = allBriefs.filter((b) => b.account && b.account === selectedAccountTitle);
+    return matched.length > 0 ? matched : allBriefs;
+  }, [allBriefs, selectedAccountTitle]);
+
+  // A single workspace is pre-picked, so the user only confirms it
   useEffect(() => {
-    const el = chatRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [showConfirm, showAgentsQ, showAgents, showAnalyseMsg, showScan, reviewReady, timedOut, typing, validationError, selectedAgents, openGroup]);
-
-  const firstName =
-    (user && (user.firstName || user.first_name || user.fullName?.split(' ')[0] || user.name?.split(' ')[0])) || '';
-
-  const hasAttach = attachType === 'file' || (attachType === 'link' && link.trim().length > 0);
-
-  // ─── Plan and credit check, straight off the logged-in user's row ───
-  useEffect(() => {
-    if (stage !== 'chat' || validated || validationError) return;
-    const gate = userAccountsRead?.data?.fields;
-    if (!gate) return; // still loading; the beats below keep playing
-    const isInternal = gate.is_internal === true;
-    if (!isInternal) {
-      // Billing is the source of truth: any linked billing row at paid or
-      // trial passes, and the user record itself must be Active or Pending.
-      // A team member's login carries no billing of its own, so the
-      // workspace's plan status and videos left count for everyone on it.
-      if (activeWorkspaceId && afState.status !== 'success' && afState.status !== 'error') return;
-      const paymentStatuses = [...extractFieldValues(gate.payment_status), ...extractFieldValues(gate.org_status)];
-      const userStatus = extractFieldValue(gate.user_status);
-      const videosRemaining = hasNum(af?.videosRemaining) ? num(af.videosRemaining) : extractNumberValue(gate.videos_remaining);
-      if (
-        !paymentStatuses.some((x) => ['paid', 'trial'].includes(x)) ||
-        !['active', 'pending'].includes(userStatus)
-      ) {
-        setValidationError('There is no active subscription on this account. Please upgrade to continue.');
-        setTyping(false);
-        return;
-      }
-      if (videosRemaining <= 0) {
-        setValidationError('You have used all your video credits for this billing cycle. Upgrade or wait until your next renewal.');
-        setTyping(false);
-        return;
-      }
+    if (filteredAccounts.length === 1 && !selectedAccount) {
+      setSelectedAccount(filteredAccounts[0].id);
     }
-    setValidated(true);
-  }, [stage, userAccountsRead?.data, validated, validationError, activeWorkspaceId, afState.status, af]);
+  }, [filteredAccounts, selectedAccount]);
 
-  // ─── Compose handlers ───
-  const pickPill = (p) => { setNotes(p.prompt); setSelectedMode(p.mode); };
-  const scrollPills = (dir) => { const el = pillsRef.current; if (el) el.scrollBy({ left: dir * 220, behavior: 'smooth' }); };
-  const chooseLink = () => { setAttachType('link'); setAttachMenuOpen(false); };
-  const chooseFileClick = () => { setAttachMenuOpen(false); fileInputRef.current?.click(); };
-  const onFilePicked = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (!f.type.startsWith('video/')) { toast.error('Please choose a video file.'); return; }
-    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-    previewUrlRef.current = URL.createObjectURL(f);
-    setFile(f); setFileName(f.name); setAttachType('file');
+  const handleFilesDrop = async (files) => {
+    if (!files || files.length === 0) return;
+    const picked = Array.from(files);
+    const videoFiles = picked.filter((f) => f.type.startsWith("video/"));
+    if (videoFiles.length === 0) { toast.error("Please upload video files only."); return; }
+
+    const oversized = videoFiles.filter((f) => f.size > MAX_UPLOAD_BYTES);
+    const accepted = videoFiles.filter((f) => f.size <= MAX_UPLOAD_BYTES);
+    if (oversized.length > 0) {
+      toast.error(`${oversized.length} file${oversized.length !== 1 ? "s are" : " is"} over ${MAX_UPLOAD_MB} MB and cannot be uploaded.`);
+    }
+    if (accepted.length === 0) return;
+
+    // Rows appear straight away, then each one reports its own progress
+    const queued = accepted.map((file) => ({
+      id: `v${(uploadSeq.current += 1)}`, file, uploadedUrl: null, status: "uploading", pct: 0, error: null,
+      creatorName: user?.fullName || "", creatorEmail: "", qaChecklist: [], brief: null, notes: "", pdf: null,
+    }));
+    setVideos((prev) => [...prev, ...queued]);
+
+    const patch = (id, updates) => setVideos((prev) => prev.map((v) => (v.id === id ? { ...v, ...updates } : v)));
+
+    // Softr's upload reports no bytes, so each row's bar is paced
+    // rather than measured: it eases toward a ceiling it never
+    // reaches on its own, at a rate read off that file's size, and
+    // only lands on 100% when the upload really finishes. It always
+    // moves, and it never says done before it is.
+    const pace = (row) => {
+      const half = Math.min(20000, 1100 + Math.max(0.5, row.file.size / (1024 * 1024)) * 400);
+      const t0 = Date.now();
+      return setInterval(() => {
+        patch(row.id, { pct: 92 * (1 - Math.pow(2, -(Date.now() - t0) / half)) });
+      }, 100);
+    };
+
+    await Promise.all(queued.map(async (row) => {
+      const tick = pace(row);
+      try {
+        const [result] = await uploadAsync(row.file);
+        clearInterval(tick);
+        if (result?.status === "completed" && result.url) {
+          patch(row.id, { status: "completed", pct: 100, uploadedUrl: result.url });
+        } else {
+          patch(row.id, { status: "error", pct: 0, error: result?.error?.message || "Upload failed" });
+        }
+      } catch (err: any) {
+        clearInterval(tick);
+        patch(row.id, { status: "error", pct: 0, error: err?.message || "Upload failed" });
+      }
+    }));
   };
-  const clearAttach = () => {
-    if (previewUrlRef.current) { URL.revokeObjectURL(previewUrlRef.current); previewUrlRef.current = null; }
-    setAttachType(null); setLink(''); setFile(null); setFileName('');
+
+  // Failed rows are cleared on the way out of the upload step, never carried forward silently
+  const leaveUploadStep = () => {
+    const failed = videos.filter((v) => v.status === "error");
+    if (failed.length > 0) {
+      setVideos((prev) => prev.filter((v) => v.status !== "error"));
+      toast.error(`${failed.length} file${failed.length !== 1 ? "s" : ""} failed to upload and ${failed.length !== 1 ? "were" : "was"} removed.`);
+    }
+    setStep(2);
   };
 
-  // ─── Send: transition to chat; the plan/credit check runs in the effect above ───
-  const send = () => {
-    if (!hasAttach && !notes.trim()) return;
-    if (!user?.id) { toast.error('Please log in to continue.'); return; }
-    if (attachType === 'link' && !isValidVideoUrl(link.trim())) { toast.error(LINK_HINT); return; }
-    setStage('chat');
-    setAttachMenuOpen(false); setModeMenuOpen(false);
-    setTyping(true);
-
-    // Conversation beats (Lee confirm → agents question → picker).
-    t(() => { setTyping(false); setShowConfirm(true); }, 1300);
-    t(() => setTyping(true), 1650);
-    t(() => { setTyping(false); setShowAgentsQ(true); }, 2600);
-    t(() => setShowAgents(true), 2850);
+  const handlePdfUpload = async (file) => {
+    if (!file) return;
+    const [result] = await uploadAsync(file);
+    if (result.status === "completed" && result.url) { setBatchPdf({ filename: result.file.name, url: result.url }); }
+    else { toast.error("PDF upload failed."); }
   };
 
-  const toggleGroup = (key) => setOpenGroup((cur) => (cur === key ? null : key));
-  const toggleAgent = (label) =>
-    setSelectedAgents((cur) => (cur.includes(label) ? cur.filter((x) => x !== label) : [...cur, label]));
+  const updateVideo = (id, updates) => { setVideos((prev) => prev.map((v) => (v.id === id ? { ...v, ...updates } : v))); };
+  const removeVideo = (id) => { setVideos((prev) => prev.filter((v) => v.id !== id)); };
+  const toggleQaBatch = (optionId) => { setBatchQaChecklist((prev) => prev.includes(optionId) ? prev.filter((id) => id !== optionId) : [...prev, optionId]); };
+  const goToReview = () => {
+    const brief = briefMode === "existing" ? batchBrief : null;
+    const notes = briefMode === "paste" ? batchNotes : "";
+    const pdf = briefMode === "pdf" ? batchPdf : null;
+    setVideos((prev) => prev.map((v) => ({ ...v, qaChecklist: batchQaChecklist, brief, notes, pdf })));
+    setStep(5);
+  };
 
-  // ─── The engine's view of this chat ───
-  // The pipeline below is the same code as /review. These locals give it
-  // the chat's state under the names it expects: one video, one workspace,
-  // no brief, no creator details, no revision.
-  const workspaceId = activeWorkspaceId || '';
-  const kind = selectedMode;            // review | remix | analyse
-  const agents = selectedAgents;        // the picked Review Agents (labels)
-  const brief = null; const briefId = ''; const parent = null; const parentId = ''; const parentReviewId = '';
-  const previous = null; const revisionNo = 0; const context = 'workspace'; const isCreator = false; const multi = false;
-  const pdf = null; const creatorName = ''; const creatorEmail = ''; const urlName = '';
-  const workspaceName = unwrap(af?.name) || '';
-  const aiModeLabel = unwrap(af?.aiMode) || 'Hybrid';
-  const brandUserId = user?.id || '';
-  const brandEmail = user?.email || unwrap(mf.email) || '';
-  const brandFirstName = user?.firstName || unwrap(mf.firstName) || 'there';
-  // The credit ring (same as the New video panel) fills as the workspace's
-  // videos get used: blue, then amber from 75%, red from 90%.
-  const creditsLeft = hasNum(af?.videosRemaining) ? num(af.videosRemaining) : num(mf.videosRemaining);
-  const maxVideos = num(af?.maxVideosOrg) || num(af?.maxVideos) || 0;
-  const usedPct = usagePercent(creditsLeft, maxVideos);
-  const ringPct = usedPct / 100;
-  const usageTone = usedPct >= 90 ? "low" : usedPct >= 75 ? "warn" : "ok";
-  const planName = unwrap(af?.plan) || '';
-  const cycleEnd = String(unwrap(af?.cycleEndOrg) || unwrap(af?.cycleEnd) || '').slice(0, 10);
+  // ─── The engine's view of this block: one workspace, review only ───
+  const workspaceId = selectedAccount || "";
+  const kind = "review"; const context = "workspace"; const isCreator = false; const multi = true;
+  const parent = null; const parentId = ""; const parentReviewId = ""; const previous = null; const revisionNo = 0; const urlName = "";
+  const workspaceName = unwrap(af?.name) || allAccounts.find((a) => a.id === selectedAccount)?.title || "";
+  const brandUserId = user?.id || "";
+  const brandEmail = user?.email || unwrap(mf.email) || "";
+  const brandFirstName = user?.firstName || unwrap(mf.firstName) || "there";
+  const qaLabelsOf = (ids) => QA_OPTIONS.filter((o) => (ids || []).includes(o.id)).map((o) => o.label);
+
+  // The credit ring reads the user's videos left against the workspace's
+  // allowance; before a workspace is picked it shows the first one.
+  const ringAccountId = selectedAccount || allAccounts[0]?.id || "";
+  const creditsLeft = num(mf.videosRemaining);
+  const maxVideos = num(af?.maxVideos) || 0;
+  const ringPct = maxVideos > 0 ? Math.max(0, Math.min(1, creditsLeft / maxVideos)) : (creditsLeft > 0 ? 1 : 0);
+  const planName = unwrap(af?.plan) || "";
+  const cycleEnd = String(unwrap(af?.cycleEnd) || "").slice(0, 10);
+  const modeLabel = unwrap(af?.aiMode) || "Hybrid";
+  // The gate: an inactive account or no videos left shows the Upgrade card instead of the steps.
+  const meSettled = meState.status === "success" || meState.status === "error";
+  const meStatus = unwrap(mf.status);
+  const gateCode = !meSettled ? "" : (meStatus && meStatus !== "Active") ? "inactive" : creditsLeft <= 0 ? "noCredits" : "";
 
   // ── Gemini video part (inline base64, sized for the proxy) ───
   // The proxy carries text only and caps bodies near 4MB, so the video
@@ -1208,7 +1628,10 @@ export default function Block() {
   }
 
   // ── The pipeline, one video at a time ────────────────────────
-  async function runPipeline(item, myRun, ui) {
+  async function runPipeline(item, myRun, ui, ctx) {
+    // Per-video settings from the review table.
+    const { agents, briefId, brief, notes, pdf, creatorName, creatorEmail } = ctx;
+    const aiModeLabel = unwrap(brief?.aiMode) || unwrap(af?.aiMode) || "Hybrid";
     const alive = () => runRef.current === myRun;
     const isFile = item.kind === "file";
     const theFile = isFile ? item.file : null;
@@ -1218,11 +1641,13 @@ export default function Block() {
     const acct = af || (brief ? { brandBio: brief.brandBio } : null);
 
     // 1. Source the mp4
-    let mp4 = ""; let handle = ""; let duration = 0; let uploaded = null; let pdfUploaded = null;
+    let mp4 = ""; let handle = ""; let duration = 0; let uploaded = item.uploaded || null; let pdfUploaded = ctx.pdfUploaded || null;
     if (isFile) {
-      const [up] = await uploadAsync(theFile);
-      if (!up || up.status !== "completed" || !up.url) throw new Error("The video upload didn't complete. Try again.");
-      uploaded = { filename: up.file?.name || theFile.name || "video.mp4", url: up.url };
+      if (!uploaded) {
+        const [up] = await uploadAsync(theFile);
+        if (!up || up.status !== "completed" || !up.url) throw new Error("The video upload didn't complete. Try again.");
+        uploaded = { filename: up.file?.name || theFile.name || "video.mp4", url: up.url };
+      }
       try { ui.preview(URL.createObjectURL(theFile)); } catch { /* no preview */ }
       if (STEPPER && pdf) {
         const [pu] = await uploadAsync(pdf);
@@ -1547,462 +1972,75 @@ export default function Block() {
     return { subId, reviewId, decision, title: videoTitle, failed, checks: byName.size, thumb: cldThumb(publicId) };
   }
 
-  // ─── Run agents: the Review Agents run here, then the ready card ───
-  const startAnalyse = async () => {
-    if (selectedAgents.length < 3 || submitting) return;
-    if (validationError) return;
-    if (!workspaceId || !af) { toast.error('Your workspace is still loading', { description: 'Try again in a moment.' }); return; }
-    if (!createSubmission.enabled || !createReview.enabled) { toast.error("We can't start the review right now", { description: 'Refresh and try again.' }); return; }
-    const item = attachType === 'file' && file
-      ? { kind: 'file', file, label: file.name }
-      : { kind: 'url', url: link.trim(), label: link.trim() };
-    if (item.kind === 'url' && !isValidVideoUrl(item.url)) { toast.error(LINK_HINT); return; }
-    setSubmitting(true);
-    setShowAgents(false);
-    setTyping(true);
-    const myRun = ++runRef.current;
-    const stopScan = () => { if (scanIntRef.current) { clearInterval(scanIntRef.current); scanIntRef.current = null; } };
-
-    // Analysing message → scan frame (same beats as before); the run is
-    // already under way behind them.
-    t(() => { setTyping(false); setShowAnalyseMsg(true); }, 1000);
-    t(() => {
-      setShowScan(true);
-      setScanIdx(0);
-      scanIntRef.current = setInterval(() => setScanIdx((i) => i + 1), 1300);
-    }, 1400);
-    // A long run shows the "still processing" card; the ready card replaces it.
-    const slow = t(() => { if (runRef.current === myRun) setTimedOut(true); }, 240000);
-
-    try {
-      const r = await runPipeline(item, myRun, { stage: () => {}, preview: () => {} });
-      if (runRef.current !== myRun || !r) return;
-      clearTimeout(slow);
-      stopScan();
-      setTimedOut(false);
-      setNotifMsg(`${r.title}: ${r.decision.toLowerCase()} by the Review Agents${r.failed.length ? ` (${r.failed.length} flagged)` : ''}.`);
-      setReviewReady(true);
-    } catch (e) {
-      if (runRef.current !== myRun) return;
-      clearTimeout(slow);
-      console.error('Analyse failed:', e);
-      toast.error('Something went wrong', { description: e?.message || 'Try again.' });
-      stopScan();
-      setShowScan(false); setShowAnalyseMsg(false); setTimedOut(false);
-      setTyping(false);
-      setShowAgents(true);
-      setSubmitting(false);
-    }
+  // One video through the engine, with that row's own settings.
+  const submitOneVideo = async (video) => {
+    if (!createSubmission.enabled || !createReview.enabled) throw new Error("The review can't start right now. Refresh and try again.");
+    if (!user?.id) throw new Error("User not detected.");
+    if (!video.uploadedUrl) throw new Error("This video has not finished uploading.");
+    if (!selectedAccount || !af) throw new Error("Your workspace is still loading. Try again in a moment.");
+    const brief = briefsFull.find((b) => b.id === video.brief)?.f || null;
+    const ctx = {
+      agents: qaLabelsOf(video.qaChecklist),
+      briefId: video.brief || "",
+      brief,
+      notes: video.notes || "",
+      pdf: null,
+      pdfUploaded: video.pdf || null,
+      creatorName: video.creatorName || "",
+      creatorEmail: video.creatorEmail || "",
+    };
+    const item = { kind: "file", file: video.file, label: video.file.name, uploaded: { filename: video.file.name, url: video.uploadedUrl } };
+    const r = await runPipeline(item, runRef.current, { stage: () => {}, preview: () => {} }, ctx);
+    if (!r) throw new Error("The review did not finish.");
+    return r;
   };
 
-  // ─── Derived render values ───
-  const modeObj = MODE_OPTIONS.find((m) => m.value === selectedMode) || MODE_OPTIONS[0];
-  const count = selectedAgents.length;
-  const canAnalyse = count >= 3;
-  const scanning = showScan && !reviewReady && !timedOut;
-  const linkLower = (link || '').toLowerCase();
-  const fkSource = attachType === 'file' ? 'upload' : (linkLower.includes('tiktok') ? 'tiktok' : 'instagram');
-  // Real preview only for local files; links fall back to the branded icon
-  // until a server-side thumbnail is wired (TikTok/Instagram can't be
-  // previewed client-side reliably).
-  const showPreviewMedia = scanning && attachType === 'file';
-  const showFallbackMedia = scanning && attachType !== 'file';
-  const attachLabel = attachType === 'link' ? (link.trim() || 'Video link') : (fileName || 'Video');
-
   return (
-    <>
-      {user?.id ? <UserLoader recordId={user.id} onState={setMeState} /> : null}
-      {workspaceId ? <AccountLoader key={workspaceId} recordId={workspaceId} onState={setAfState} /> : null}
-      {(
-    // Height follows the content. This used to be minHeight 100vh, which
-    // left a viewport of empty space under the chat and pushed the quick
-    // links below the fold. Page background is already #FAFBFF, so the
-    // block ending here leaves no seam. On the compose screen the top
-    // padding is heroTop (the two hero settings), so the hero, the prompt
-    // box and the quick links below sit in the middle of the screen with
-    // Recent submissions peeking under them. The chat stage drops back to
-    // 24px so the 66vh chat window keeps its room.
-    <div className={stage === 'compose' ? 'bc-shell is-home' : 'bc-shell'} style={{ paddingTop: stage === 'compose' ? heroTop : 24, paddingLeft: 20, paddingRight: 20, paddingBottom: 20, background: '#FAFBFF', fontFamily: "'Inter', system-ui, sans-serif", color: '#001364' }}>
-      <Style />
-      <input ref={fileInputRef} type="file" accept="video/*" onChange={onFilePicked} style={{ display: 'none' }} />
-
-      <div style={{ maxWidth: 640, margin: '0 auto' }}>
-
-        {/* Hero */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, margin: '8px 0 24px' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, borderRadius: 11, background: '#EEF1FE' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="#879CF7"><path d="M12 2c.4 3.9 1.7 6.1 4 7.1 1.4.6 3 .9 6 .9-3 0-4.6.3-6 .9-2.3 1-3.6 3.2-4 7.1-.4-3.9-1.7-6.1-4-7.1-1.4-.6-3-.9-6-.9 3 0 4.6-.3 6-.9 2.3-1 3.6-3.2 4-7.1Z" /></svg>
+    <div className="container py-10">
+      <div className="content">
+        <style>{CREDIT_CSS}</style>
+        {user?.id ? <UserLoader recordId={user.id} onState={setMeState} /> : null}
+        {ringAccountId ? <AccountLoader key={ringAccountId} recordId={ringAccountId} onState={setAfState} /> : null}
+        {selectedAccount ? <BriefList key={`b-${selectedAccount}`} workspaceId={selectedAccount} onList={setBriefsFull} /> : null}
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Bulk Video Upload</h1>
+            <p className="text-muted-foreground mt-1">Upload and submit multiple videos at once.</p>
+          </div>
+          <span className="bu-ringwrap">
+            <button type="button" className="bu-ring" onClick={() => setShowCredits((v) => !v)} title={`${creditsLeft} video${creditsLeft === 1 ? "" : "s"} left this cycle`} aria-label="Videos left this cycle" aria-expanded={showCredits}>
+              <svg viewBox="0 0 36 36" width="20" height="20" aria-hidden="true"><circle cx="18" cy="18" r="15" className="bu-ring-track" /><circle cx="18" cy="18" r="15" className="bu-ring-bar" style={{ strokeDasharray: `${(ringPct * 94.2).toFixed(1)} 94.2` }} /></svg>
+            </button>
+            {showCredits ? (
+              <div className="bu-pop" role="dialog" aria-label="Videos this cycle">
+                <div className="bu-pop-row"><span>Videos this cycle</span><b>{creditsLeft}{maxVideos ? ` of ${maxVideos}` : ""} left</b></div>
+                <div className="bu-pop-bar"><i style={{ width: `${Math.round(ringPct * 100)}%` }} /></div>
+                {planName ? <div className="bu-pop-row"><span>Plan</span><b>{planName}</b></div> : null}
+                <div className="bu-pop-row"><span>Review mode</span><b>{modeLabel}</b></div>
+                {cycleEnd ? <div className="bu-pop-row"><span>Resets</span><b>{cycleEnd}</b></div> : null}
+                <a className="bu-pop-link" href="/settings#tab2">See your plan</a>
+              </div>
+            ) : null}
           </span>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', color: '#001364' }}>
-            Welcome back{firstName ? `, ${firstName}` : ''}
-          </h1>
         </div>
-
-        {/* ============ COMPOSE ============ */}
-        {stage === 'compose' && (
-          <div className="bc-enter">
-            {/* Pills */}
-            <div style={{ position: 'relative', marginBottom: 14 }}>
-              {hoverPill != null && (
-                <div style={{ position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, right: 0, display: 'flex', justifyContent: 'center', zIndex: 6, pointerEvents: 'none' }}>
-                  <div style={{ maxWidth: 480, padding: '8px 12px', borderRadius: 10, background: '#001364', color: '#fff', fontSize: 12, lineHeight: 1.45, boxShadow: '0 10px 26px -12px rgba(16,24,64,0.55)' }}>{PILLS[hoverPill].prompt}</div>
-                </div>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <button className="bc-round" onClick={() => scrollPills(-1)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg></button>
-                <div ref={pillsRef} className="bc-noscroll" style={{ flex: '1 1 auto', display: 'flex', gap: 8, overflowX: 'auto', scrollBehavior: 'smooth', padding: '2px 0' }}>
-                  {PILLS.map((p, i) => (
-                    <button key={i} className="bc-pill" onClick={() => pickPill(p)} onMouseEnter={() => setHoverPill(i)} onMouseLeave={() => setHoverPill(null)}>{p.chip}</button>
-                  ))}
-                </div>
-                <button className="bc-round" onClick={() => scrollPills(1)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg></button>
-              </div>
-            </div>
-
-            {/* Input card */}
-            <div style={{ borderRadius: 14, background: '#FFFFFF', border: '1px solid #D8DEF0', boxShadow: '0 1px 2px rgba(16,24,64,0.04), 0 6px 18px -12px rgba(16,24,64,0.14)', padding: '16px 16px 12px' }}>
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Tell me about this video, or what you want done with it…" rows={3}
-                style={{ width: '100%', border: 'none', outline: 'none', resize: 'none', fontFamily: 'inherit', fontSize: 14.5, fontWeight: 400, lineHeight: 1.5, color: '#001364', background: 'transparent' }} />
-
-              {attachType === 'link' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0', padding: '9px 12px', borderRadius: 10, background: '#FAFBFF', border: '1px solid #E6EAF5' }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#879CF7" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
-                  <input type="url" value={link} onChange={(e) => setLink(e.target.value)} placeholder="Paste a TikTok or Instagram link" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 400, color: '#001364' }} />
-                </div>
-              )}
-
-              {attachType === 'file' && (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, margin: '4px 0', padding: '6px 10px 6px 7px', borderRadius: 9, background: '#F5F7FF', border: '1px solid #E6EAF5' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: 6, background: '#EEF1FE', color: '#879CF7' }}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="m22 8-6 4 6 4V8Z" /><rect width="14" height="12" x="2" y="6" rx="2" /></svg></span>
-                  <span style={{ fontSize: 12.5, fontWeight: 500, color: '#001364' }}>{fileName}</span>
-                  <button onClick={clearAttach} style={{ display: 'inline-flex', border: 'none', background: 'transparent', cursor: 'pointer', color: '#97A0BA', padding: 2 }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button>
-                </div>
-              )}
-
-              {/* Toolbar */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
-                <div style={{ position: 'relative' }}>
-                  <button className="bc-tool" onClick={() => { setAttachMenuOpen((o) => !o); setModeMenuOpen(false); }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#879CF7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
-                    Add a video
-                  </button>
-                  {attachMenuOpen && (
-                    <div className="bc-enter" style={{ position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, zIndex: 20, width: 206, padding: 5, borderRadius: 11, background: '#fff', border: '1px solid #E6EAF5', boxShadow: '0 12px 32px -14px rgba(16,24,64,0.28)' }}>
-                      <button className="bc-menu-item" onClick={chooseLink}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#879CF7" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
-                        Paste a link
-                      </button>
-                      <button className="bc-menu-item" onClick={chooseFileClick}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#879CF7" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></svg>
-                        Upload a file
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span className="bc-ringwrap">
-                    <button type="button" className="bc-ring" onClick={() => { setShowCredits((v) => !v); setModeMenuOpen(false); setAttachMenuOpen(false); }} title={`${usedPct}% used · ${creditsLeft} video${creditsLeft === 1 ? '' : 's'} left this cycle`} aria-label="Videos used this cycle" aria-expanded={showCredits}>
-                      <svg viewBox="0 0 36 36" width="18" height="18" aria-hidden="true"><circle cx="18" cy="18" r="15" className="bc-ring-track" /><circle cx="18" cy="18" r="15" className={`bc-ring-bar is-${usageTone}`} style={{ strokeDasharray: `${(ringPct * 94.2).toFixed(1)} 94.2`, opacity: usedPct > 0 ? 1 : 0 }} /></svg>
-                    </button>
-                    {showCredits && (
-                      <div className="bc-pop bc-enter" role="dialog" aria-label="Videos this cycle">
-                        <div className="bc-pop-row"><span>Videos this cycle</span><b>{usedPct}% used</b></div>
-                        <div className="bc-pop-bar"><i className={`is-${usageTone}`} style={{ width: `${usedPct}%` }} /></div>
-                        <div className="bc-pop-row"><span>Videos left</span><b>{creditsLeft}{maxVideos ? ` of ${maxVideos}` : ''}</b></div>
-                        {planName ? <div className="bc-pop-row"><span>Plan</span><b>{planName}</b></div> : null}
-                        <div className="bc-pop-row"><span>Review mode</span><b>{aiModeLabel}</b></div>
-                        {cycleEnd ? <div className="bc-pop-row"><span>Resets</span><b>{cycleEnd}</b></div> : null}
-                        <a className="bc-pop-link" href="/settings#tab2">See your plan</a>
-                      </div>
-                    )}
-                  </span>
-                  <div style={{ position: 'relative' }}>
-                    <button className="bc-mode" onClick={() => { setModeMenuOpen((o) => !o); setAttachMenuOpen(false); setShowCredits(false); }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#879CF7" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="16" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="12" y2="18" /><circle cx="19" cy="6" r="2" fill="#879CF7" stroke="none" /></svg>
-                      {modeObj.label}
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#97A0BA" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'transform 0.2s', transform: `rotate(${modeMenuOpen ? 180 : 0}deg)` }}><polyline points="18 15 12 9 6 15" /></svg>
-                    </button>
-                    {modeMenuOpen && (
-                      <div className="bc-enter" style={{ position: 'absolute', bottom: 'calc(100% + 8px)', right: 0, zIndex: 20, width: 176, padding: 5, borderRadius: 11, background: '#fff', border: '1px solid #E6EAF5', boxShadow: '0 12px 32px -14px rgba(16,24,64,0.28)' }}>
-                        <div style={{ padding: '6px 10px 4px', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#97A0BA' }}>Run mode</div>
-                        {MODE_OPTIONS.map((m) => (
-                          <button key={m.value} className="bc-menu-item" onClick={() => { setSelectedMode(m.value); setModeMenuOpen(false); }} style={{ justifyContent: 'space-between' }}>
-                            {m.label}
-                            {selectedMode === m.value && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#879CF7" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <button onClick={send} disabled={!hasAttach}
-                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, border: 'none', borderRadius: 10, transition: 'all 0.15s', background: hasAttach ? '#879CF7' : '#EDEFF6', color: hasAttach ? '#fff' : '#AEB6CE', cursor: hasAttach ? 'pointer' : 'not-allowed' }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 14 0" /><path d="m13 6 6 6-6 6" /></svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-            <p style={{ textAlign: 'center', margin: '12px 0 0', fontSize: 12, fontWeight: 400, color: '#97A0BA' }}>Add a video, set the run mode, then send. I'll pick it up from there.</p>
+        {gateCode ? (
+          <div className="bu-upgrade">
+            <img src={UPGRADE_IMG} alt="" draggable={false} />
+            <h2>Upgrade your account</h2>
+            <p>Update your payment method to activate your account and access your videos and features.</p>
+            <a href="/billing">Update payment method</a>
           </div>
-        )}
-
-        {/* ============ CHAT ============ */}
-        {stage === 'chat' && (
-          <div ref={chatRef} className="bc-scrollbar" style={{ maxHeight: '66vh', overflowY: 'auto', overscrollBehavior: 'contain', borderRadius: 14, border: '1px solid #E6EAF5', background: '#FFFFFF', boxShadow: '0 1px 2px rgba(16,24,64,0.04), 0 8px 24px -18px rgba(16,24,64,0.16)' }}>
-            <div style={{ padding: '22px 24px 26px' }}>
-
-              {/* User message */}
-              <div className="bc-enter" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-                <div style={{ maxWidth: '80%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 7 }}>
-                  {notes.trim() && (
-                    <div style={{ padding: '11px 14px', borderRadius: 12, borderBottomRightRadius: 4, background: '#EEF1FE', border: '1px solid #DFE4FA', color: '#001364', fontSize: 14, fontWeight: 400, lineHeight: 1.5 }}>{notes}</div>
-                  )}
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 11px 6px 7px', borderRadius: 9, background: '#F5F7FF', border: '1px solid #E6EAF5' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 6, background: '#EEF1FE', color: '#879CF7' }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 8-6 4 6 4V8Z" /><rect width="14" height="12" x="2" y="6" rx="2" /></svg></span>
-                    <span style={{ fontSize: 12, fontWeight: 500, color: '#3C4767' }}>{attachLabel}</span>
-                    <span style={{ width: 1, height: 12, background: '#DDE3F2' }} />
-                    <span style={{ fontSize: 11, fontWeight: 600, color: '#879CF7' }}>{modeObj.label}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Validation failed */}
-              {validationError && (
-                <div className="bc-enter" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 14 }}>
-                  <img src={LEE_AVATAR} alt="Lee" style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0 }} />
-                  <div style={{ maxWidth: '82%', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={{ padding: '11px 15px', borderRadius: 12, borderTopLeftRadius: 4, background: '#FFFFFF', border: '1px solid #E6EAF5' }}>
-                      <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: '#001364' }}>{validationError}</p>
-                    </div>
-                    <a href="/settings" style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', height: 36, padding: '0 16px', borderRadius: 10, background: '#879CF7', color: '#fff', fontSize: 13.5, fontWeight: 600, textDecoration: 'none' }}>Manage your plan in Settings</a>
-                  </div>
-                </div>
-              )}
-
-              {/* Lee confirm */}
-              {showConfirm && !validationError && <LeeBubble>{modeObj.confirm}</LeeBubble>}
-
-              {/* Agents question */}
-              {showAgentsQ && !validationError && <LeeBubble>First, which Review Agents should run? Pick at least 3, each one watches for one specific thing.</LeeBubble>}
-
-              {/* Agents picker */}
-              {showAgents && !validationError && (
-                <div className="bc-enter" style={{ margin: '0 0 14px 40px', maxWidth: 480 }}>
-                  <div style={{ borderRadius: 12, border: '1px solid #E6EAF5', background: '#fff', overflow: 'hidden' }}>
-                    {AGENT_GROUPS.map((g) => {
-                      const gCount = g.agents.filter((a) => selectedAgents.includes(a.label)).length;
-                      const isOpen = openGroup === g.key;
-                      return (
-                        <div key={g.key} style={{ borderBottom: '1px solid #EEF1F8' }}>
-                          <button className="bc-group-head" onClick={() => toggleGroup(g.key)}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: '#F1F4FF' }}>
-                              <img src={g.icon} alt="" style={{ width: 19, height: 19, objectFit: 'contain' }} />
-                            </span>
-                            <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: '#001364' }}>{g.title}</span>
-                            {gCount > 0 && (
-                              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 18, height: 18, padding: '0 6px', borderRadius: 999, background: '#EEF1FE', color: '#5B6FD8', fontSize: 11, fontWeight: 600 }}>{gCount}</span>
-                            )}
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#AEB6CE" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'transform 0.2s', transform: `rotate(${isOpen ? 180 : 0}deg)` }}><polyline points="6 9 12 15 18 9" /></svg>
-                          </button>
-                          {isOpen && (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, padding: '2px 14px 14px' }}>
-                              {g.agents.map((a) => {
-                                const on = selectedAgents.includes(a.label);
-                                return (
-                                  <button key={a.id} onClick={() => toggleAgent(a.label)}
-                                    style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 7, width: '100%', minHeight: 104, textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer', borderRadius: 12, transition: 'all 0.15s', padding: '12px 12px 13px', background: on ? '#F5F7FF' : '#fff', border: on ? '1px solid #879CF7' : '1px solid #E6EAF5' }}>
-                                    <img src={AGENT_ICON} alt="" draggable="false" style={{ width: 32, height: 32, objectFit: 'contain', flexShrink: 0, transform: 'rotate(-12deg)', filter: 'drop-shadow(0 3px 5px rgba(135,156,247,0.28))' }} />
-                                    <span style={{ flex: 1, minWidth: 0 }}>
-                                      <span style={{ display: 'block', fontSize: 12.5, fontWeight: 500, color: '#001364' }}>{a.label}</span>
-                                      <span style={{ display: 'block', marginTop: 2, fontSize: 10.5, fontWeight: 400, lineHeight: 1.35, color: '#8A93AC' }}>{a.desc}</span>
-                                    </span>
-                                    <span style={{ position: 'absolute', top: 10, right: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 6, flexShrink: 0, background: on ? '#879CF7' : '#fff', border: on ? '1px solid #879CF7' : '1px solid #CFD6EA' }}>
-                                      {on && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
-                                    </span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 12 }}>
-                    <span style={{ fontSize: 12, fontWeight: 500, color: canAnalyse ? '#2FA463' : '#B7791F' }}>{canAnalyse ? `${count} agents selected` : `Pick at least 3 · ${count} selected`}</span>
-                    <button onClick={startAnalyse} disabled={!canAnalyse || submitting}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 36, padding: '0 16px', border: 'none', borderRadius: 10, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, transition: 'all 0.15s', background: canAnalyse ? '#879CF7' : '#EDEFF6', color: canAnalyse ? '#fff' : '#AEB6CE', cursor: canAnalyse ? 'pointer' : 'not-allowed' }}>
-                      {canAnalyse ? `Run ${count} agents` : 'Pick at least 3'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Analysing message */}
-              {showAnalyseMsg && <LeeBubble>{`On it. Running ${count} agents on your video now.`}</LeeBubble>}
-
-              {/* Scan / result frame */}
-              {showScan && (
-                <div className="bc-enter" style={{ margin: '0 0 6px 40px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 13 }}>
-                  <div style={{ position: 'relative', width: 208, height: 370, borderRadius: 16, overflow: 'hidden', background: '#FFFFFF', border: '1px solid #E6EAF5' }}>
-
-                    {showPreviewMedia && previewUrlRef.current && (
-                      <video autoPlay muted loop playsInline src={previewUrlRef.current} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(2px) brightness(0.85)' }} />
-                    )}
-
-                    {showFallbackMedia && (
-                      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18, background: 'linear-gradient(180deg, #F5F6FB 0%, #FFFFFF 100%)' }}>
-                        <div style={{ position: 'relative', width: 112, height: 112, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <span className="bc-pulse" style={{ position: 'absolute', inset: -4, borderRadius: 26, background: 'rgba(135,156,247,0.26)' }} />
-                          <span className="bc-pulse bc-pulse2" style={{ position: 'absolute', inset: -4, borderRadius: 26, background: 'rgba(135,156,247,0.26)' }} />
-                          <img src={FALLBACK_ICON[fkSource][0]} alt="" draggable="false" style={{ position: 'relative', width: 112, height: 112, objectFit: 'contain', borderRadius: 22, background: '#ECEEF4', boxShadow: '0 8px 22px -10px rgba(16,24,64,0.30)' }} />
-                        </div>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: '#5B6FD8' }}>{FALLBACK_ICON[fkSource][1]}</span>
-                      </div>
-                    )}
-
-                    {/* Scan overlays (preview only) */}
-                    {showPreviewMedia && (
-                      <>
-                        <div className="bc-scanline">
-                          <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 2, transform: 'translateY(-1px)', background: 'linear-gradient(90deg, rgba(180,196,255,0) 0%, #C3D0FF 50%, rgba(180,196,255,0) 100%)', boxShadow: '0 0 14px 2px rgba(135,156,247,0.7)' }} />
-                        </div>
-                        <div style={{ position: 'absolute', inset: 10, pointerEvents: 'none' }}>
-                          <span style={{ position: 'absolute', top: 0, left: 0, width: 15, height: 15, borderTop: '2px solid rgba(195,208,255,0.85)', borderLeft: '2px solid rgba(195,208,255,0.85)', borderTopLeftRadius: 5 }} />
-                          <span style={{ position: 'absolute', top: 0, right: 0, width: 15, height: 15, borderTop: '2px solid rgba(195,208,255,0.85)', borderRight: '2px solid rgba(195,208,255,0.85)', borderTopRightRadius: 5 }} />
-                          <span style={{ position: 'absolute', bottom: 0, left: 0, width: 15, height: 15, borderBottom: '2px solid rgba(195,208,255,0.85)', borderLeft: '2px solid rgba(195,208,255,0.85)', borderBottomLeftRadius: 5 }} />
-                          <span style={{ position: 'absolute', bottom: 0, right: 0, width: 15, height: 15, borderBottom: '2px solid rgba(195,208,255,0.85)', borderRight: '2px solid rgba(195,208,255,0.85)', borderBottomRightRadius: 5 }} />
-                        </div>
-                        <div style={{ position: 'absolute', top: 11, left: 11, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 9px', borderRadius: 999, background: 'rgba(14,20,48,0.72)', border: '1px solid rgba(255,255,255,0.14)' }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#879CF7' }} />
-                          <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>Scanning</span>
-                        </div>
-                      </>
-                    )}
-
-                    {reviewReady && (
-                      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 9, padding: 22, textAlign: 'center', background: '#FFFFFF' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 48, height: 48, borderRadius: '50%', background: '#E9F8EE', color: '#2FA463' }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg></span>
-                        <span style={{ fontSize: 15, fontWeight: 700, color: '#001364' }}>Review complete</span>
-                        <span style={{ fontSize: 12, lineHeight: 1.45, color: '#64708C' }}>{notifMsg || 'Your video has been analysed.'}</span>
-                      </div>
-                    )}
-
-                    {timedOut && (
-                      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 9, padding: 22, textAlign: 'center', background: '#FFFFFF' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 48, height: 48, borderRadius: '50%', background: '#EEF1FE', color: '#879CF7' }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg></span>
-                        <span style={{ fontSize: 15, fontWeight: 700, color: '#001364' }}>Still processing</span>
-                        <span style={{ fontSize: 12, lineHeight: 1.45, color: '#64708C' }}>We'll email you when it's ready.</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {scanning && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 500, color: '#3C4767' }}>{STATUS_LINES[scanIdx % STATUS_LINES.length]}</span>
-                      <div style={{ display: 'flex', gap: 7 }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: '#E9F8EE', color: '#2FA463', fontSize: 11, fontWeight: 500 }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>Fetched</span>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: '#F3F5FB', color: '#5B6FD8', fontSize: 11, fontWeight: 500 }}><span className="bc-spin" style={{ width: 11, height: 11, border: '2px solid #C7CFE6', borderTopColor: '#879CF7', borderRadius: '50%' }} />Analysing</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {reviewReady && (
-                    <a href="/videos" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 38, padding: '0 16px', borderRadius: 10, background: '#879CF7', color: '#fff', fontSize: 13.5, fontWeight: 600, textDecoration: 'none' }}>View my results<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 14 0" /><path d="m13 6 6 6-6 6" /></svg></a>
-                  )}
-                  {timedOut && (
-                    <a href="/videos" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 38, padding: '0 16px', borderRadius: 10, background: '#879CF7', color: '#fff', fontSize: 13.5, fontWeight: 600, textDecoration: 'none' }}>Go to dashboard<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 14 0" /><path d="m13 6 6 6-6 6" /></svg></a>
-                  )}
-                </div>
-              )}
-
-              {/* Typing */}
-              {typing && (
-                <div className="bc-enter" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 8 }}>
-                  <img src={LEE_AVATAR} alt="Lee" style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0 }} />
-                  <div style={{ display: 'flex', gap: 5, padding: '13px 15px', borderRadius: 12, borderTopLeftRadius: 4, background: '#FFFFFF', border: '1px solid #E6EAF5' }}>
-                    <span className="bc-bounce" style={{ width: 6, height: 6, borderRadius: '50%', background: '#879CF7' }} />
-                    <span className="bc-bounce" style={{ width: 6, height: 6, borderRadius: '50%', background: '#879CF7', animationDelay: '0.2s' }} />
-                    <span className="bc-bounce" style={{ width: 6, height: 6, borderRadius: '50%', background: '#879CF7', animationDelay: '0.4s' }} />
-                  </div>
-                </div>
-              )}
-
-            </div>
-          </div>
+        ) : (
+          <>
+        <StepIndicator step={step} />
+        {step === 1 && <UploadStep videos={videos} onUpload={handleFilesDrop} onRemove={removeVideo} onNext={leaveUploadStep} />}
+        {step === 2 && <WorkspaceStep accounts={filteredAccounts} isLoading={accountsLoading} selectedAccount={selectedAccount} onSelect={setSelectedAccount} onNext={() => setStep(3)} onBack={() => setStep(1)} />}
+        {step === 3 && <QAChecklistStep selected={batchQaChecklist} onToggle={toggleQaBatch} onSelectAll={() => setBatchQaChecklist(QA_OPTIONS.map((o) => o.id))} onDeselectAll={() => setBatchQaChecklist([])} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
+        {step === 4 && <BriefStep briefs={briefs} briefsLoading={briefsLoading} briefMode={briefMode} onModeChange={setBriefMode} batchBrief={batchBrief} onSelectBrief={setBatchBrief} batchNotes={batchNotes} onNotesChange={setBatchNotes} batchPdf={batchPdf} onPdfUpload={handlePdfUpload} isUploading={isUploading} onNext={goToReview} onBack={() => setStep(3)} />}
+        {step === 5 && <ReviewStep videos={videos} updateVideo={updateVideo} briefs={briefs} user={user} createEnabled={(createSubmission.enabled && createReview.enabled)} onSubmitOne={submitOneVideo} isSubmitting={isSubmitting} creditsLeft={creditsLeft} onBack={() => setStep(4)} />}
+          </>
         )}
       </div>
     </div>
-      )}
-    </>
-  );
-}
-
-// ─── Module-scope pieces (stable identity, no remount) ───
-function LeeBubble({ children }) {
-  return (
-    <div className="bc-enter" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 14 }}>
-      <img src={LEE_AVATAR} alt="Lee" style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0 }} />
-      <div style={{ padding: '11px 15px', borderRadius: 12, borderTopLeftRadius: 4, background: '#FFFFFF', border: '1px solid #E6EAF5', maxWidth: '82%' }}>
-        <p style={{ margin: 0, fontSize: 14, fontWeight: 400, lineHeight: 1.5, color: '#001364' }}>{children}</p>
-      </div>
-    </div>
-  );
-}
-
-function Style() {
-  return (
-    <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-      @keyframes bcSpin { to { transform: rotate(360deg); } }
-      @keyframes bcBounce { 0%,80%,100% { transform: translateY(0); opacity: 0.5; } 40% { transform: translateY(-5px); opacity: 1; } }
-      @keyframes bcFadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-      .bc-ringwrap { position: relative; display: inline-flex; align-items: center; }
-      .bc-ring { display: inline-grid; place-items: center; width: 30px; height: 30px; background: transparent; border: 0; padding: 0; cursor: pointer; border-radius: 8px; }
-      .bc-ring:hover { background: #F3F5FB; }
-      .bc-ring svg { transform: rotate(-90deg); display: block; }
-      .bc-ring-track { fill: none; stroke: rgba(0,19,100,0.1); stroke-width: 3.5; }
-      .bc-ring-bar { fill: none; stroke: #879CF7; stroke-width: 3.5; stroke-linecap: round; transition: stroke-dasharray 0.3s ease; }
-      .bc-pop { position: absolute; right: 0; bottom: calc(100% + 8px); width: 250px; background: #fff; border: 1px solid #E6EAF5; border-radius: 11px; box-shadow: 0 12px 32px -14px rgba(16,24,64,0.35); padding: 12px; display: flex; flex-direction: column; gap: 8px; z-index: 20; text-align: left; }
-      .bc-pop-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: #64708C; }
-      .bc-pop-row b { color: #001364; font-weight: 600; white-space: nowrap; }
-      .bc-pop-bar { height: 5px; border-radius: 99px; background: #F3F5FB; overflow: hidden; }
-      .bc-pop-bar i { display: block; height: 100%; background: #879CF7; border-radius: 99px; transition: width 0.3s ease; }
-      .bc-ring-bar.is-warn { stroke: #E8A13A; }
-      .bc-ring-bar.is-low { stroke: #E5484D; }
-      .bc-pop-bar i.is-warn { background: #E8A13A; }
-      .bc-pop-bar i.is-low { background: #E5484D; }
-      .bc-pop-link { font-size: 12px; font-weight: 600; color: #3C4767; text-decoration: none; margin-top: 2px; }
-      .bc-pop-link:hover { color: #001364; }
-      @keyframes bcScan { from { top: 7%; } to { top: 93%; } }
-      @keyframes bcPulse { 0% { transform: scale(0.7); opacity: 0.55; } 70% { transform: scale(1.5); opacity: 0; } 100% { opacity: 0; } }
-      .bc-enter { animation: bcFadeUp 0.45s cubic-bezier(0.32,0.72,0,1) both; }
-      .bc-shell { transition: padding-top 0.45s cubic-bezier(0.32,0.72,0,1); }
-      @media (max-width: 640px) { .bc-shell.is-home { padding-top: clamp(24px, 6vh, 56px) !important; } }
-      .bc-spin { animation: bcSpin 0.8s linear infinite; }
-      .bc-bounce { animation: bcBounce 1.4s infinite; }
-      .bc-pulse { animation: bcPulse 2.2s ease-out infinite; }
-      .bc-pulse2 { animation-delay: 1.1s; }
-      .bc-scanline { position: absolute; left: 0; right: 0; height: 54px; margin-top: -27px; background: linear-gradient(180deg, rgba(135,156,247,0) 0%, rgba(135,156,247,0.30) 48%, rgba(135,156,247,0.30) 52%, rgba(135,156,247,0) 100%); animation: bcScan 2.4s ease-in-out infinite alternate; pointer-events: none; }
-      .bc-scrollbar::-webkit-scrollbar { width: 8px; }
-      .bc-scrollbar::-webkit-scrollbar-track { background: transparent; }
-      .bc-scrollbar::-webkit-scrollbar-thumb { background: #DDE3F2; border-radius: 8px; }
-      .bc-noscroll::-webkit-scrollbar { display: none; }
-      .bc-noscroll { scrollbar-width: none; }
-      textarea::placeholder, input::placeholder { color: #97A0BA; }
-      .bc-round { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; border: 1px solid #E6EAF5; background: #fff; color: #64708C; cursor: pointer; }
-      .bc-round:hover { background: #F5F7FF; color: #001364; }
-      .bc-pill { flex: 0 0 auto; white-space: nowrap; height: 32px; padding: 0 13px; border-radius: 9px; border: 1px solid #E6EAF5; background: #fff; color: #3C4767; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
-      .bc-pill:hover { background: #F5F7FF; border-color: #D8DEF0; color: #001364; }
-      .bc-tool { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px 0 10px; border-radius: 9px; border: 1px solid #E6EAF5; background: #fff; color: #3C4767; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; }
-      .bc-tool:hover { background: #F5F7FF; color: #001364; }
-      .bc-mode { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 10px; border-radius: 9px; border: 1px solid #E6EAF5; background: #fff; color: #001364; font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
-      .bc-mode:hover { background: #F5F7FF; }
-      .bc-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: none; border-radius: 8px; background: transparent; color: #001364; font-family: inherit; font-size: 13px; font-weight: 500; text-align: left; cursor: pointer; }
-      .bc-menu-item:hover { background: #F5F7FF; }
-      .bc-group-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px; border: none; background: transparent; font-family: inherit; cursor: pointer; text-align: left; }
-      .bc-group-head:hover { background: #FAFBFF; }
-    `}</style>
   );
 }

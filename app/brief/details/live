@@ -1179,7 +1179,7 @@ The JSON structure must be EXACTLY as follows:
 
 {
   "overall_review": {
-    "video_title": "[Maximum 3 words describing the video content]",
+    "video_title": "[3-6 words naming what is DISTINCTIVE about this particular video, taken from how it opens: the specific action, line, setting or visual in the first few seconds. Never restate the brief, the product name or the category. Never a generic label such as 'Product Review' or 'Daily Set Review', because fifty creators shooting one brief must not all land on the same title. Examples: 'Rain-soaked morning routine', 'Dropped the bottle twice', 'Deadpan piece to camera'.]",
     "overall_rating": [1-5],
     "overall_comment": "[Two short paragraphs, 120 words at most in total: (1) How well the video fulfils the brief and its production quality, (2) What needs to change if not approved]",
     "ai_decision": "APPROVED or FLAGGED or REJECTED",
@@ -1301,7 +1301,7 @@ The JSON structure must be EXACTLY as follows:
 
 {
   "overall_review": {
-    "video_title": "[Maximum 3 words describing the video content]",
+    "video_title": "[3-6 words naming what is DISTINCTIVE about this particular video, taken from how it opens: the specific action, line, setting or visual in the first few seconds. Never restate the brief, the product name or the category. Never a generic label such as 'Product Review' or 'Daily Set Review', because fifty creators shooting one brief must not all land on the same title. Examples: 'Rain-soaked morning routine', 'Dropped the bottle twice', 'Deadpan piece to camera'.]",
     "overall_rating": [1-5],
     "overall_comment": "[2-3 paragraph analysis covering: (1) What makes this video effective or ineffective, (2) Which creative elements could work for this brand, (3) How this approach could be reimagined for this brand]",
     "ai_decision": "APPROVED",
@@ -1624,7 +1624,11 @@ export default function Block() {
     //    the submission row is the credit.
     ui.stage("Saving the review");
     const platform = isFile ? "Upload" : detectPlatform(srcUrl);
-    const videoTitle = (STEPPER && urlName) || stripEmDash(ov.video_title || "").slice(0, 80) || (theFile?.name || handle || "Video");
+    const videoTitle = (STEPPER && urlName) || stripEmDash(ov.video_title || "").slice(0, 80)
+      // A filename like IMG_4821.MOV is worse than no name at all.
+      // Who filmed it and when at least sorts and scans.
+      || ((String(creatorName || "").trim().split(/\s+/)[0] || handle || "Untitled")
+          + ", " + new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" }));
     const projectIds = idsOf(brief?.projects).length ? idsOf(brief.projects) : idsOf(parent?.projects);
     const normQa = (l) => String(l || "").toLowerCase().replace(/&/g, "and").replace(/visability/g, "visibility").replace(/\s+/g, " ").trim();
     const qaIndex = Object.fromEntries(Object.entries(SUB_QA_IDS).map(([k, v]) => [normQa(k), v]));
@@ -1814,15 +1818,15 @@ export default function Block() {
   }
 
   // One creator submission through the engine.
-  const runReview = async ({ file, uploaded, name, email, note }) => {
+  const runReview = async ({ file, uploaded, name, email, mobile, socials, note, onStage }) => {
     if (!createSubmission.enabled || !createReview.enabled) throw new Error("Submissions are not available right now.");
     if (!briefE || !workspaceId || !af) throw new Error("The brief is still loading. Try again in a moment.");
     if (unwrapE(briefE.status) !== "Active") throw new Error("This brief is closed to new submissions.");
     if (lookupStatus && lookupStatus !== "Active") throw new Error("This brief isn't taking submissions right now. Check back later or contact the brand.");
     if (!uploaded?.url) throw new Error("The upload did not finish. Try again.");
-    const ctx = { agents: [], briefId, brief: briefE, notes: note || "", pdf: null, pdfUploaded: null, creatorName: name, creatorEmail: email, creatorMobile: mobile, creatorSocials: Object.values(socialVals) };
+    const ctx = { agents: [], briefId, brief: briefE, notes: note || "", pdf: null, pdfUploaded: null, creatorName: name, creatorEmail: email, creatorMobile: mobile || "", creatorSocials: socials || [] };
     const item = { kind: "file", file: file || null, label: uploaded.filename, uploaded };
-    const r = await runPipeline(item, runRef.current, { stage: () => {}, preview: () => {} }, ctx);
+    const r = await runPipeline(item, runRef.current, { stage: (t) => { if (onStage) onStage(t); }, preview: () => {} }, ctx);
     if (!r) throw new Error("The review did not finish.");
     return r;
   };
@@ -2526,6 +2530,33 @@ function PreviewBar({ device, setDevice }) {
 // briefs / projects links from this brief. BL | New Video picks the
 // record up exactly as before.
 // =====================================================================
+// Softr's useUpload reports no bytes, so this bar is paced rather
+// than measured: it eases toward a ceiling it never reaches on its
+// own, at a rate read off the file's size, and only lands on 100%
+// when the upload really finishes. It always moves, and it never
+// says done before it is.
+function useUploadPace() {
+  const [pct, setPct] = useState(0);
+  const timer = useRef(null);
+  const clear = () => { if (timer.current) { clearInterval(timer.current); timer.current = null; } };
+  useEffect(() => clear, []);
+  return {
+    pct,
+    begin: (bytes) => {
+      clear();
+      setPct(0);
+      const mb = Math.max(0.5, (bytes || 0) / (1024 * 1024));
+      const half = Math.min(20000, 1100 + mb * 400);
+      const t0 = Date.now();
+      timer.current = setInterval(() => {
+        setPct(92 * (1 - Math.pow(2, -(Date.now() - t0) / half)));
+      }, 100);
+    },
+    done: () => { clear(); setPct(100); },
+    cancel: () => { clear(); setPct(0); },
+  };
+}
+
 function UploadPanel({
   open, onClose, briefId, f, briefName, submitDisabled, onInfo,
   uploadAsync, isUploading, onRun, canRun, modeLabel,
@@ -2561,6 +2592,8 @@ function UploadPanel({
   const [done, setDone] = useState(false);
   const [result, setResult] = useState(null); // { subId, decision } once the engine has run
   const [error, setError] = useState("");
+  const [stageText, setStageText] = useState("");
+  const pace = useUploadPace();
   const fileRef = useRef(null);
 
   // The overlay locks the page scroll while it's open.
@@ -2576,7 +2609,8 @@ function UploadPanel({
   const reset = () => {
     setStep(1); setVideo(null); setName(""); setEmail(""); setMobile("");
     setSocialVals({}); setSocialOpen(""); setSocialDraft("");
-    setDone(false); setResult(null); setError("");
+    setDone(false); setResult(null); setError(""); setStageText("");
+    pace.cancel();
   };
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   // Loose on purpose: creators write their number every which way, and
@@ -2589,12 +2623,15 @@ function UploadPanel({
     const file = files && files[0];
     if (!file) return;
     setError("");
+    pace.begin(file.size);
     try {
       const results = await uploadAsync([file]);
       const res = Array.isArray(results) ? results[0] : results;
       if (!res || !res.url) throw new Error("The upload did not finish. Try again.");
+      pace.done();
       setVideo({ filename: file.name, url: res.url, size: file.size || 0, file });
     } catch (e) {
+      pace.cancel();
       setError(e?.message || "That upload did not go through. Try again.");
     }
   };
@@ -2611,7 +2648,8 @@ function UploadPanel({
       const r = await onRun({
         file: video?.file,
         uploaded: video ? { filename: video.filename, url: video.url } : null,
-        name: name.trim(), email: email.trim(), note: "",
+        name: name.trim(), email: email.trim(), mobile: mobile.trim(), socials: Object.values(socialVals), note: "",
+        onStage: setStageText,
       });
       setResult(r);
       setDone(true);
@@ -2682,7 +2720,15 @@ function UploadPanel({
                   >
                     <Upload size={22} />
                     {isUploading
-                      ? <span>Uploading your video…</span>
+                      ? (
+                        <span className="bl-up-uploading">
+                          <span className="bl-up-uploading-top">
+                            Uploading your video
+                            <b>{Math.round(pace.pct)}%</b>
+                          </span>
+                          <span className="bl-up-track"><i style={{ width: Math.max(3, pace.pct) + "%" }} /></span>
+                        </span>
+                      )
                       : <span><b>Drag and drop your video</b> or tap to browse. MP4, MOV, JPG, PNG.</span>}
                   </div>
                 )}
@@ -2753,7 +2799,8 @@ function UploadPanel({
             {submitting && (
               <div className="bl-up-reviewing" role="status">
                 <span className="bl-up-bar"><i /></span>
-                <span>Reviewing your video, usually under 2 minutes. Keep this tab open.</span>
+                <span className="bl-up-stage">{stageText || "Reviewing your video"}</span>
+                <span>Usually under 2 minutes. Keep this tab open.</span>
               </div>
             )}
 
@@ -4064,6 +4111,12 @@ function Style() {
       .bl-up-input:focus { border-color: ${PERIWINKLE}; }
       .bl-up-textarea { resize: vertical; min-height: 96px; line-height: 1.5; }
       .bl-up-reviewing { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 4px; font-size: 13px; color: #64708C; }
+      .bl-up-stage { font-size: 13px; font-weight: 600; color: #001364; }
+      .bl-up-uploading { display: flex; flex-direction: column; gap: 7px; width: 100%; max-width: 280px; }
+      .bl-up-uploading-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 13px; color: #64708C; }
+      .bl-up-uploading-top b { font-size: 13px; font-weight: 700; color: #294ff6; font-variant-numeric: tabular-nums; }
+      .bl-up-track { display: block; width: 100%; height: 5px; border-radius: 99px; background: rgba(0,19,100,0.08); overflow: hidden; }
+      .bl-up-track i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg,#879CF7,#294ff6); transition: width 180ms linear; }
       .bl-up-bar { display: block; height: 5px; border-radius: 99px; background: rgba(0,19,100,0.06); overflow: hidden; }
       .bl-up-bar i { display: block; height: 100%; width: 40%; background: #879CF7; border-radius: 99px; animation: blUpSlide 1.4s ease-in-out infinite; }
       @keyframes blUpSlide { from { transform: translateX(-100%); } to { transform: translateX(260%); } }

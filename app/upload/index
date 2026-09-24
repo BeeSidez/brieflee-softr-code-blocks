@@ -836,7 +836,7 @@ The JSON structure must be EXACTLY as follows:
 
 {
   "overall_review": {
-    "video_title": "[Maximum 3 words describing the video content]",
+    "video_title": "[3-6 words naming what is DISTINCTIVE about this particular video, taken from how it opens: the specific action, line, setting or visual in the first few seconds. Never restate the brief, the product name or the category. Never a generic label such as 'Product Review' or 'Daily Set Review', because fifty creators shooting one brief must not all land on the same title. Examples: 'Rain-soaked morning routine', 'Dropped the bottle twice', 'Deadpan piece to camera'.]",
     "overall_rating": [1-5],
     "overall_comment": "[Two short paragraphs, 120 words at most in total: (1) How well the video fulfils the brief and its production quality, (2) What needs to change if not approved]",
     "ai_decision": "APPROVED or FLAGGED or REJECTED",
@@ -958,7 +958,7 @@ The JSON structure must be EXACTLY as follows:
 
 {
   "overall_review": {
-    "video_title": "[Maximum 3 words describing the video content]",
+    "video_title": "[3-6 words naming what is DISTINCTIVE about this particular video, taken from how it opens: the specific action, line, setting or visual in the first few seconds. Never restate the brief, the product name or the category. Never a generic label such as 'Product Review' or 'Daily Set Review', because fifty creators shooting one brief must not all land on the same title. Examples: 'Rain-soaked morning routine', 'Dropped the bottle twice', 'Deadpan piece to camera'.]",
     "overall_rating": [1-5],
     "overall_comment": "[2-3 paragraph analysis covering: (1) What makes this video effective or ineffective, (2) Which creative elements could work for this brand, (3) How this approach could be reimagined for this brand]",
     "ai_decision": "APPROVED",
@@ -1206,7 +1206,7 @@ function Style() {
       .bl-up-row-name { margin: 0; font-size: 13px; font-weight: 700; color: #001364; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .bl-up-row-meta { margin: 3px 0 0; font-size: 11.5px; font-weight: 500; color: #5A6790; }
       .bl-up-bar { height: 4px; border-radius: 999px; background: rgba(214,222,252,0.8); margin-top: 7px; overflow: hidden; }
-      .bl-up-bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #879CF7, #294ff6); transition: width 300ms ease; }
+      .bl-up-bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #879CF7, #294ff6); transition: width 180ms linear; }
       .bl-up-row-x {
         border: 0; background: transparent; color: #8390B5; cursor: pointer;
         padding: 4px; border-radius: 8px; line-height: 0; flex: none;
@@ -1543,6 +1543,14 @@ export default function Block() {
   const brandEmail = unwrap(af?.ownerEmail) || "";
   const brandFirstName = unwrap(af?.ownerFirstName) || "there";
 
+  // One interval per uploading row, cleared the moment the row
+  // settles or leaves, so nothing ticks against a row that is gone.
+  const paceTimers = useRef({});
+  const stopPace = (key) => {
+    if (paceTimers.current[key]) { clearInterval(paceTimers.current[key]); delete paceTimers.current[key]; }
+  };
+  useEffect(() => () => { Object.keys(paceTimers.current).forEach(stopPace); }, []);
+
   const addFiles = (fileList) => {
     const incoming = Array.from(fileList || []);
     incoming.forEach((file) => {
@@ -1556,20 +1564,35 @@ export default function Block() {
       }
       keyRef.current += 1;
       const key = "v" + keyRef.current;
-      setVideos((prev) => [...prev, { key, file, name: file.name, sizeMb: fmtMb(file.size), status: "uploading", url: "", briefId: "" }]);
+      setVideos((prev) => [...prev, { key, file, name: file.name, sizeMb: fmtMb(file.size), status: "uploading", pct: 0, url: "", briefId: "" }]);
+
+      // Softr's upload reports no bytes, so the bar is paced rather
+      // than measured: it eases toward a ceiling it never reaches on
+      // its own, at a rate read off the file's size, and only lands
+      // on 100% when the upload really finishes. It always moves,
+      // and it never says done before it is.
+      const half = Math.min(20000, 1100 + Math.max(0.5, file.size / (1024 * 1024)) * 400);
+      const t0 = Date.now();
+      paceTimers.current[key] = setInterval(() => {
+        const p = 92 * (1 - Math.pow(2, -(Date.now() - t0) / half));
+        setVideos((prev) => prev.map((v) => (v.key === key ? { ...v, pct: p } : v)));
+      }, 100);
+
       uploadAsync(file)
         .then((res) => {
+          stopPace(key);
           const first = Array.isArray(res) ? res[0] : res;
           const url = first && (first.url || first);
-          setVideos((prev) => prev.map((v) => (v.key === key ? { ...v, status: typeof url === "string" && url ? "ready" : "error", url: typeof url === "string" ? url : "" } : v)));
+          setVideos((prev) => prev.map((v) => (v.key === key ? { ...v, pct: 100, status: typeof url === "string" && url ? "ready" : "error", url: typeof url === "string" ? url : "" } : v)));
         })
         .catch(() => {
-          setVideos((prev) => prev.map((v) => (v.key === key ? { ...v, status: "error" } : v)));
+          stopPace(key);
+          setVideos((prev) => prev.map((v) => (v.key === key ? { ...v, pct: 0, status: "error" } : v)));
         });
     });
   };
 
-  const removeVideo = (key) => setVideos((prev) => prev.filter((v) => v.key !== key));
+  const removeVideo = (key) => { stopPace(key); setVideos((prev) => prev.filter((v) => v.key !== key)); };
 
   const readyVideos = videos.filter((v) => v.status === "ready");
   const stillUploading = videos.some((v) => v.status === "uploading");
@@ -1763,7 +1786,11 @@ export default function Block() {
     //    the submission row is the credit.
     ui.stage("Saving the review");
     const platform = isFile ? "Upload" : detectPlatform(srcUrl);
-    const videoTitle = (STEPPER && urlName) || stripEmDash(ov.video_title || "").slice(0, 80) || (theFile?.name || handle || "Video");
+    const videoTitle = (STEPPER && urlName) || stripEmDash(ov.video_title || "").slice(0, 80)
+      // A filename like IMG_4821.MOV is worse than no name at all.
+      // Who filmed it and when at least sorts and scans.
+      || ((String(creatorName || "").trim().split(/\s+/)[0] || handle || "Untitled")
+          + ", " + new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" }));
     const projectIds = idsOf(brief?.projects).length ? idsOf(brief.projects) : idsOf(parent?.projects);
     const normQa = (l) => String(l || "").toLowerCase().replace(/&/g, "and").replace(/visability/g, "visibility").replace(/\s+/g, " ").trim();
     const qaIndex = Object.fromEntries(Object.entries(SUB_QA_IDS).map(([k, v]) => [normQa(k), v]));
@@ -2441,12 +2468,12 @@ export default function Block() {
                         <p className="bl-up-row-name">{v.name}</p>
                         <p className="bl-up-row-meta">
                           {v.sizeMb}
-                          {v.status === "uploading" && " · uploading"}
+                          {v.status === "uploading" && " · uploading " + Math.round(v.pct || 0) + "%"}
                           {v.status === "ready" && " · ready"}
                           {v.status === "error" && " · upload failed, remove and try again"}
                         </p>
                         {v.status === "uploading" && (
-                          <div className="bl-up-bar"><div className="bl-up-bar-fill" style={{ width: "70%" }} /></div>
+                          <div className="bl-up-bar"><div className="bl-up-bar-fill" style={{ width: Math.max(3, v.pct || 0) + "%" }} /></div>
                         )}
                       </div>
                       <button type="button" className="bl-up-row-x" onClick={() => removeVideo(v.key)} aria-label="Remove">
