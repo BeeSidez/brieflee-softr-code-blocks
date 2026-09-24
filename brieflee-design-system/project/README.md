@@ -30,7 +30,7 @@ linked at runtime — everything Brieflee was distilled into local files.
     and `lucide-react` icons. Reference for how Brieflee composes interfaces
     and the tokens its app actually uses (`bg-primary`, `text-primary`,
     `rounded-2xl`, `border-dashed`, etc.).
-  - `app/bulk-import-videos.jsx` — same.
+  - `app/bulk-upload-v2.jsx` — same.
   - `CHANGELOG.md` — history of brand decisions.
 - **Live site** — `www.brieflee.co` (the periwinkle hero gradient
   `#ECF0FF→#879CF7` and navy text `#001364` are pulled from there).
