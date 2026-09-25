@@ -1,0 +1,164 @@
+// Quick links — in-flow row that sits directly under the dashboard chat.
+//
+// Was a fixed side rail pinned to the right edge, which read as a nav bar and
+// was easy to miss. Now it sits in the page flow immediately below the chat,
+// icons at full size with the label under each one, so the shortcuts are the
+// first thing you see after the chat box.
+//
+// Same links, same routes. Each link navigates by default; `modal: true`
+// opens it as the right-hand side panel (SoftrPageRenderer.setOpenPageModal,
+// the same call the /videos index uses for New video), falling back to the
+// URL modal params, then the centred modal, then a plain navigation.
+//
+// Remix and Review both open /review, the New video panel: Review, Analyse
+// or Remix is the first question it asks.
+//
+// The 3D glass icons are never wrapped in a tile or card — they sit directly
+// on the page background and carry their own drop shadow.
+//
+// NOTE: 'Briefs' and 'Projects' both point at /project. Carried over from the
+// rail as-is rather than guessed at — worth confirming the Briefs route.
+
+const PANEL_SIZE = 'M';
+
+const LINKS = [
+  { label: 'Agents',   href: '/settings#tab4', modal: false, img: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_agents-suited-character-glass-3d-clearer-periwinkle-transparent_2026-07.png' },
+  { label: 'Briefs',   href: '/project',       modal: false, img: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_brief-glass-3d-clearer-periwinkle-transparent_2026-07.png' },
+  { label: 'Bulk',     href: '/bulk',          modal: true,  img: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_bulk-cloud-upload-glass-3d-clearer-periwinkle-transparent_2026-07.png' },
+  { label: 'Discover', href: '/discover',      modal: false, img: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_discover-search-glass-3d-clearer-periwinkle-transparent_2026-07.png' },
+  { label: 'Projects', href: '/project',       modal: false, img: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_projects-folder-glass-3d-clearer-periwinkle-transparent_2026-07.png' },
+  { label: 'Remix',    href: '/review',        modal: true,  img: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_remix-clapperboard-glass-3d-clearer-periwinkle-transparent_2026-07.png' },
+  { label: 'Review',   href: '/review',        modal: true,  img: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png' },
+];
+
+// The page's workspace: ?workspace= on the URL, else the one the switcher
+// remembers. The panel is its own frame, so it only knows what the address says.
+function pageWorkspace() {
+  try { return new URL(window.location.href).searchParams.get('workspace') || localStorage.getItem('bl-active-workspace') || ''; } catch (err) { return ''; }
+}
+
+// Open a page as the right-hand side panel, carrying the page's workspace.
+function openSidePanel(path) {
+  const ws = pageWorkspace();
+  const src = ws ? `${path}${path.includes('?') ? '&' : '?'}workspace=${encodeURIComponent(ws)}` : path;
+  try {
+    const r = window.SoftrPageRenderer;
+    if (r && typeof r.setOpenPageModal === 'function') { r.setOpenPageModal({ src, size: PANEL_SIZE, placement: 'end' }); return; }
+  } catch (err) { /* fall through */ }
+  try {
+    const u = new URL(window.location.href);
+    u.searchParams.set('modal', src); u.searchParams.set('modalSize', PANEL_SIZE); u.searchParams.set('modalPlacement', 'end');
+    window.location.href = u.toString(); return;
+  } catch (err) { /* fall through */ }
+  if (typeof window.openSwModal === 'function') { window.openSwModal(src, 'md'); return; }
+  window.location.href = src;
+}
+
+export default function Block() {
+  const go = (e, link) => {
+    if (!link.modal || typeof window === 'undefined') return; // the anchor's href navigates normally
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; // new tab stays a new tab
+    e.preventDefault();
+    openSidePanel(link.href);
+  };
+
+  return (
+    <div className="ql-wrap">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+        /* Pulled up tight under the chat block above — the shortcuts should
+           read as part of the chat area, not as a separate section. */
+        /* The chat block above has no bottom padding of its own, so this
+           small top padding IS the whole gap between the two. */
+        .ql-wrap {
+          padding: 12px 16px 32px;
+          font-family: 'Inter', system-ui, sans-serif;
+        }
+        .ql-row {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: flex-start;
+          justify-content: center;
+          gap: 4px 10px;
+          max-width: 760px;
+          margin: 0 auto;
+        }
+        .ql-item {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px;
+          width: 84px;
+          padding: 8px 4px 6px;
+          border-radius: 14px;
+          text-decoration: none;
+          cursor: pointer;
+          transition: background 0.18s ease;
+        }
+        .ql-item:hover { background: rgba(135, 156, 247, 0.10); }
+        .ql-item:focus-visible {
+          outline: 2px solid #879CF7;
+          outline-offset: 2px;
+          background: rgba(135, 156, 247, 0.10);
+        }
+        .ql-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 52px;
+          height: 52px;
+          flex-shrink: 0;
+        }
+        .ql-icon img {
+          width: 48px;
+          height: 48px;
+          object-fit: contain;
+          filter: drop-shadow(0 4px 8px rgba(135, 156, 247, 0.28));
+          transition: transform 0.22s cubic-bezier(0.32, 0.72, 0, 1), filter 0.22s ease;
+        }
+        .ql-item:hover .ql-icon img {
+          transform: translateY(-3px) scale(1.08);
+          filter: drop-shadow(0 8px 14px rgba(135, 156, 247, 0.42));
+        }
+        .ql-label {
+          font-size: 13px;
+          font-weight: 600;
+          line-height: 1.3;
+          color: #001364;
+          letter-spacing: -0.005em;
+          white-space: nowrap;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .ql-item, .ql-icon img { transition: none; }
+          .ql-item:hover .ql-icon img { transform: none; }
+        }
+
+        @media (max-width: 640px) {
+          .ql-wrap { padding: 10px 10px 24px; }
+          .ql-row { gap: 2px 4px; }
+          .ql-item { width: 72px; padding: 6px 2px 4px; }
+          .ql-icon { width: 44px; height: 44px; }
+          .ql-icon img { width: 40px; height: 40px; }
+          .ql-label { font-size: 12px; }
+        }
+      `}</style>
+
+      <div className="ql-row">
+        {LINKS.map((link) => (
+          <a
+            key={link.label}
+            href={link.href}
+            className="ql-item"
+            aria-label={link.label}
+            onClick={(e) => go(e, link)}
+          >
+            <span className="ql-icon"><img src={link.img} alt="" draggable="false" /></span>
+            <span className="ql-label">{link.label}</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}

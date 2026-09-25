@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<!--
+  Brief Builder — self-playing demo (Velouré · Sunkissed Lip Oil · TikTok Shop Affiliates).
+
+  A standalone replica of app/briefs/brief-builder that builds the brief on its
+  own, for screen recording. No Softr, no API calls, no credits — the data is
+  the real DB row (brief pg6Ey8An3Ab3JE) baked in.
+
+  Open this file in a browser (drag into Chrome), press play, record.
+
+  Keys:  Space pause/resume · R restart · H help/chapters
+         1-9, 0 stage + play a single chapter (freezes at the end)
+         A play from the staged chapter to the end
+  URL:   ?scene=agents&play=1  ?speed=1.25  ?zoom=1.1  ?autoplay=1
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Brief Builder — Velouré autoplay (preview)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" />
+<style>
+  /* ════ block CSS, ported from app/briefs/brief-builder (constants inlined) ════
+     NAVY #001364 · PERI #879CF7 · PERI_H #294FF6 · MUTED #6B7A99 · SOFT #9aa6c3
+     BORDER rgba(217,224,255,.55) · TRACK rgba(217,224,255,.6) · SURFACE #F2F5FE
+     TAG_BG rgba(135,156,247,.10) · SUBTLE rgba(135,156,247,.04)               */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: auto; }
+  body { background: #FFFFFF; min-height: 100vh; }
+  .bl-bd, .bl-bd *, #checksRoot, #checksRoot * { font-family: 'Inter', sans-serif; box-sizing: border-box; }
+  .bl-bd { background: transparent; padding: 12px 28px 64px; max-width: 1400px; margin: 0 auto; }
+
+  .bl-bd svg { display: inline-block; vertical-align: middle; }
+  button { font-family: inherit; }
+
+  /* top bar */
+  .bl-bd-topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 26px; }
+  .bl-bd-topbar-actions { display: flex; align-items: center; gap: 10px; }
+  .bl-bd-switch { display: flex; gap: 2px; }
+  .bl-bd-switch-btn { padding: 10px 18px; border: none; background: transparent; font-size: 13.5px; font-weight: 600; color: #6B7A99; cursor: pointer; border-bottom: 2px solid transparent; }
+  .bl-bd-switch-btn.is-active { color: #001364; border-bottom-color: #879CF7; }
+  .bl-bd-saving { font-size: 11px; color: #6B7A99; font-style: italic; }
+  .bl-bd-preview-btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; background: #FFFFFF; border: 1px solid rgba(217,224,255,.55); border-radius: 10px; color: #001364; font-size: 13px; font-weight: 500; cursor: pointer; transition: border-color .15s, color .15s; }
+  .bl-bd-preview-btn:hover { border-color: #879CF7; color: #294FF6; }
+  .bl-bd-publish-btn { height: 36px; border: none; border-radius: 10px; font-size: 13px; font-weight: 500; padding: 0 16px; background: #879CF7; color: #fff; cursor: pointer; }
+  .bl-bd-publish-btn.is-done { opacity: .55; }
+
+  /* layout + paper */
+  .bl-bd-layout { display: flex; align-items: flex-start; gap: 18px; }
+  .bl-bd-main { flex: 1 1 auto; min-width: 0; }
+  .bl-bd-paper { background: #FFFFFF; border: none; border-radius: 0; padding: 30px 42px 84px; }
+  .bl-bd-title-row { margin: 4px 0 32px; }
+  .bl-bd-title { display: inline-flex; align-items: center; gap: 9px; background: transparent; border: none; cursor: pointer; padding: 2px 6px; margin-left: -6px; border-radius: 10px; font-size: 28px; font-weight: 700; color: #001364; text-align: left; line-height: 1.25; }
+  .bl-bd-title:hover { background: rgba(135,156,247,.08); }
+  .bl-bd-title-pencil { color: #9aa6c3; flex: 0 0 auto; }
+  .bl-bd-empty-hint { padding: 18px 20px; margin-bottom: 14px; background: #F2F5FE; border: 1.5px dashed rgba(217,224,255,.55); border-radius: 12px; color: #6B7A99; font-size: 13.5px; line-height: 1.7; }
+
+  /* paper sections */
+  .bl-bd-psec { padding: 36px 0 22px; border-top: 1px solid rgba(217,224,255,.5); margin-top: 12px; }
+  .bl-bd-psec:first-of-type { border-top: none; margin-top: 2px; }
+  .bl-bd-psec-head { display: flex; align-items: flex-start; gap: 10px; }
+  .bl-bd-psec-toggle { display: flex; align-items: flex-start; gap: 9px; flex: 1; min-width: 0; text-align: left; background: transparent; border: none; cursor: pointer; padding: 0; color: #294FF6; }
+  .bl-bd-psec-toggle > svg { margin-top: 3px; flex: 0 0 auto; }
+  .bl-bd-psec-titles { min-width: 0; }
+  .bl-bd-psec-title { margin: 0; font-size: 18px; font-weight: 700; color: #001364; }
+  .bl-bd-psec-sub { margin: 4px 0 0; font-size: 13px; font-weight: 300; color: #6B7A99; }
+  .bl-bd-psec-tip { margin-top: 2px; }
+  .bl-bd-psec-body { padding: 26px 0 16px 27px; display: flex; flex-direction: column; gap: 30px; }
+  .bl-bd-header-actions { display: inline-flex; align-items: center; gap: 8px; }
+  .bl-bd-move-btn { width: 28px; height: 28px; border-radius: 8px; background: #fff; border: 1px solid rgba(217,224,255,.55); color: #6B7A99; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: color .15s, border-color .15s; }
+  .bl-bd-move-btn:hover { color: #294FF6; border-color: #879CF7; }
+  .bl-bd-remove-btn:hover { color: #d92626; border-color: rgba(217,38,38,.5); }
+
+  /* parts */
+  .bl-bd-part-head { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
+  .bl-bd-part-ico { width: 17px; height: 17px; object-fit: contain; flex: 0 0 auto; }
+  .bl-bd-part-label { font-size: 11.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #294FF6; }
+  .bl-bd-part-url { width: 100%; max-width: 520px; border: 1.5px solid rgba(217,224,255,.55); border-radius: 10px; padding: 9px 12px; font-size: 13.5px; color: #001364; outline: none; background: #fff; font-family: inherit; }
+  .bl-bd-part-url:focus { border-color: #879CF7; }
+
+  /* editable body + guides */
+  .bl-bd-editable { outline: none; font-size: 14.5px; line-height: 1.7; color: #001364; min-height: 24px; }
+  .bl-bd-editable p { margin: 0 0 12px; }
+  .bl-bd-editable ul, .bl-bd-editable ol { margin: 0 0 12px; padding-left: 22px; }
+  .bl-bd-editable ul { list-style: disc outside; }
+  .bl-bd-editable li { margin: 5px 0; line-height: 1.6; display: list-item; }
+  .bl-bd-editable li::marker { color: #294FF6; }
+  .bl-bd-editable b { color: #001364; font-weight: 700; }
+  .bl-bd-guide { margin-top: 10px; padding: 10px 0 10px 16px; border-left: 2px dashed rgba(135,156,247,.55); color: #9aa6c3; font-size: 13px; font-style: italic; line-height: 1.65; }
+
+  /* chips */
+  .bl-bd-chiprow { display: flex; flex-wrap: wrap; gap: 10px; }
+  .bl-bd-checkchips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .bl-bd-chip { display: inline-flex; align-items: center; gap: 6px; padding: 9px 17px; border-radius: 999px; border: 1px solid rgba(217,224,255,.55); background: #fff; font-size: 13px; font-weight: 500; color: #001364; cursor: pointer; transition: all .12s; }
+  .bl-bd-chip.is-active { background: rgba(135,156,247,.10); border-color: #879CF7; color: #294FF6; font-weight: 600; }
+
+  /* tooltips */
+  .bl-bd-tip-wrap { position: relative; display: inline-flex; align-items: center; margin-left: 4px; }
+  .bl-bd-tip-icon { color: #6B7A99; cursor: help; }
+
+  /* rail */
+  .bl-bd-rail { width: 300px; flex: 0 0 300px; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; border-top: 1px solid rgba(217,224,255,.55); scrollbar-width: none; }
+  .bl-bd-rail::-webkit-scrollbar { display: none; }
+  .bl-bd-rail-group { border-top: 1px solid rgba(217,224,255,.55); }
+  .bl-bd-rail-group:first-child { border-top: none; }
+  .bl-bd-rail-head { width: 100%; display: flex; align-items: center; gap: 9px; padding: 16px 14px; background: transparent; border: none; cursor: pointer; }
+  .bl-bd-rail-head-icon { color: #294FF6; display: inline-flex; }
+  .bl-bd-rail-head-label { font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #001364; }
+  .bl-bd-rail-count { font-size: 10.5px; font-weight: 700; color: #294FF6; background: #eef1ff; padding: 1px 7px; border-radius: 999px; }
+  .bl-bd-rail-caret { margin-left: auto; color: #9aa6c3; display: inline-flex; }
+  .bl-bd-rail-caret svg { transition: transform .18s; }
+  .bl-bd-rail-group.is-open .bl-bd-rail-caret svg { transform: rotate(90deg); }
+  .bl-bd-rail-body { padding: 4px 8px 16px; }
+  .bl-bd-rail-hint { font-size: 11.5px; color: #6B7A99; padding: 2px 10px 12px; line-height: 1.6; }
+  .bl-bd-rail-search { display: flex; align-items: center; gap: 7px; margin: 2px 4px 8px; padding: 7px 10px; background: #fff; border: 1.5px solid rgba(217,224,255,.55); border-radius: 8px; color: #879CF7; }
+  .bl-bd-rail-search input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-family: inherit; font-size: 13px; color: #001364; }
+  .bl-bd-rail-row { width: 100%; display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border: none; border-radius: 9px; cursor: pointer; text-align: left; background: transparent; transition: background .12s; }
+  .bl-bd-rail-row:hover { background: #f7f9ff; }
+  .bl-bd-rail-row.is-added { background: #f2f5ff; }
+  .bl-bd-rail-row-icon { width: 26px; height: 26px; flex-shrink: 0; border-radius: 8px; background: #fff; border: 1px solid rgba(217,224,255,.55); display: grid; place-items: center; color: #294FF6; margin-top: 1px; }
+  .bl-bd-rail-row-icon img { width: 18px; height: 18px; object-fit: contain; }
+  .bl-bd-rail-row-text { flex: 1; min-width: 0; }
+  .bl-bd-rail-row-name { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 600; color: #001364; }
+  .bl-bd-rail-row-sub { display: block; font-size: 11px; color: #6B7A99; line-height: 1.4; margin-top: 2px; }
+  .bl-bd-rail-row-mark { flex-shrink: 0; width: 20px; height: 20px; border-radius: 6px; margin-top: 2px; display: grid; place-items: center; color: #9aa6c3; border: 1px solid rgba(217,224,255,.55); }
+  .bl-bd-rail-row.is-added .bl-bd-rail-row-mark { background: #879CF7; color: #fff; border: none; }
+
+  /* rail details */
+  .bl-bd-rail-details { display: flex; flex-direction: column; gap: 16px; padding: 4px 4px 8px; }
+  .bl-bd-rd-row { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .bl-bd-rd-label { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #9aa6c3; display: inline-flex; align-items: center; gap: 5px; }
+  .bl-bd-status-pill { display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 999px; font-size: 11px; font-weight: 500; letter-spacing: .02em; cursor: pointer; border: 1px solid; color: #001364; background: transparent; }
+  .bl-bd-segmented { display: inline-flex; align-items: center; padding: 2px; background: rgba(135,156,247,.10); border: 1px solid rgba(217,224,255,.55); border-radius: 999px; }
+  .bl-bd-segmented-btn { background: transparent; border: none; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 500; color: #6B7A99; cursor: pointer; }
+  .bl-bd-segmented-btn.is-active { background: #fff; color: #001364; box-shadow: 0 2px 6px -2px rgba(0,15,77,.18); }
+  .bl-bd-priv { display: inline-flex; align-items: center; gap: 5px; padding: 3px 11px; background: rgba(135,156,247,.10); border: 1px solid rgba(217,224,255,.55); color: #001364; font-size: 11px; font-weight: 500; border-radius: 999px; cursor: pointer; }
+  .bl-bd-gen-badge { display: inline-flex; align-items: center; padding: 3px 10px; background: #879CF7; color: #fff; font-size: 10px; font-weight: 600; border-radius: 999px; letter-spacing: .04em; box-shadow: 0 4px 10px -4px rgba(135,156,247,.55); }
+  .bl-bd-rd-thumb { display: flex; align-items: center; gap: 8px; }
+  .bl-bd-rd-thumb img { width: 64px; height: 44px; object-fit: cover; border-radius: 8px; border: 1px solid rgba(217,224,255,.55); }
+  .bl-bd-rd-thumb button { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 8px; border: 1px solid rgba(217,224,255,.55); background: #fff; color: #6B7A99; cursor: pointer; }
+  .bl-bd-creator-empty { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: transparent; color: #294FF6; font-size: 12px; font-weight: 500; border: 1px dashed rgba(135,156,247,.55); border-radius: 999px; cursor: pointer; }
+  .bl-bd-rd-ctype { margin-top: 2px; width: 100%; }
+  .bl-bd-field-label { font-size: 12px; font-weight: 500; color: #001364; display: inline-flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+  .bl-bd-select { height: 36px; font-size: 13px; background: #FFFFFF url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7A99' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>") no-repeat right 10px center / 14px; border: 1px solid rgba(217,224,255,.55); border-radius: 10px; padding: 6px 32px 4px 12px; color: #001364; cursor: pointer; width: 100%; display: flex; align-items: center; }
+
+  /* inspo / examples */
+  .bl-bd-inspo-row { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
+  .bl-bd-inspo-slot { display: inline-flex; align-items: center; gap: 6px; padding: 10px 12px; background: #fff; border: 1px dashed rgba(135,156,247,.55); border-radius: 10px; color: #294FF6; font-size: 12px; font-weight: 500; cursor: pointer; text-align: left; min-width: 0; }
+  .bl-bd-inspo-video { position: relative; background: #000; border-radius: 10px; overflow: hidden; border: 1px solid rgba(217,224,255,.55); }
+  .bl-bd-inspo-video video { display: block; width: 100%; aspect-ratio: 9 / 16; object-fit: cover; background: #000; }
+  .bl-bd-inspo-video-caption { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 10px 6px; background: linear-gradient(to top, rgba(0,0,0,.65), rgba(0,0,0,0)); color: #fff; font-size: 11px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+
+  /* format gallery */
+  .bl-bd-format-picked { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; min-height: 0; }
+  .bl-bd-format-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; max-height: 480px; overflow: hidden; padding: 2px; }
+  .bl-bd-format-card { position: relative; display: flex; flex-direction: column; align-items: stretch; background: #fff; border: 1px solid rgba(217,224,255,.55); border-radius: 10px; overflow: hidden; cursor: pointer; padding: 0; text-align: left; transition: border-color .12s, box-shadow .12s; }
+  .bl-bd-format-card.is-active { border-color: #294FF6; box-shadow: 0 0 0 1px #294FF6; }
+  .bl-bd-format-thumb { position: relative; display: block; height: 92px; background: rgba(217,224,255,.6); color: #879CF7; }
+  .bl-bd-format-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .bl-bd-format-thumb svg { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+  .bl-bd-format-tick { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 999px; background: #294FF6; color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+  .bl-bd-format-name { padding: 8px 10px 1px; font-size: 12.5px; font-weight: 600; color: #001364; }
+  .bl-bd-format-desc { padding: 0 10px 9px; font-size: 11px; font-weight: 300; color: #9aa6c3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* checks modal */
+  .bl-bd-checks-backdrop { position: fixed; inset: 0; background: rgba(10,18,60,.28); z-index: 60; }
+  .bl-bd-checks { position: fixed; z-index: 61; top: 50%; left: 50%; transform: translate(-50%,-50%); width: min(680px, 92vw); max-height: 82vh; background: #fff; border-radius: 14px; box-shadow: 0 24px 70px rgba(0,19,100,.25); display: flex; flex-direction: column; }
+  .bl-bd-checks-hero { display: flex; align-items: flex-start; gap: 14px; padding: 20px 22px 14px; background: linear-gradient(135deg, rgba(135,156,247,.14), rgba(135,156,247,.03)); border-radius: 14px 14px 0 0; border-bottom: 1px solid rgba(217,224,255,.55); }
+  .bl-bd-checks-hero img { width: 52px; height: 52px; object-fit: contain; flex: 0 0 auto; }
+  .bl-bd-checks-hero-text { flex: 1; min-width: 0; }
+  .bl-bd-checks-hero h3 { margin: 2px 0 5px; font-size: 17px; font-weight: 700; color: #001364; }
+  .bl-bd-checks-hero p { margin: 0; font-size: 12.5px; color: #6B7A99; line-height: 1.55; }
+  .bl-bd-checks-count { flex: 0 0 auto; align-self: flex-start; margin-top: 2px; padding: 5px 12px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: #fff; border: 1px solid rgba(217,224,255,.55); color: #9aa6c3; white-space: nowrap; }
+  .bl-bd-checks-count.is-on { background: #294FF6; border-color: #294FF6; color: #fff; }
+  .bl-bd-checks-legend { display: flex; justify-content: space-between; padding: 12px 24px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: #9aa6c3; }
+  .bl-bd-checks-list { overflow: auto; padding: 6px 14px 12px; display: flex; flex-direction: column; gap: 1px; scrollbar-width: thin; }
+  .bl-bd-check-row { padding: 9px 10px; border-radius: 10px; }
+  .bl-bd-check-row:hover { background: #f7f9ff; }
+  .bl-bd-check-main { display: flex; align-items: center; gap: 9px; }
+  .bl-bd-check-box { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 6px; flex: 0 0 auto; border: 1.5px solid rgba(217,224,255,.55); background: #fff; color: #fff; cursor: pointer; }
+  .bl-bd-check-box.is-on { background: #879CF7; border-color: #879CF7; }
+  .bl-bd-check-name { font-size: 13.5px; color: #001364; display: inline-flex; align-items: center; gap: 5px; }
+  .bl-bd-check-th { margin-left: auto; flex: 0 0 auto; font-size: 12px; color: #001364; border: 1px solid rgba(217,224,255,.55); border-radius: 8px; padding: 5px 24px 3px 10px; background: #FFFFFF url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7A99' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>") no-repeat right 7px center / 12px; }
+  .bl-bd-check-preview { margin: 6px 0 2px 27px; font-size: 12px; color: #6B7A99; font-style: italic; }
+  .bl-bd-check-reads { font-style: normal; font-weight: 600; color: #294FF6; }
+  .bl-bd-checks-foot { padding: 12px 22px 16px; display: flex; align-items: center; gap: 10px; border-top: 1px solid rgba(217,224,255,.55); }
+  .bl-bd-checks-note { font-size: 11.5px; color: #9aa6c3; margin-right: auto; }
+  .bl-bd-checks-cancel { padding: 8px 14px; border-radius: 9px; border: 1px solid rgba(217,224,255,.55); background: #fff; color: #6B7A99; font-size: 13px; cursor: pointer; }
+  .bl-bd-checks-save { padding: 9px 16px; border-radius: 10px; border: none; background: #879CF7; color: #fff; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+
+  @media (max-width: 1020px) {
+    .bl-bd-layout { flex-direction: column; }
+    .bl-bd-rail { position: static; width: 100%; max-height: none; }
+    .bl-bd-paper { padding: 20px 18px 48px; }
+    .bl-bd-psec-body { padding-left: 0; }
+  }
+
+  /* ════ player chrome (not part of the app) ════ */
+  #cursor { position: fixed; z-index: 200; left: 0; top: 0; pointer-events: none; opacity: 0; transition: opacity .4s; will-change: transform; filter: drop-shadow(0 2px 5px rgba(0,19,100,.35)); }
+  #cursor.is-on { opacity: 1; }
+  #cursor .ripple { position: absolute; left: -2px; top: -2px; width: 30px; height: 30px; border-radius: 999px; border: 2.5px solid #294FF6; opacity: 0; transform: scale(.3); pointer-events: none; }
+  #cursor.is-clicking .ripple { animation: bl-ripple .45s ease-out; }
+  @keyframes bl-ripple { 0% { opacity: .85; transform: scale(.3);} 100% { opacity: 0; transform: scale(1.5);} }
+  body.is-playing, body.is-playing * { cursor: none !important; }
+
+  #overlay { position: fixed; inset: 0; z-index: 300; background: rgba(250,251,255,.92); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; transition: opacity .35s; }
+  #overlay.is-hidden { opacity: 0; pointer-events: none; }
+  .ov-card { text-align: center; max-width: 560px; padding: 30px; }
+  .ov-play { width: 96px; height: 96px; border-radius: 999px; border: none; background: #879CF7; color: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 18px 44px -12px rgba(41,79,246,.55); transition: transform .15s, background .15s; }
+  .ov-play:hover { background: #294FF6; transform: scale(1.05); }
+  .ov-title { margin: 22px 0 6px; font-size: 21px; font-weight: 700; color: #001364; }
+  .ov-sub { font-size: 13.5px; color: #6B7A99; line-height: 1.6; }
+  .ov-keys { margin-top: 22px; display: inline-block; text-align: left; font-size: 12px; color: #6B7A99; line-height: 1.9; background: #fff; border: 1px solid rgba(217,224,255,.55); border-radius: 12px; padding: 14px 18px; }
+  .ov-keys b { color: #001364; font-weight: 600; }
+  .ov-keys .k { display: inline-block; min-width: 17px; text-align: center; background: rgba(135,156,247,.12); border: 1px solid rgba(217,224,255,.8); border-radius: 5px; padding: 1px 5px 0; font-weight: 600; color: #294FF6; margin-right: 2px; }
+
+  #hud { position: fixed; right: 14px; bottom: 14px; z-index: 290; background: rgba(255,255,255,.94); border: 1px solid rgba(217,224,255,.8); border-radius: 12px; box-shadow: 0 12px 30px rgba(0,19,100,.14); padding: 10px 14px; font-family: 'Inter', sans-serif; font-size: 12px; color: #6B7A99; line-height: 1.8; display: none; }
+  #hud.is-on { display: block; }
+  #hud b { color: #001364; }
+
+  .bl-typing-caret::after { content: ""; display: inline-block; width: 2px; height: 1em; background: #294FF6; margin-left: 1px; vertical-align: -0.12em; animation: bl-caret .8s steps(1) infinite; }
+  @keyframes bl-caret { 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+
+<div class="bl-bd" id="stage">
+  <div class="bl-bd-topbar">
+    <div class="bl-bd-switch">
+      <button type="button" class="bl-bd-switch-btn is-active">Brief</button>
+      <button type="button" class="bl-bd-switch-btn">Submissions</button>
+      <button type="button" class="bl-bd-switch-btn">Invites</button>
+    </div>
+    <div class="bl-bd-topbar-actions">
+      <span class="bl-bd-saving" id="topSaving" style="visibility:hidden">Saving…</span>
+      <button type="button" class="bl-bd-preview-btn" id="btnPreview"><span data-ico="eye"></span>Preview</button>
+      <button type="button" class="bl-bd-preview-btn">Share</button>
+      <button type="button" class="bl-bd-publish-btn" id="btnPublish">Publish</button>
+    </div>
+  </div>
+
+  <div class="bl-bd-layout">
+    <div class="bl-bd-main">
+      <div class="bl-bd-paper" id="paper">
+        <div class="bl-bd-title-row">
+          <button type="button" class="bl-bd-title"><span id="briefTitle"></span><span class="bl-bd-title-pencil" data-ico="pencil" data-sz="15"></span></button>
+        </div>
+        <p class="bl-bd-empty-hint" id="emptyHint">This brief has no sections yet. Add them one by one from Sections in the rail, or drop in live workspace content from Modules.</p>
+        <div id="sections"></div>
+      </div>
+    </div>
+
+    <aside class="bl-bd-rail" id="rail"></aside>
+  </div>
+</div>
+
+<div id="checksRoot"></div>
+
+<div id="cursor">
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+    <path d="M5 3l14 8.5-6.1 1.6L9.5 19 5 3z" fill="#0B1020" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/>
+  </svg>
+  <span class="ripple"></span>
+</div>
+
+<div id="overlay">
+  <div class="ov-card">
+    <button type="button" class="ov-play" id="btnPlay" title="Play">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72c0 .8.87 1.3 1.56.88l11-6.86a1.05 1.05 0 0 0 0-1.76l-11-6.86A1.03 1.03 0 0 0 8 5.14z"/></svg>
+    </button>
+    <div class="ov-title">Brief Builder, playing itself</div>
+    <div class="ov-sub">Velour&eacute; &middot; Sunkissed Lip Oil &middot; a TikTok Shop affiliate brief builds itself from a blank page. Press play, hide your dock, record.</div>
+    <div class="ov-keys">
+      <b>Chapters</b> &nbsp;<span class="k">1</span>Title &nbsp;<span class="k">2</span>Brand &nbsp;<span class="k">3</span>The Offer &nbsp;<span class="k">4</span>Product &nbsp;<span class="k">5</span>Hooks<br/>
+      <span class="k">6</span>Talking points &nbsp;<span class="k">7</span>Visual format &nbsp;<span class="k">8</span>Examples &nbsp;<span class="k">9</span>Review Agents &nbsp;<span class="k">0</span>Publish<br/>
+      <b>Keys</b> &nbsp;<span class="k">Space</span>pause &nbsp;<span class="k">A</span>play to end &nbsp;<span class="k">R</span>restart &nbsp;<span class="k">H</span>this help &nbsp;<b>URL</b> ?speed=1.25 &middot; ?zoom=1.1
+    </div>
+  </div>
+</div>
+
+<div id="hud">
+  <b>1</b> Title &middot; <b>2</b> Brand &middot; <b>3</b> Offer &middot; <b>4</b> Product &middot; <b>5</b> Hooks &middot; <b>6</b> Talking &middot; <b>7</b> Format &middot; <b>8</b> Examples &middot; <b>9</b> Agents &middot; <b>0</b> Publish<br/>
+  <b>Space</b> pause &middot; <b>A</b> play to end &middot; <b>R</b> restart &middot; <b>H</b> hide
+</div>
+
+<script>
+/* ═════════════════════════ data (real DB row pg6Ey8An3Ab3JE) ═════════════════════════ */
+const D = {
+  title: "Sunkissed Lip Oil TikTok Shop Affiliate Brief",
+  hero: "https://res.cloudinary.com/dchroynzv/image/upload/demo/veloure/sunkissed-lip-oil-hero.png",
+  brand: `<p>We are Velouré, and we've created the easiest way to look sun-kissed without trying: the Sunkissed Lip Oil. A terracotta-tinted gloss with cold-pressed argan oil, it reads as a natural sun-kissed nude on every skin tone and feels weightless, never sticky.</p><p>Velouré is a warm Mediterranean beauty brand, and we believe makeup should feel like a vacation in a bottle: slow, warm and effortless.</p>`,
+  offerDeal: `<p><b>Offer type:</b> Money, with a gifted product.</p><p><b>The deal:</b> 20% commission on every Sunkissed Lip Oil sold through your TikTok Shop link, with a free full-size Lip Oil to film with. Hit 50 sales in a month and your rate rises to 25%.</p><p><b>How you get it:</b> request the sample through our Open Collab or add the product to your Showcase, post with your link, and commission lands in your balance once each sale clears the return window.</p><p><b>Free feedback:</b> drop your draft into Brieflee before you post for free AI feedback against this brief. Better videos mean better commission.</p>`,
+  offerCommission: `<p>20% base commission through Open Collab. 25% once you pass 50 sales in a calendar month. If we ever change the rate, your existing rate holds for 30 days.</p>`,
+  offerGift: `<p>One full-size Sunkissed Lip Oil in Sienna Sunset, shipped free through your sample request. Keep it, film with it, nothing to send back.</p>`,
+  productDesc: `<p>The Sunkissed Lip Oil is a tinted lip oil designed to replace sticky gloss. The terracotta tint reads as a natural sun-kissed nude on every skin tone, and the cold-pressed argan oil keeps lips glossy for hours without the tack of a traditional gloss. It's known for being weightless, buildable and universally flattering.</p>`,
+  productUrl: "https://veloure.com/products/sunkissed-lip-oil",
+  captionHooks: `<ul><li><b>Hook 1:</b> this lip oil is why I look sun-kissed in December</li><li><b>Hook 2:</b> if your gloss disappears in 20 minutes, watch this</li><li><b>Hook 3:</b> the terracotta lip everyone keeps asking me about</li></ul>`,
+  visualHooks: `<ul><li><b>Hook 1:</b> swatch the oil on the back of your hand in warm light, then straight to lips</li><li><b>Hook 2:</b> hold your old sticky gloss to camera, drop it out of frame, pick up the Lip Oil</li><li><b>Hook 3:</b> close-up application on bare lips, one slow pass, no cuts</li></ul>`,
+  voiceoverHooks: `<ul><li><b>Hook 1:</b> “I don't wear lipstick anymore, I wear this.”</li><li><b>Hook 2:</b> “This one was still there after my second coffee.”</li><li><b>Hook 3:</b> “Everyone asks what's on my lips. It's one product.”</li></ul>`,
+  talkingPoints: `<ul><li><b>What finally made you try it?</b> Sticky gloss, tint that vanishes within the hour, lip colors that look great in the tube and wrong on your face. Make it personal.</li><li><b>What were you skeptical about?</b> Maybe you thought a tinted oil would be too sheer to show up, or just another gloss. Be honest about it.</li><li><b>The formula.</b> Cold-pressed argan oil with a terracotta tint that adapts to your skin tone. Glossy without the stick, color without the commitment.</li><li><b>How it fits your day.</b> One product in your bag, no mirror needed, still there after lunch.</li><li><b>Soft CTA.</b> Land on something like “it's linked if you want to see it on your skin tone”. Conversational, never salesy.</li></ul>`,
+  visualFormat: `<p><b>Demo.</b> Show it working. Hands using the product, the result happening in real time. No explanation needed if the demo is clear, viewers learn what your product does by watching it do it. Why it works: Demos answer 'what does it actually do?' before the viewer has to wonder. The clarity of seeing the product perform replaces a paragraph of features, and when the result on screen is satisfying, that satisfaction is what gets remembered.</p><p><b>Yapper.</b> Creator talking straight to camera. No props, no setup, no cuts, just face, words, and energy. The opener does all the heavy lifting because that's all there is to lift. Why it works: Yapper is the most native format on TikTok and Reels, it looks like the content the viewer already follows. The lack of production reads as honest, and the energy of the creator carries the watch when the message alone wouldn't.</p>`,
+  handDo: "Film in warm, natural light, golden hour if you can.",
+  handDont: "Don't call it a lipstick, it's a lip oil.",
+  submissionNotes: `<ul><li>Post straight to your own account whenever you're ready. There's no submission step and nothing to wait on.</li><li>Before you post: drop your draft into your Brieflee link for free AI feedback against this brief. It flags anything off-brief in about a minute.</li><li>Fix what's worth fixing, then post. The feedback is for you, your account and your commission.</li></ul>`,
+  contactCommunity: `<p><b>Join the community.</b> We build lasting relationships with our affiliates, growing your content and your sales video by video. Join the Velouré creator group on WhatsApp: veloure.com/creators. Sign up to the affiliate program: veloure.com/affiliates.</p><p><b>Get in touch.</b> Questions? Email creators@veloure.com, find us at veloure.com, or message @veloure.beauty on TikTok or Instagram.</p>`,
+  examples: [
+    { label: "Example — Yapper (rms beauty)", video: "https://res.cloudinary.com/dchroynzv/video/upload/demo/veloure/example-1.mp4" },
+    { label: "Example — Demo (Kosas)", video: "https://res.cloudinary.com/dchroynzv/video/upload/demo/veloure/example-3.mp4" },
+    { label: "Example — Before & After (Kosas)", video: "https://res.cloudinary.com/dchroynzv/video/upload/demo/veloure/example-4.mp4" },
+  ],
+};
+
+/* Agents ticked in this brief, in panel order.
+   An agent with a THRESHOLD writes to the brief as a chip (`chip`), not
+   as a sentence — that is the live split. An agent without one writes
+   its sentence into Do or Don't (`line` + `blk`). Same rule as
+   agentBarActive / GuidelineBars in app/briefs/brief-builder. */
+const PICKED_AGENTS = [
+  { label: "Brand alignment",      line: "Match the brand's voice, look and feel.", blk: "do" },
+  { label: "Hook quality",         line: "Hook us with what you say in the first 3 seconds.", blk: "do", th: "3 seconds",       chip: "Hook · first 3 seconds" },
+  { label: "Visual hook",          line: "Open with a visual moment strong enough to stop the scroll.", blk: "do", th: "80%",   chip: "Visual hook · 80%" },
+  { label: "Watchable on mute",    line: "Make sure the video still makes sense with the sound off.", blk: "do" },
+  { label: "Scene pacing",         line: "Change scene or angle at least every 3 seconds.", blk: "do", th: "Every 3 seconds",   chip: "New scene · every 3 seconds" },
+  { label: "Audio clarity",        line: "Record somewhere quiet with clean, clear sound.", blk: "do", th: "90%",               chip: "Audio clarity · 90%" },
+  { label: "Distracting elements", line: "Don't leave anything distracting in frame.", blk: "dont" },
+  { label: "Text legibility",      line: "Make any on-screen text big and easy to read.", blk: "do", th: "100%",                chip: "Text legibility · 100%" },
+  { label: "Product visibility",   line: "Keep the product clearly on screen for most of the video.", blk: "do", th: "70%",     chip: "Product on screen · 70%" },
+  { label: "Product usage",        line: "Show yourself actually using the product.", blk: "do" },
+  { label: "Energy & authenticity",line: "Keep it real and engaged, never flat or over-scripted.", blk: "do" },
+  { label: "CTA present",          line: "End with a clear call to action in the last 5 seconds.", blk: "do", th: "Last 5 seconds", chip: "CTA · last 5 seconds" },
+  { label: "Brand name mentioned", line: "Say the brand name at least once.", blk: "do", th: "1",                               chip: "Brand mentions · 1" },
+  { label: "Copyright check",      line: "Don't use music, fonts or clips you don't have the rights to.", blk: "dont" },
+];
+/* full agent roster shown in the panel (subset of tooltips where shown) */
+const ALL_AGENTS = ["Brand alignment","Hook quality","Visual hook","Watchable on mute","Scene pacing","Audio delivery","Audio clarity","Music & sound balance","Pronunciation","Lighting & camera","Setting & background","Distracting elements","Text legibility","Closed captions","Safe zones","Video length","Product visibility","Product usage","Creator visibility","Energy & authenticity","Wardrobe & appearance","CTA present","Brand name mentioned","Copyright check","Inspiration link match","Follows the brief"];
+const AGENT_TIPS = {
+  "Brand alignment": "Watches that the video matches the brand's voice, look, and feel.",
+  "Hook quality": "Watches the first 3 seconds to make sure it grabs attention without sounding like an ad.",
+  "Visual hook": "Watches the first 3 seconds for a visual moment strong enough to stop the scroll.",
+  "Watchable on mute": "Watches that the video still makes sense when the sound is off.",
+  "Scene pacing": "Watches that the video changes scenes often enough to keep viewers from scrolling.",
+  "Audio clarity": "Listens that the audio is clean, no background noise, echo, or hum.",
+  "Distracting elements": "Watches for anything in frame that pulls attention away from the product.",
+  "Text legibility": "Reads any on-screen text to make sure it's big enough and easy to see.",
+  "Product visibility": "Watches that the product shows clearly enough times across the video.",
+  "Product usage": "Watches that the product is shown being used the way it's meant to be.",
+  "Energy & authenticity": "Watches that the creator feels engaging and real, not scripted or flat.",
+  "CTA present": "Watches for a call to action in the video, a clear ask to the viewer.",
+  "Brand name mentioned": "Listens for the brand name to be said the agreed number of times.",
+  "Copyright check": "Checks the music, fonts, and clips for anything that could break copyright rules.",
+};
+const AGENTS_ICON = "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png";
+const DO_ICON = "https://res.cloudinary.com/dchroynzv/image/upload/v1777998694/brieflee_icon_approval-stamp-icon-transparent_2026-05.png";
+const DONT_ICON = "https://res.cloudinary.com/dchroynzv/image/upload/v1777998695/brieflee_icon_close-x-icon-design-transparent_2026-05.png";
+
+const ICONS_CDN = {
+  "Brand": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_help-icon_workspace-checkmark-badge-wavy-edge-approved-transparent_2026-05.png",
+  "The Offer": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_help-icon_billing-wallet-cash-green-money-bills-transparent_2026-05.png",
+  "Audience/Customer": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_help-icon_core-concepts-bullseye-target-with-blue-arrow-transparent_2026-05.png",
+  "Product/Feature": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_diamond-shape-icon-transparent_2026-05.png",
+  "Creator Benefits": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_help-icon_affiliate-trophy-cup-blue-sticker-transparent_2026-05.png",
+  "Deliverables": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_help-icon_workspace-checkmark-badge-wavy-edge-approved-transparent_2026-05.png",
+  "Hook": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_help-icon_troubleshoot-lightning-bolt-sticker-blue-transparent_2026-05.png",
+  "Talking Points": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_flat-hip-condenser-microphone-sticker-transparent_2026-05.png",
+  "Script": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_simple-lined-clipboard-with-pen-transparent_2026-05.png",
+  "Visual Format": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_blue-movie-clapper-illustration-transparent_2026-05.png",
+  "Examples": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_blue-movie-clapper-illustration-transparent_2026-05.png",
+  "Props": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_simple-lined-file-folder-bag-transparent_2026-05.png",
+  "Production Notes": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_smartphone-in-tripod-flat-illustration-transparent_2026-05.png",
+  "Guidelines": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_help-icon_brief-and-projects-folder-with-white-tab-transparent_2026-05.png",
+  "Usage Rights": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_padlock-sticker-blue-transparent_2026-05.png",
+  "Submissions": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_send-paper-plane-periwinkle-transparent_2026-06.png",
+  "Contact/Community": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_help-icon_members-speech-bubble-profile-icon-with-count-one-transparent_2026-05.png",
+  "Extra": "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_blue-multiple-stars-transparent_2026-05.png",
+};
+
+/* the Bible rail (all 18 page sections; the affiliate brief adds 11 of them) */
+const RAIL_SECTIONS = [
+  { key: "brand", name: "Brand", short: "Why this brand is worth backing", what: "The belief. Your mission and USPs, the reasons this brand is worth backing." },
+  { key: "offer", name: "The Offer", short: "What the creator gets in return", what: "The deal. What the creator gets in return: money, gift in kind, or a stack of both." },
+  { key: "audienceCustomer", name: "Audience/Customer", short: "Who the creator is talking to", what: "The person on the other end of the camera." },
+  { key: "productFeature", name: "Product/Feature", short: "The product, said plainly", what: "The product itself, said plainly. The creator's factual reference." },
+  { key: "creatorBenefits", name: "Creator Benefits", short: "Why the creator personally wins", what: "Why the creator personally wins." },
+  { key: "deliverables", name: "Deliverables", short: "The definition of done", what: "What to make. The number, the specs, how it's delivered, and the timing." },
+  { key: "hook", name: "Hook", short: "The first three seconds", what: "The opening three seconds, built as three components that fire together: caption on screen, visual action on camera, first spoken words." },
+  { key: "talkingPoints", name: "Talking Points", short: "What to cover, in their voice", what: "Creator-led content uses Talking Points; brand-led uses Script. Give them the angles that matter, without scripting every word." },
+  { key: "script", name: "Script", short: "Brand-led, scene by scene", what: "The brand-led counterpart to Talking Points. You own the words, the creator performs them." },
+  { key: "visualFormat", name: "Visual Format", short: "The format that carries the idea", what: "Which named visual format this video is, and the creator-facing direction on how to shoot it." },
+  { key: "examples", name: "Examples", short: "Reference clips that set the bar", what: "The reference clips, handed over as the standard to hit and the ideas to riff on." },
+  { key: "props", name: "Props", short: "Everything needed on camera", what: "The gather-before-you-film list." },
+  { key: "productionNotes", name: "Production Notes", short: "The practical how to film", what: "The practical how-to-film, set by the chosen visual format." },
+  { key: "guidelines", name: "Guidelines", short: "What makes this pass", what: "The creator's dos and don'ts, generated from the thresholds and review agents." },
+  { key: "usageRights", name: "Usage Rights", short: "Who can use the content, where", what: "The rights grant. What the brand can do with the content, where, and for how long." },
+  { key: "submissions", name: "Submissions", short: "How the finished work comes back", what: "How the creator gets finished content to the brand, or checked before posting." },
+  { key: "contactCommunity", name: "Contact/Community", short: "Where to ask, how to join", what: "Where to go with a question, and how to join the ongoing creator group." },
+  { key: "extra", name: "Extra", short: "Anything the sections don't cover", what: "A free block for anything the standard sections don't cover." },
+];
+
+const FORMATS_GALLERY = [
+  { name: "ASMR", desc: "Show your product through sound" },
+  { name: "Before and After", desc: "One frame of the before" },
+  { name: "Cinematic B-Roll", desc: "Brand-led, beautifully shot moments" },
+  { name: "Demo", desc: "Show it working" },
+  { name: "Greenscreen", desc: "You, with a screen behind you" },
+  { name: "How To", desc: "Step one, step two, result" },
+  { name: "Listicle", desc: "Numbered, snappy, easy to follow" },
+  { name: "POV", desc: "Shot from the viewer's perspective" },
+  { name: "Testimonial", desc: "A real customer, on camera" },
+  { name: "Unboxing", desc: "Opening the box on camera" },
+  { name: "Yapper", desc: "Creator talking straight to camera" },
+];
+const FORMAT_THUMBS = {
+  "Demo": "https://motionswipefile.blob.core.windows.net/swipe-file-cached-links/swipe-file-source-link/1880827992620177/69e8ace0bdb47646c4818a06/5dd897d0-764f-4cc2-a905-e5094e646bdf.mp4",
+  "Yapper": "https://motionswipefile.blob.core.windows.net/swipe-file-cached-links/swipe-file-source-link/957424030329757/69fcd50c9f9320f2b1a167c4/c80de41e-623a-4b57-91b4-b4090a7bd927.mp4",
+  "Before and After": "https://motionswipefile.blob.core.windows.net/swipe-file-cached-links/swipe-file-source-link/988627827004012/69fefaf908c1a6eaf90e2ad6/1b271108-d78b-4354-8885-5fc970bade08.mp4",
+  "ASMR": "https://motionswipefile.blob.core.windows.net/swipe-file-cached-links/swipe-file-source-link/26273338205702663/69fefc4d08c1a6eaf90e35cc/f1b99388-a6cb-4ee2-9a3a-3bb593b33cc5.mp4",
+  "Cinematic B-Roll": "https://motionswipefile.blob.core.windows.net/swipe-file-cached-links/swipe-file-source-link/969391685995536/69fccea79f9320f2b1a10f9e/33c8c440-25fd-41c1-9d49-0e7294a7b263.mp4",
+  "Greenscreen": "https://motionswipefile.blob.core.windows.net/swipe-file-cached-links/swipe-file-source-link/2669537510087032/69e49e54c58c09bbceee4610/f70d3887-2ba3-4757-bd4d-83a1b96c2392.mp4",
+  "How To": "https://motionswipefile.blob.core.windows.net/swipe-file-cached-links/swipe-file-source-link/970964365671431/69fccf6d9f9320f2b1a11d45/484b8e6a-34be-40b7-a37b-869fbaf12d23.mp4",
+  "Listicle": "https://motionswipefile.blob.core.windows.net/swipe-file-cached-links/swipe-file-source-link/1662974231677736/69fcd5cf9f9320f2b1a175f8/c51d89b5-3e9b-4322-b035-958bc86fbf41.mp4",
+  "POV": "https://motionswipefile.blob.core.windows.net/swipe-file-cached-links/swipe-file-source-link/918781904192760/69cc7fa01ae2df5b3cc8c5d8/e45ae3bd-64a3-46cc-8c5c-9ee58c805d67.mp4",
+  "Testimonial": "https://motionswipefile.blob.core.windows.net/swipe-file-cached-links/swipe-file-source-link/1892633181430601/69fcf01d9f9320f2b1a2f9e6/d3538384-9946-4041-8d85-67e82024df03.mp4",
+  "Unboxing": "https://motionswipefile.blob.core.windows.net/swipe-file-cached-links/swipe-file-source-link/1495050481989422/69ff123e08c1a6eaf90f40c3/0da0dbd7-27f1-40bb-9cd1-433e11f3f150.mp4",
+};
+
+/* guides shown under empty bodies (from the Bible placeholders, abridged) */
+const GUIDES = {
+  brand: "We are [Brand], and we've created [the solution] for [target outcome]: [Product]. Made from [material or method], it's [USP one] and [USP two] that [core benefit] without [the usual trade-off].",
+  offer: "Offer type: Money [+ gifted product] · The deal: [X]% commission on every sale through your TikTok Shop link · How you get it: your unique link, paid once sales clear the return window.",
+  productFeature: "[Product] is a [category, in plain terms] designed to [what it does or replaces]. Made from [material or method], it [core benefit] without [the usual trade-off].",
+  hook: "Hook 1 · Caption: [on-screen text, works on mute] · Visual action: [the first 1 to 2 seconds on camera] · Voiceover: [the first words, oddly specific].",
+  talkingPoints: "What finally made you try it? · What were you skeptical about? · The formula · How your day actually changed · Soft CTA.",
+  submissions: "Post to your own account · Before you post: drop your draft into your Brieflee link, it's checked against this brief on upload.",
+  contactCommunity: "Join the community: [platform + link] · Get in touch: [email, website, social handles].",
+};
+
+/* ═════════════════════════ tiny DOM + icon helpers ═════════════════════════ */
+const $ = (s, r) => (r || document).querySelector(s);
+const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html !== undefined) n.innerHTML = html; return n; };
+
+const LUCIDE = {
+  "chevron-down": '<path d="m6 9 6 6 6-6"/>',
+  "chevron-right": '<path d="m9 18 6-6-6-6"/>',
+  "chevron-up": '<path d="m18 15-6-6-6 6"/>',
+  "pencil": '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
+  "eye": '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
+  "info": '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  "check": '<path d="M20 6 9 17l-5-5"/>',
+  "plus": '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  "x": '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  "trash": '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
+  "wand": '<path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/>',
+  "search": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  "layers": '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
+  "layout": '<rect width="18" height="7" x="3" y="3" rx="1"/><rect width="9" height="7" x="3" y="14" rx="1"/><rect width="5" height="7" x="16" y="14" rx="1"/>',
+  "lock": '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  "upload": '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
+};
+function ico(name, sz) {
+  return `<svg width="${sz||14}" height="${sz||14}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${LUCIDE[name]||""}</svg>`;
+}
+document.querySelectorAll("[data-ico]").forEach(n => { n.innerHTML = ico(n.dataset.ico, n.dataset.sz ? +n.dataset.sz : 14); });
+
+/* ═════════════════════════ static rail ═════════════════════════ */
+function buildRail() {
+  const rail = $("#rail");
+  rail.innerHTML = "";
+
+  /* Details */
+  const g1 = el("div", "bl-bd-rail-group is-open");
+  g1.innerHTML = `<button type="button" class="bl-bd-rail-head"><span class="bl-bd-rail-head-icon">${ico("info",15)}</span><span class="bl-bd-rail-head-label">Details</span><span class="bl-bd-rail-caret">${ico("chevron-right",15)}</span></button>`;
+  const d = el("div", "bl-bd-rail-body");
+  d.innerHTML = `
+    <div class="bl-bd-rail-details">
+      <div class="bl-bd-rd-row"><span class="bl-bd-rd-label">Status</span>
+        <button type="button" class="bl-bd-status-pill" id="statusPill" style="background:#C9E4FF55;border-color:#C9E4FFcc">Draft</button></div>
+      <div class="bl-bd-rd-row"><span class="bl-bd-rd-label">Review Mode <span class="bl-bd-tip-wrap">${ico("info",12)}</span></span>
+        <div class="bl-bd-segmented">
+          <button type="button" class="bl-bd-segmented-btn is-active">Autonomous</button>
+          <button type="button" class="bl-bd-segmented-btn">Hybrid</button>
+          <button type="button" class="bl-bd-segmented-btn">Manual</button>
+        </div></div>
+      <div class="bl-bd-rd-row"><span class="bl-bd-rd-label">Visibility</span>
+        <span><button type="button" class="bl-bd-priv">${ico("lock",11)} Public</button>
+        <span class="bl-bd-gen-badge" style="margin-left:6px">Manual</span></span></div>
+      <div class="bl-bd-rd-row"><span class="bl-bd-rd-label">Thumbnail</span>
+        <div class="bl-bd-rd-thumb"><img src="${D.hero}" alt="" draggable="false"/><button type="button">${ico("upload",12)}</button></div></div>
+      <div class="bl-bd-rd-row"><span class="bl-bd-rd-label">Creator</span>
+        <button type="button" class="bl-bd-creator-empty">${ico("plus",11)} Add creator</button>
+        <div class="bl-bd-rd-ctype"><span class="bl-bd-field-label">Creator type <span class="bl-bd-tip-wrap">${ico("info",12)}</span></span>
+        <div class="bl-bd-select">Affiliate</div></div></div>
+    </div>`;
+  g1.appendChild(d);
+  rail.appendChild(g1);
+
+  /* Sections */
+  const g2 = el("div", "bl-bd-rail-group is-open");
+  g2.innerHTML = `<button type="button" class="bl-bd-rail-head"><span class="bl-bd-rail-head-icon">${ico("layout",15)}</span><span class="bl-bd-rail-head-label">Sections</span><span class="bl-bd-rail-count" id="railCount" style="display:none">0</span><span class="bl-bd-rail-caret">${ico("chevron-right",15)}</span></button>`;
+  const b = el("div", "bl-bd-rail-body");
+  b.innerHTML = `<div class="bl-bd-rail-hint">The building blocks of the brief. Add a section to drop it into the page.</div>
+    <div class="bl-bd-rail-search">${ico("search",14)}<input placeholder="Search sections…" readonly/></div>`;
+  RAIL_SECTIONS.forEach(s => {
+    const row = el("button", "bl-bd-rail-row");
+    row.type = "button";
+    row.id = "rail-" + s.key;
+    row.innerHTML = `
+      <span class="bl-bd-rail-row-icon"><img src="${ICONS_CDN[s.name]||ICONS_CDN["Extra"]}" alt=""/></span>
+      <span class="bl-bd-rail-row-text">
+        <span class="bl-bd-rail-row-name">${s.name}<span class="bl-bd-tip-wrap">${ico("info",12)}</span></span>
+        <span class="bl-bd-rail-row-sub">${s.short}</span>
+      </span>
+      <span class="bl-bd-rail-row-mark">${ico("plus",13)}</span>`;
+    b.appendChild(row);
+  });
+  g2.appendChild(b);
+  rail.appendChild(g2);
+
+  /* Modules (collapsed) */
+  const g3 = el("div", "bl-bd-rail-group");
+  g3.innerHTML = `<button type="button" class="bl-bd-rail-head"><span class="bl-bd-rail-head-icon">${ico("layers",15)}</span><span class="bl-bd-rail-head-label">Modules</span><span class="bl-bd-rail-caret">${ico("chevron-right",15)}</span></button>`;
+  rail.appendChild(g3);
+}
+
+/* ═════════════════════════ paper section builders ═════════════════════════ */
+let addedCount = 0;
+function markRailAdded(key) {
+  const row = $("#rail-" + key);
+  if (row) { row.classList.add("is-added"); row.querySelector(".bl-bd-rail-row-mark").innerHTML = ico("check",13); }
+  addedCount++;
+  const c = $("#railCount"); c.style.display = ""; c.textContent = addedCount;
+}
+function headerActions(entry) {
+  const wrap = el("div", "bl-bd-header-actions");
+  let inner = `<span class="bl-bd-saving" data-writing style="display:none">Writing…</span>`;
+  if (entry.key === "guidelines") inner += `<button type="button" class="bl-bd-preview-btn" data-checks>${ico("pencil",13)} Edit checks</button>`;
+  if (entry.ai) inner += `<button type="button" class="bl-bd-preview-btn" data-ai>${ico("wand",14)} Write with AI</button>`;
+  inner += `<button type="button" class="bl-bd-move-btn">${ico("chevron-up",14)}</button>
+            <button type="button" class="bl-bd-move-btn">${ico("chevron-down",14)}</button>
+            <button type="button" class="bl-bd-move-btn bl-bd-remove-btn">${ico("trash",14)}</button>`;
+  wrap.innerHTML = inner;
+  return wrap;
+}
+function partHead(label, icon) {
+  if (!label) return "";
+  return `<div class="bl-bd-part-head">${icon ? `<img class="bl-bd-part-ico" src="${icon}" alt=""/>` : ""}<span class="bl-bd-part-label">${label}</span></div>`;
+}
+/* mounts one paper section; parts = [{label, icon, kind:"html"|"url"|custom, id, guide}] */
+function mountSection(entry) {
+  $("#emptyHint").style.display = "none";
+  const sec = el("section", "bl-bd-psec");
+  sec.id = "sec-" + entry.key;
+  const head = el("header", "bl-bd-psec-head");
+  head.innerHTML = `
+    <button type="button" class="bl-bd-psec-toggle">${ico("chevron-down",17)}
+      <div class="bl-bd-psec-titles"><h2 class="bl-bd-psec-title">${entry.name}</h2><p class="bl-bd-psec-sub">${entry.short}</p></div>
+    </button>
+    <div class="bl-bd-psec-tip"><span class="bl-bd-tip-wrap">${ico("info",12)}</span></div>`;
+  head.appendChild(headerActions(entry));
+  sec.appendChild(head);
+  const body = el("div", "bl-bd-psec-body");
+  (entry.parts || []).forEach(p => {
+    const part = el("div", "bl-bd-part");
+    part.dataset.part = p.id;
+    let inner = partHead(p.label, p.icon);
+    if (p.kind === "url") {
+      inner += `<input class="bl-bd-part-url" data-body placeholder="${p.placeholder||"https://…"}" readonly/>`;
+    } else if (p.kind === "custom") {
+      inner += `<div data-body></div>`;
+    } else {
+      inner += `<div class="bl-bd-editable" data-body></div>`;
+      if (p.guide) inner += `<div class="bl-bd-guide" data-guide>${p.guide}</div>`;
+    }
+    part.innerHTML = inner;
+    body.appendChild(part);
+  });
+  sec.appendChild(body);
+  $("#sections").appendChild(sec);
+  markRailAdded(entry.key);
+  return sec;
+}
+const partBody = (secKey, partId) => $(`#sec-${secKey} [data-part="${partId}"] [data-body]`);
+const partGuide = (secKey, partId) => $(`#sec-${secKey} [data-part="${partId}"] [data-guide]`);
+
+/* ═════════════════════════ director engine ═════════════════════════ */
+const qp = new URLSearchParams(location.search);
+let SPEED = parseFloat(qp.get("speed") || "1") || 1;
+const ZOOM = parseFloat(qp.get("zoom") || "0");
+if (ZOOM) $("#stage").style.zoom = ZOOM;
+
+let paused = false, playing = false, aborted = false;
+const sleep = async (ms) => {
+  const end = performance.now() + ms / SPEED;
+  while (performance.now() < end) {
+    if (aborted) throw new Error("aborted");
+    await new Promise(r => setTimeout(r, 24));
+    while (paused) { await new Promise(r => setTimeout(r, 80)); if (aborted) throw new Error("aborted"); }
+  }
+};
+
+/* cursor */
+const cursor = $("#cursor");
+let cx = innerWidth / 2, cy = innerHeight / 2;
+function placeCursor(x, y) { cx = x; cy = y; cursor.style.transform = `translate(${x}px, ${y}px)`; }
+placeCursor(cx, cy);
+async function moveCursorTo(target, opts = {}) {
+  const t = typeof target === "string" ? $(target) : target;
+  if (!t) return;
+  const r = t.getBoundingClientRect();
+  const x = r.left + (opts.ax !== undefined ? r.width * opts.ax : r.width * 0.5);
+  const y = r.top + (opts.ay !== undefined ? r.height * opts.ay : r.height * 0.55);
+  const dist = Math.hypot(x - cx, y - cy);
+  const dur = Math.min(900, Math.max(260, dist * 0.9)) / SPEED;
+  cursor.animate([{ transform: `translate(${cx}px, ${cy}px)` }, { transform: `translate(${x}px, ${y}px)` }],
+    { duration: dur, easing: "cubic-bezier(.25,.6,.3,1)", fill: "forwards" });
+  await sleep(dur * SPEED);
+  placeCursor(x, y);
+}
+async function clickCursor() {
+  cursor.classList.add("is-clicking");
+  await sleep(240);
+  cursor.classList.remove("is-clicking");
+  await sleep(120);
+}
+async function scrollToEl(target, block = "center") {
+  const t = typeof target === "string" ? $(target) : target;
+  if (!t) return;
+  t.scrollIntoView({ behavior: "smooth", block });
+  await sleep(560);
+}
+
+/* typing + streaming */
+async function typeText(node, text, cps = 24) {
+  node.classList.add("bl-typing-caret");
+  for (const ch of text) { node.textContent += ch; await sleep(1000 / cps); }
+  node.classList.remove("bl-typing-caret");
+}
+/* stream html into a container: blocks appear, text nodes fill word by word */
+async function streamHtml(container, html, opts = {}) {
+  const wps = opts.wps || 30;                       /* words per second */
+  const tmp = el("div", "", html);
+  for (const block of [...tmp.children]) {
+    const live = block.cloneNode(true);
+    const texts = [];
+    (function collect(n) {
+      [...n.childNodes].forEach(c => {
+        if (c.nodeType === 3) { texts.push([c, c.textContent]); c.textContent = ""; }
+        else collect(c);
+      });
+    })(live);
+    container.appendChild(live);
+    for (const [node, full] of texts) {
+      const words = full.split(/(\s+)/);
+      for (const w of words) {
+        node.textContent += w;
+        if (w.trim()) await sleep(1000 / wps);
+      }
+    }
+    await sleep(140);
+    if (opts.follow !== false) {
+      const r = container.getBoundingClientRect();
+      if (r.bottom > innerHeight - 120) window.scrollBy({ top: r.bottom - innerHeight + 180, behavior: "smooth" });
+    }
+  }
+}
+async function appendLi(ul, text, wps = 34) {
+  const li = el("li");
+  ul.appendChild(li);
+  const words = text.split(/(\s+)/);
+  for (const w of words) { li.textContent += w; if (w.trim()) await sleep(1000 / wps); }
+}
+async function aiWrite(entry, jobs) {
+  const sec = $("#sec-" + entry.key);
+  const btn = sec.querySelector("[data-ai]");
+  const flag = sec.querySelector("[data-writing]");
+  if (btn) { await moveCursorTo(btn); await clickCursor(); }
+  if (flag) flag.style.display = "";
+  $("#topSaving").style.visibility = "visible";
+  await sleep(650);
+  for (const j of jobs) {
+    const g = partGuide(entry.key, j.part);
+    if (g) g.remove();
+    await streamHtml(partBody(entry.key, j.part), j.html, j);
+  }
+  if (flag) flag.style.display = "none";
+  $("#topSaving").style.visibility = "hidden";
+}
+async function addFromRail(entry) {
+  await scrollToEl("#rail-" + entry.key, "nearest");
+  await moveCursorTo("#rail-" + entry.key, { ax: 0.9 });
+  await clickCursor();
+  const sec = mountSection(entry);
+  sec.animate([{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }], { duration: 380 / SPEED, easing: "ease-out" });
+  await scrollToEl(sec, "start");
+  await sleep(250);
+  return sec;
+}
+
+/* ═════════════════════════ section definitions used by scenes ═════════════════════════ */
+const ENTRIES = {
+  brand: { key: "brand", name: "Brand", short: "Why this brand is worth backing", ai: true,
+    parts: [{ id: "body", label: "", kind: "html", guide: GUIDES.brand }] },
+  offer: { key: "offer", name: "The Offer", short: "What the creator gets in return", ai: true,
+    parts: [
+      { id: "deal", label: "The deal", kind: "html", guide: GUIDES.offer },
+      { id: "commission", label: "Commission", kind: "html" },
+      { id: "gift", label: "Gift", kind: "html" },
+    ] },
+  productFeature: { key: "productFeature", name: "Product/Feature", short: "The product, said plainly", ai: true,
+    parts: [
+      { id: "description", label: "Description", kind: "html", guide: GUIDES.productFeature },
+      { id: "productLink", label: "Product link", kind: "url", placeholder: "https://brand.com/products/…" },
+    ] },
+  hook: { key: "hook", name: "Hook", short: "The first three seconds", ai: true,
+    parts: [
+      { id: "caption", label: "Caption hooks", kind: "html", guide: GUIDES.hook },
+      { id: "visual", label: "Visual action hooks", kind: "html" },
+      { id: "voiceover", label: "Voiceover hooks", kind: "html" },
+    ] },
+  talkingPoints: { key: "talkingPoints", name: "Talking Points", short: "What to cover, in their voice", ai: true,
+    parts: [{ id: "body", label: "", kind: "html", guide: GUIDES.talkingPoints }] },
+  visualFormat: { key: "visualFormat", name: "Visual Format", short: "The format that carries the idea", ai: false,
+    parts: [
+      { id: "picker", label: "", kind: "custom" },
+      { id: "direction", label: "Creator direction", kind: "html" },
+    ] },
+  examples: { key: "examples", name: "Examples", short: "Reference clips that set the bar", ai: false,
+    parts: [{ id: "picks", label: "Brieflee examples (review picks)", kind: "custom" }] },
+  guidelines: { key: "guidelines", name: "Guidelines", short: "What makes this pass", ai: true,
+    parts: [
+      { id: "dos", label: "Do", kind: "html", icon: DO_ICON },
+      { id: "donts", label: "Don't", kind: "html", icon: DONT_ICON },
+    ] },
+  submissions: { key: "submissions", name: "Submissions", short: "How the finished work comes back", ai: true,
+    parts: [{ id: "notes", label: "Notes", kind: "html", guide: GUIDES.submissions }] },
+  contactCommunity: { key: "contactCommunity", name: "Contact/Community", short: "Where to ask, how to join", ai: true,
+    parts: [{ id: "body", label: "", kind: "html", guide: GUIDES.contactCommunity }] },
+  extra: { key: "extra", name: "Extra", short: "Anything the sections don't cover", ai: false,
+    parts: [{ id: "notes", label: "Notes", kind: "html" }] },
+};
+
+/* format gallery + examples renderers */
+function renderFormatPicker(host) {
+  host.innerHTML = `<div class="bl-bd-format-picked" data-picked></div><div class="bl-bd-format-grid" data-grid></div>`;
+  const grid = host.querySelector("[data-grid]");
+  FORMATS_GALLERY.forEach(f => {
+    const card = el("button", "bl-bd-format-card");
+    card.type = "button";
+    card.dataset.format = f.name;
+    const thumb = FORMAT_THUMBS[f.name];
+    card.innerHTML = `<span class="bl-bd-format-thumb"><img src="${ICONS_CDN["Visual Format"]}" alt="" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:26px;height:26px;object-fit:contain;opacity:.8"/>${thumb ? `<video muted loop playsinline preload="metadata" data-src="${thumb}"></video>` : ""}</span>
+      <span class="bl-bd-format-name">${f.name}</span><span class="bl-bd-format-desc">${f.desc}</span>`;
+    grid.appendChild(card);
+  });
+  grid.querySelectorAll("video[data-src]").forEach(v => {
+    v.src = v.dataset.src;
+    v.muted = true;
+    v.addEventListener("error", () => { v.remove(); });
+    v.play().catch(() => { v.addEventListener("canplay", () => v.play().catch(() => {}), { once: true }); });
+  });
+}
+function pickFormat(host, name) {
+  const card = host.querySelector(`[data-format="${name}"]`);
+  if (!card) return null;
+  card.classList.add("is-active");
+  const tick = el("span", "bl-bd-format-tick", ico("check",12));
+  card.querySelector(".bl-bd-format-thumb").appendChild(tick);
+  const chip = el("span", "bl-bd-chip is-active", `${ico("check",11)} ${name}`);
+  host.querySelector("[data-picked]").appendChild(chip);
+  return card;
+}
+function renderExampleSlots(host) {
+  host.innerHTML = `<div class="bl-bd-inspo-row" data-row></div>`;
+  const row = host.querySelector("[data-row]");
+  D.examples.forEach((ex, i) => {
+    const slot = el("button", "bl-bd-inspo-slot");
+    slot.type = "button";
+    slot.dataset.slot = i;
+    slot.innerHTML = `${ico("plus",12)} Example ${i + 1}`;
+    row.appendChild(slot);
+  });
+}
+function fillExampleSlot(host, i) {
+  const row = host.querySelector("[data-row]");
+  const slot = row.querySelector(`[data-slot="${i}"]`);
+  const ex = D.examples[i];
+  const card = el("div", "bl-bd-inspo-video");
+  card.innerHTML = `<video src="${ex.video}" muted loop playsinline></video><span class="bl-bd-inspo-video-caption">${ex.label}</span>`;
+  row.replaceChild(card, slot);
+  const v = card.querySelector("video");
+  v.addEventListener("canplay", () => v.play().catch(() => {}), { once: true });
+  return card;
+}
+
+/* checks modal */
+function buildChecksModal() {
+  const picked = new Map(PICKED_AGENTS.map(a => [a.label, a]));
+  const root = $("#checksRoot");
+  root.innerHTML = `
+    <div class="bl-bd-checks-backdrop"></div>
+    <div class="bl-bd-checks" role="dialog" aria-label="Review Agents">
+      <div class="bl-bd-checks-hero">
+        <img src="${AGENTS_ICON}" alt="" draggable="false"/>
+        <div class="bl-bd-checks-hero-text">
+          <h3>Review Agents</h3>
+          <p>AI agents watch every video submitted against this brief. Pick what they check and set the bar they hold it to. Each agent writes itself onto the paper as a plain Do or Don't line; the agents do the enforcing.</p>
+        </div>
+        <span class="bl-bd-checks-count" id="agentCount">No agents watching yet</span>
+      </div>
+      <div class="bl-bd-checks-legend"><span>What the agents watch</span><span>The bar they hold</span></div>
+      <div class="bl-bd-checks-list" id="agentList"></div>
+      <div class="bl-bd-checks-foot">
+        <span class="bl-bd-checks-note">Saving writes bars as chips on the brief and everything else as a Do or Don't line. Your own lines stay put.</span>
+        <button type="button" class="bl-bd-checks-cancel">Cancel</button>
+        <button type="button" class="bl-bd-checks-save" id="btnSetAgents">Set Review Agents</button>
+      </div>
+    </div>`;
+  const list = $("#agentList");
+  ALL_AGENTS.forEach(label => {
+    const row = el("div", "bl-bd-check-row");
+    row.dataset.agent = label;
+    row.innerHTML = `
+      <div class="bl-bd-check-main">
+        <button type="button" class="bl-bd-check-box" data-box></button>
+        <span class="bl-bd-check-name">${label}${AGENT_TIPS[label] ? `<span class="bl-bd-tip-wrap">${ico("info",12)}</span>` : ""}</span>
+        <span class="bl-bd-check-th" data-th style="display:none"></span>
+      </div>
+      <p class="bl-bd-check-preview" data-preview style="display:none"></p>`;
+    list.appendChild(row);
+  });
+  return { picked };
+}
+function tickAgent(label, agent, count) {
+  const row = document.querySelector(`[data-agent="${CSS.escape(label)}"]`);
+  const box = row.querySelector("[data-box]");
+  box.classList.add("is-on");
+  box.innerHTML = ico("check",12);
+  if (agent.th) {
+    const th = row.querySelector("[data-th]");
+    th.style.display = "";
+    th.textContent = agent.th;
+  }
+  const pv = row.querySelector("[data-preview]");
+  pv.style.display = "";
+  /* Agents with a bar preview as a chip, not as a Do / Don't sentence. */
+  pv.innerHTML = agent.chip
+    ? `<span class="bl-bd-check-reads">Bar:</span> shows on the brief as a chip. ${agent.line}`
+    : `<span class="bl-bd-check-reads">${agent.blk === "dont" ? "Don't:" : "Do:"}</span> ${agent.line}`;
+  const chip = $("#agentCount");
+  chip.classList.add("is-on");
+  chip.textContent = count + (count === 1 ? " agent watching" : " agents watching");
+  return row;
+}
+
+/* The applied-checks strip that sits at the top of the Guidelines
+   section body, mirroring GuidelineBars in the live builder: bars as
+   filled chips, ticked sentence-agents as plain ones. */
+function guidelineChipStrip() {
+  const body = $("#sec-guidelines .bl-bd-psec-body");
+  if (!body) return null;
+  let strip = body.querySelector(".bl-bd-checkchips");
+  if (!strip) {
+    strip = el("div", "bl-bd-checkchips");
+    body.insertBefore(strip, body.firstChild);
+  }
+  return strip;
+}
+async function fillGuidelineChips(animate) {
+  const strip = guidelineChipStrip();
+  if (!strip) return;
+  strip.innerHTML = "";
+  /* Bars render in GuidelineBars' own fixed order, not tick order, so
+     the demo reads exactly like the live builder. */
+  const BAR_ORDER = ["Hook quality", "Visual hook", "Product visibility", "Scene pacing",
+                     "CTA present", "Brand name mentioned", "Text legibility", "Audio clarity"];
+  const bars = PICKED_AGENTS.filter(a => a.chip)
+    .sort((a, b) => BAR_ORDER.indexOf(a.label) - BAR_ORDER.indexOf(b.label));
+  const words = PICKED_AGENTS.filter(a => !a.chip);
+  const add = (text, active) => {
+    const c = el("span", "bl-bd-chip" + (active ? " is-active" : ""), text);
+    strip.appendChild(c);
+    return c;
+  };
+  for (const a of bars) {
+    const c = add(a.chip, true);
+    if (animate) {
+      c.style.opacity = "0";
+      c.animate([{ opacity: 0, transform: "scale(.94)" }, { opacity: 1, transform: "none" }], { duration: 220 / SPEED, fill: "forwards" });
+      await sleep(140);
+    }
+  }
+  for (const a of words) {
+    const c = add(a.label, false);
+    if (animate) {
+      c.style.opacity = "0";
+      c.animate([{ opacity: 0, transform: "scale(.94)" }, { opacity: 1, transform: "none" }], { duration: 200 / SPEED, fill: "forwards" });
+      await sleep(90);
+    }
+  }
+}
+
+/* ═════════════════════════ scenes ═════════════════════════ */
+function ulOf(secKey, partId) {
+  const body = partBody(secKey, partId);
+  let ul = body.querySelector("ul");
+  if (!ul) { ul = el("ul"); body.appendChild(ul); }
+  return ul;
+}
+
+const SCENES = [
+  { key: "title", label: "Title", play: async () => {
+      window.scrollTo({ top: 0 });
+      await sleep(700);
+      await moveCursorTo(".bl-bd-title", { ax: 0.1 });
+      await clickCursor();
+      await typeText($("#briefTitle"), D.title, 22);
+      await sleep(500);
+    }, apply: () => { $("#briefTitle").textContent = D.title; } },
+
+  { key: "brand", label: "Brand", play: async () => {
+      await addFromRail(ENTRIES.brand);
+      await sleep(300);
+      await aiWrite(ENTRIES.brand, [{ part: "body", html: D.brand }]);
+      await sleep(500);
+    }, apply: () => {
+      mountSection(ENTRIES.brand);
+      const g = partGuide("brand", "body"); if (g) g.remove();
+      partBody("brand", "body").innerHTML = D.brand;
+    } },
+
+  { key: "offer", label: "The Offer", play: async () => {
+      await addFromRail(ENTRIES.offer);
+      await sleep(300);
+      await aiWrite(ENTRIES.offer, [
+        { part: "deal", html: D.offerDeal },
+        { part: "commission", html: D.offerCommission },
+        { part: "gift", html: D.offerGift },
+      ]);
+      await sleep(500);
+    }, apply: () => {
+      mountSection(ENTRIES.offer);
+      const g = partGuide("offer", "deal"); if (g) g.remove();
+      partBody("offer", "deal").innerHTML = D.offerDeal;
+      partBody("offer", "commission").innerHTML = D.offerCommission;
+      partBody("offer", "gift").innerHTML = D.offerGift;
+    } },
+
+  { key: "product", label: "Product/Feature", play: async () => {
+      await addFromRail(ENTRIES.productFeature);
+      await sleep(300);
+      await aiWrite(ENTRIES.productFeature, [{ part: "description", html: D.productDesc }]);
+      const url = partBody("productFeature", "productLink");
+      await moveCursorTo(url);
+      await clickCursor();
+      url.classList.add("bl-typing-caret");
+      for (const ch of D.productUrl) { url.value += ch; await sleep(26); }
+      url.classList.remove("bl-typing-caret");
+      await sleep(500);
+    }, apply: () => {
+      mountSection(ENTRIES.productFeature);
+      const g = partGuide("productFeature", "description"); if (g) g.remove();
+      partBody("productFeature", "description").innerHTML = D.productDesc;
+      partBody("productFeature", "productLink").value = D.productUrl;
+    } },
+
+  { key: "hooks", label: "Hooks", play: async () => {
+      await addFromRail(ENTRIES.hook);
+      await sleep(300);
+      await aiWrite(ENTRIES.hook, [
+        { part: "caption", html: D.captionHooks, wps: 34 },
+        { part: "visual", html: D.visualHooks, wps: 34 },
+        { part: "voiceover", html: D.voiceoverHooks, wps: 34 },
+      ]);
+      await sleep(500);
+    }, apply: () => {
+      mountSection(ENTRIES.hook);
+      const g = partGuide("hook", "caption"); if (g) g.remove();
+      partBody("hook", "caption").innerHTML = D.captionHooks;
+      partBody("hook", "visual").innerHTML = D.visualHooks;
+      partBody("hook", "voiceover").innerHTML = D.voiceoverHooks;
+    } },
+
+  { key: "talking", label: "Talking Points", play: async () => {
+      await addFromRail(ENTRIES.talkingPoints);
+      await sleep(300);
+      await aiWrite(ENTRIES.talkingPoints, [{ part: "body", html: D.talkingPoints, wps: 34 }]);
+      await sleep(500);
+    }, apply: () => {
+      mountSection(ENTRIES.talkingPoints);
+      const g = partGuide("talkingPoints", "body"); if (g) g.remove();
+      partBody("talkingPoints", "body").innerHTML = D.talkingPoints;
+    } },
+
+  { key: "format", label: "Visual Format", play: async () => {
+      await addFromRail(ENTRIES.visualFormat);
+      const host = partBody("visualFormat", "picker");
+      renderFormatPicker(host);
+      await scrollToEl(host, "center");
+      await sleep(600);
+      for (const name of ["Demo", "Yapper"]) {
+        const card = $(`#sec-visualFormat [data-format="${name}"]`);
+        await moveCursorTo(card);
+        await clickCursor();
+        pickFormat(host, name);
+        await sleep(420);
+      }
+      await sleep(300);
+      const dir = partBody("visualFormat", "direction");
+      await scrollToEl(dir, "center");
+      $("#topSaving").style.visibility = "visible";
+      await streamHtml(dir, D.visualFormat, { wps: 40 });
+      $("#topSaving").style.visibility = "hidden";
+      await sleep(500);
+    }, apply: () => {
+      mountSection(ENTRIES.visualFormat);
+      const host = partBody("visualFormat", "picker");
+      renderFormatPicker(host);
+      pickFormat(host, "Demo"); pickFormat(host, "Yapper");
+      partBody("visualFormat", "direction").innerHTML = D.visualFormat;
+    } },
+
+  { key: "examples", label: "Examples", play: async () => {
+      await addFromRail(ENTRIES.examples);
+      const host = partBody("examples", "picks");
+      renderExampleSlots(host);
+      await scrollToEl(host, "center");
+      for (let i = 0; i < D.examples.length; i++) {
+        const slot = host.querySelector(`[data-slot="${i}"]`);
+        await moveCursorTo(slot);
+        await clickCursor();
+        const card = fillExampleSlot(host, i);
+        card.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320 / SPEED });
+        await sleep(700);
+        if (i === 0) await scrollToEl(host, "center");
+      }
+      await sleep(900);
+    }, apply: () => {
+      mountSection(ENTRIES.examples);
+      const host = partBody("examples", "picks");
+      renderExampleSlots(host);
+      for (let i = 0; i < D.examples.length; i++) fillExampleSlot(host, i);
+    } },
+
+  { key: "agents", label: "Review Agents", play: async () => {
+      await addFromRail(ENTRIES.guidelines);
+      /* hand-written lines first */
+      const dosUl = ulOf("guidelines", "dos"), dontsUl = ulOf("guidelines", "donts");
+      await scrollToEl("#sec-guidelines", "start");
+      await moveCursorTo(partBody("guidelines", "dos"));
+      await clickCursor();
+      await appendLi(dosUl, D.handDo, 26);
+      await moveCursorTo(partBody("guidelines", "donts"));
+      await clickCursor();
+      await appendLi(dontsUl, D.handDont, 26);
+      await sleep(400);
+      /* open the Review Agents panel */
+      const checksBtn = $("#sec-guidelines [data-checks]");
+      await scrollToEl("#sec-guidelines", "start");
+      await moveCursorTo(checksBtn);
+      await clickCursor();
+      buildChecksModal();
+      $("#checksRoot .bl-bd-checks").animate([{ opacity: 0, transform: "translate(-50%,-48%)" }, { opacity: 1, transform: "translate(-50%,-50%)" }], { duration: 300 / SPEED, easing: "ease-out", fill: "forwards" });
+      await sleep(1400);
+      /* tick the agents */
+      const list = $("#agentList");
+      for (let i = 0; i < PICKED_AGENTS.length; i++) {
+        const a = PICKED_AGENTS[i];
+        const row = document.querySelector(`[data-agent="${CSS.escape(a.label)}"]`);
+        const rr = row.getBoundingClientRect(), lr = list.getBoundingClientRect();
+        if (rr.bottom > lr.bottom - 40) list.scrollBy({ top: rr.bottom - lr.bottom + 90, behavior: "smooth" });
+        await moveCursorTo(row.querySelector("[data-box]"));
+        await clickCursor();
+        tickAgent(a.label, a, i + 1);
+        await sleep(a.th ? 360 : 220);
+      }
+      await sleep(700);
+      /* save */
+      await moveCursorTo("#btnSetAgents");
+      await clickCursor();
+      $("#btnSetAgents").textContent = "Saving…";
+      await sleep(750);
+      $("#checksRoot").innerHTML = "";
+      /* agent sentences distribute into Do / Don't */
+      await scrollToEl("#sec-guidelines", "start");
+      await sleep(300);
+      $("#topSaving").style.visibility = "visible";
+      /* Bars land as chips at the top of the section... */
+      await fillGuidelineChips(true);
+      await sleep(300);
+      /* ...and only the agents without a bar write a Do / Don't line. */
+      for (const a of PICKED_AGENTS) {
+        if (a.chip) continue;
+        const ul = a.blk === "dont" ? dontsUl : dosUl;
+        const li = el("li", "", a.line);
+        li.style.opacity = "0";
+        ul.appendChild(li);
+        li.animate([{ opacity: 0, transform: "translateX(-6px)" }, { opacity: 1, transform: "none" }], { duration: 260 / SPEED, fill: "forwards" });
+        const r = li.getBoundingClientRect();
+        if (r.bottom > innerHeight - 120) window.scrollBy({ top: 160, behavior: "smooth" });
+        await sleep(260);
+      }
+      $("#topSaving").style.visibility = "hidden";
+      await sleep(700);
+    }, apply: () => {
+      mountSection(ENTRIES.guidelines);
+      const dosUl = ulOf("guidelines", "dos"), dontsUl = ulOf("guidelines", "donts");
+      dosUl.appendChild(el("li", "", D.handDo));
+      dontsUl.appendChild(el("li", "", D.handDont));
+      fillGuidelineChips(false);
+      PICKED_AGENTS.forEach(a => {
+        if (a.chip) return;
+        (a.blk === "dont" ? dontsUl : dosUl).appendChild(el("li", "", a.line));
+      });
+    } },
+
+  { key: "publish", label: "Publish", play: async () => {
+      /* wrap up: submissions + community, then publish */
+      await addFromRail(ENTRIES.submissions);
+      await aiWrite(ENTRIES.submissions, [{ part: "notes", html: D.submissionNotes, wps: 36 }]);
+      await addFromRail(ENTRIES.contactCommunity);
+      await aiWrite(ENTRIES.contactCommunity, [{ part: "body", html: D.contactCommunity, wps: 36 }]);
+      await sleep(400);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      await sleep(800);
+      const b = $("#btnPublish");
+      await moveCursorTo(b);
+      await clickCursor();
+      b.textContent = "Publishing…";
+      await sleep(1000);
+      b.textContent = "Published";
+      b.classList.add("is-done");
+      const pill = $("#statusPill");
+      pill.textContent = "Active";
+      pill.style.background = "#C2ECE655";
+      pill.style.borderColor = "#7fd9cecc";
+      await sleep(1200);
+    }, apply: () => {
+      mountSection(ENTRIES.submissions);
+      partBody("submissions", "notes").innerHTML = D.submissionNotes;
+      const g1 = partGuide("submissions", "notes"); if (g1) g1.remove();
+      mountSection(ENTRIES.contactCommunity);
+      partBody("contactCommunity", "body").innerHTML = D.contactCommunity;
+      const g2 = partGuide("contactCommunity", "body"); if (g2) g2.remove();
+      const b = $("#btnPublish");
+      b.textContent = "Published"; b.classList.add("is-done");
+      const pill = $("#statusPill");
+      pill.textContent = "Active"; pill.style.background = "#C2ECE655"; pill.style.borderColor = "#7fd9cecc";
+    } },
+];
+
+/* ═════════════════════════ runner + controls ═════════════════════════ */
+function resetStage() {
+  aborted = false; paused = false; playing = false;
+  addedCount = 0;
+  document.body.classList.remove("is-playing");
+  cursor.classList.remove("is-on");
+  $("#briefTitle").textContent = "";
+  $("#sections").innerHTML = "";
+  $("#checksRoot").innerHTML = "";
+  $("#emptyHint").style.display = "";
+  $("#topSaving").style.visibility = "hidden";
+  const b = $("#btnPublish"); b.textContent = "Publish"; b.classList.remove("is-done");
+  buildRail();
+  window.scrollTo({ top: 0 });
+}
+async function runScenes(from, to) {
+  playing = true;
+  document.body.classList.add("is-playing");
+  cursor.classList.add("is-on");
+  $("#hud").classList.remove("is-on");
+  try {
+    for (let i = from; i <= to; i++) await SCENES[i].play();
+  } catch (e) { /* aborted */ }
+  playing = false;
+  document.body.classList.remove("is-playing");
+  cursor.classList.remove("is-on");
+}
+let stagedIndex = 0;
+async function stageAndPlay(i, toEnd) {
+  aborted = true;
+  await new Promise(r => setTimeout(r, 60));
+  resetStage();
+  for (let k = 0; k < i; k++) SCENES[k].apply();
+  $("#overlay").classList.add("is-hidden");
+  stagedIndex = i;
+  if (i > 0) { const prev = $("#sections").lastElementChild; if (prev) prev.scrollIntoView({ block: "start" }); }
+  await new Promise(r => setTimeout(r, 700));
+  await runScenes(i, toEnd ? SCENES.length - 1 : i);
+}
+async function playAll() {
+  $("#overlay").classList.add("is-hidden");
+  await new Promise(r => setTimeout(r, 900));
+  await runScenes(0, SCENES.length - 1);
+}
+
+$("#btnPlay").addEventListener("click", playAll);
+document.addEventListener("keydown", (e) => {
+  if (e.key === " ") { e.preventDefault(); paused = !paused; return; }
+  if (e.key === "r" || e.key === "R") { location.reload(); return; }
+  if (e.key === "h" || e.key === "H") { $("#hud").classList.toggle("is-on"); return; }
+  if (e.key === "a" || e.key === "A") { stageAndPlay(stagedIndex, true); return; }
+  const digits = "1234567890";
+  const idx = digits.indexOf(e.key);
+  if (idx >= 0 && idx < SCENES.length) stageAndPlay(idx, false);
+});
+
+buildRail();
+/* deep links: ?scene=agents&play=1 · ?autoplay=1 */
+(function init() {
+  const sceneKey = qp.get("scene");
+  if (sceneKey) {
+    const i = SCENES.findIndex(s => s.key === sceneKey);
+    if (i >= 0) { stageAndPlay(i, qp.get("play") === "all"); return; }
+  }
+  if (qp.get("autoplay") === "1") playAll();
+})();
+</script>
+</body>
+</html>

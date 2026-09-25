@@ -1,27 +1,26 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useCurrentUser } from '@/lib/user';
-import { useRecordCreate, useRecordUpdate, useRecord, useUpload, q } from '@/lib/datasource';
+import { useRecordCreate, useRecord, useUpload, q } from '@/lib/datasource';
 import { Search, Shuffle, CloudUpload, Link, FileText, MessageSquare, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
 // ─── Submission table field IDs ───
 
-// Fields for initial record creation (just user + type)
+// Record creation fields. The early validation-create writes only
+// submission_type + users; the final submit creates a fresh record with the
+// full set. Every key written via createRecord must be declared here for
+// Softr's analyzer to register the Add Record action. (Creating with attachment
+// fields is fine — it's UPDATE with attachment fields that the data layer chokes
+// on, which is why this block creates the submission rather than updating it.)
 const createFields = q.select({
   submission_type: 'b82bF',
   users: 'DxNOa',
-});
-
-// Fields for updating the record after validation passes
-const updateFields = q.select({
+  accounts: 'v94f0',
   video_file: 'PP7rO',
   video_url: 'XrARi',
-  submission_type: 'b82bF',
   brief_attachment: 'GmjrC',
   submission_notes: 'UzR32',
-  accounts: 'v94f0',
-  users: 'DxNOa',
   logic: '3uQTp',
   is_bulk: 'CIp0E',
   user_validation: 'QqS0I',
@@ -29,14 +28,10 @@ const updateFields = q.select({
 
 // Fields for reading validation + polling
 const readFields = q.select({
-  // Validation lookup fields (auto-populate from users relationship)
-  // — subscription_status comes from accounts.current_subscription.status (post-migration)
-  // — videos_remaining comes from accounts.usage formulas (also post-migration)
-  // — is_internal bypasses the gate for staff + test users
-  users_subscription_status: 'SQuxf',
-  users_videos_remaining: '3kzMt',
-  users_is_internal: 'gdFt4',
-  users_status: 'Lx9pZ',
+  // Validation lookup fields on the SUBMISSION record (auto-populate
+  // from the users relationship).
+  // — videos_remaining comes from users.usage formulas
+  users_videos_remaining: 'Ef7z6',
   user_validation: 'QqS0I',
   // Polling fields
   status: '4flIO',
@@ -58,6 +53,118 @@ const LOGIC_CHOICES = {
   notes: '255b438e-d37c-40c5-b31f-4ea76ff4c02b',
   bulk: 'dd34c7ee-0dbb-4760-96b4-87b44c7e3442',
 };
+
+// users.accounts linked field — lets us default the submission to the user's
+// own workspace when the switcher hasn't set ?workspace=. Same id as
+// app/projects/index, app/projects-invite, app/briefs/create-brief.
+// Also carries the entitlement gate fields, read straight off the logged-in
+// user record:
+// — payment_status is the billing chain (users → billing.payment_status);
+//   any linked billing row at paid or trial passes.
+// — user_status must be Active or Pending (cancellation flips users to Inactive).
+// — is_internal bypasses the gate for staff + test users.
+const userAccountsSelect = q.select({
+  accounts: 'Nz6VX',
+  payment_status: 'VKE2w',
+  user_status: 'kClk9',
+  is_internal: 'gdFt4',
+});
+
+const LEE_AVATAR =
+  'https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png';
+
+// ─── Reusable presentational components (module scope) ───
+// These MUST live outside Block. When they were defined inside Block, every
+// Block re-render (including the 3.6s verb tick) created new component
+// identities, so React unmounted and remounted every bubble and replayed the
+// entrance animations — the "whole chat glitches" flicker.
+function TypingIndicator({ withAvatar = true }) {
+  return (
+    <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-300">
+      <div className="flex gap-2.5 items-start">
+        {withAvatar ? (
+          <img
+            src={LEE_AVATAR}
+            alt="Lee"
+            className="w-8 h-8 rounded-full flex-shrink-0"
+          />
+        ) : (
+          <div className="w-8 h-8 flex-shrink-0"></div>
+        )}
+        <div
+          className="bg-white rounded-2xl rounded-tl-sm p-3 px-5 shadow-sm"
+          style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}
+        >
+          <div className="flex gap-1.5">
+            <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#879CF7' }}></div>
+            <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#879CF7' }}></div>
+            <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#879CF7' }}></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LeeMessage({ children }) {
+  return (
+    <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
+      <div className="flex gap-2.5 items-start">
+        <img
+          src={LEE_AVATAR}
+          alt="Lee"
+          className="w-8 h-8 rounded-full flex-shrink-0"
+        />
+        <div
+          className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg"
+          style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}
+        >
+          <p className="text-sm leading-relaxed" style={{ color: '#000F4D', fontWeight: 300 }}>
+            {children}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Hero greeting — rotating verb, isolated ───
+// Owns its own verb state + 3.6s interval, so a rotation re-renders ONLY this
+// header, never the chat. Locks to the chosen mode once a chip is picked.
+const HERO_VERBS = ['review', 'remix', 'analyse', 'break down'];
+
+function HeroGreeting({ firstName, selectedMode }) {
+  const [verbIdx, setVerbIdx] = useState(0);
+
+  // Rotate the verb only while no mode is selected yet.
+  useEffect(() => {
+    if (selectedMode) return;
+    const id = setInterval(
+      () => setVerbIdx((i) => (i + 1) % HERO_VERBS.length),
+      3600,
+    );
+    return () => clearInterval(id);
+  }, [selectedMode]);
+
+  // Lock the verb to match the chosen mode the moment a chip is clicked.
+  useEffect(() => {
+    if (!selectedMode) return;
+    const lockTo = { review: 0, remix: 1, campaign: 2 }[selectedMode];
+    if (typeof lockTo === 'number') setVerbIdx(lockTo);
+  }, [selectedMode]);
+
+  return (
+    <div className="hero-greeting container mx-auto px-4 max-w-2xl">
+      <div>
+        Time to{' '}
+        <span className="rotating-verb">
+          <span key={verbIdx} className="verb-anim">{HERO_VERBS[verbIdx]}</span>
+        </span>
+        {' '}a video{firstName ? `, ${firstName}` : ''}
+      </div>
+    </div>
+  );
+}
 
 export default function Block() {
   // ─── Conversation state ───
@@ -118,15 +225,39 @@ export default function Block() {
   const chatLogRef = useRef(null);
   const user = useCurrentUser();
 
-  // Hero greeting — rotating verb (all read naturally as "[verb] a video")
-  const HERO_VERBS = ['review', 'remix', 'analyse', 'break down'];
-  const [verbIdx, setVerbIdx] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setVerbIdx((i) => (i + 1) % HERO_VERBS.length), 2400);
-    return () => clearInterval(id);
-  }, []);
+  // Hero greeting (rotating verb) is its own <HeroGreeting> component at module
+  // scope, so the 3.6s rotation re-renders only the header, not the chat.
   const firstName =
     (user && (user.firstName || user.first_name || user.fullName?.split(' ')[0] || user.name?.split(' ')[0])) || '';
+
+  // ─── Active workspace for this submission ───
+  // The workspace-switcher block (separate, top of page) writes ?workspace=id1,id2
+  // to the URL. CRITICAL: read the URL in a useState lazy initialiser, NOT a
+  // useMemo. URL parsing in the render body trips Softr's analyzer when the block
+  // also uses useRecordCreate (this one does, to create the submission early),
+  // and the block silently stops saving. This is the exact pattern from
+  // app/briefs/create-brief (see its lines 276-292).
+  const [urlWorkspaceId] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    const raw = new URL(window.location.href).searchParams.get('workspace') || '';
+    return raw.split(',').map((s) => s.trim()).filter(Boolean)[0] || '';
+  });
+  const userAccountsRead = useRecord({
+    recordId: user?.id,
+    select: userAccountsSelect,
+    enabled: !!user?.id,
+  });
+  const userAccountIds = useMemo(() => {
+    const raw = userAccountsRead?.data?.fields?.accounts;
+    if (!Array.isArray(raw)) return [];
+    return raw.map((a) => a?.id || '').filter(Boolean);
+  }, [userAccountsRead?.data]);
+  // Use the URL workspace when it's genuinely one of the user's; otherwise fall
+  // back to their first account (covers single-workspace users automatically).
+  const activeWorkspaceId = useMemo(() => {
+    if (urlWorkspaceId && userAccountIds.includes(urlWorkspaceId)) return urlWorkspaceId;
+    return userAccountIds[0] || null;
+  }, [urlWorkspaceId, userAccountIds]);
 
   // Auto-scroll the chat bubble to the newest message — only on conversation
   // advances, never on unrelated re-renders (e.g. verb rotation tick)
@@ -145,50 +276,11 @@ export default function Block() {
   // ─── Upload hook ───
   const { uploadAsync } = useUpload();
 
-  // ─── Record creation hook (early creation — just user + type) ───
-  const createRecord = useRecordCreate({
-    fields: createFields,
-    onSuccess: (newRecord) => {
-      setSubmissionRecordId(newRecord.id);
-      // Now fetch the record back to check validation fields
-      setTimeout(() => {
-        refetchSubmission();
-      }, 1500); // Small delay for lookup fields to populate
-    },
-    onError: (error) => {
-      toast.error('Something went wrong', {
-        description: error.message,
-      });
-      setShowValidationTyping(false);
-    },
-  });
-
-  // ─── Record update hook (updates existing record after validation) ───
-  const updateRecord = useRecordUpdate({
-    fields: updateFields,
-    onSuccess: () => {
-      toast.success('Submission created!');
-
-      // Show loading sequence
-      setShowLoadingTyping(true);
-      setTimeout(() => {
-        setShowLoadingTyping(false);
-        setShowLoadingMessage(true);
-      }, 1800);
-      setTimeout(() => {
-        setShowVideoFrame(true);
-        // Start polling for review completion
-        startPolling(submissionRecordId);
-      }, 2300);
-    },
-    onError: (error) => {
-      toast.error('Failed to submit', {
-        description: error.message,
-      });
-      setShowButton(true);
-      setIsSubmitted(false);
-    },
-  });
+  // ─── Record creation hook ───
+  // One create hook. The early effect creates a thin validation record
+  // (submission_type + users); handleSubmit creates the REAL submission with the
+  // full payload. Both call mutateAsync so each handles its own result inline.
+  const createRecord = useRecordCreate({ fields: createFields });
 
   // ─── Read submission record (for validation + polling) ───
   const { data: submissionData, refetch: refetchSubmission } = useRecord({
@@ -201,16 +293,27 @@ export default function Block() {
     if (!submissionData?.fields || validationPassed || validationFailed) return;
     if (!showValidationTyping) return; // Only validate when we're expecting it
 
+    // Wait for the user-record gate read before validating, otherwise an
+    // in-flight fetch reads as "no billing" and fails good users.
+    if (user?.id && !userAccountsRead?.data?.fields) return;
+
     const fields = submissionData.fields;
-    const subscriptionStatus = extractFieldValue(fields.users_subscription_status);
+    const gate = userAccountsRead?.data?.fields || {};
+    const paymentStatuses = extractFieldValues(gate.payment_status);
+    const userStatus = extractFieldValue(gate.user_status);
     const videosRemaining = extractNumberValue(fields.users_videos_remaining);
-    const isInternal = fields.users_is_internal === true;
+    const isInternal = gate.is_internal === true;
 
     // Internal staff + test users bypass all gates
     if (!isInternal) {
-      // Check subscription is active or trialing
-      const ALLOWED = ['trialing', 'active'];
-      if (!subscriptionStatus || !ALLOWED.includes(subscriptionStatus)) {
+      // Billing is the source of truth: any linked billing row at paid or
+      // trial passes, and the user record itself must be Active or Pending.
+      const ALLOWED = ['paid', 'trial'];
+      const ALLOWED_USER_STATUS = ['active', 'pending'];
+      if (
+        !paymentStatuses.some((s) => ALLOWED.includes(s)) ||
+        !ALLOWED_USER_STATUS.includes(userStatus)
+      ) {
         setShowValidationTyping(false);
         setValidationFailed(true);
         setValidationErrorType('payment');
@@ -236,6 +339,10 @@ export default function Block() {
     setShowValidationTyping(false);
     setValidationPassed(true);
 
+    // The early validation record is intentionally left un-"proceed", so the
+    // 20-min cleanup workflow removes it; the real submission is created fresh
+    // on submit.
+
     // Continue the conversation
     setShowTyping3(true);
     setTimeout(() => {
@@ -247,7 +354,7 @@ export default function Block() {
       setShowTyping4(false);
       setShowUploadOptions(true);
     }, 3500);
-  }, [submissionData, showValidationTyping, validationPassed, validationFailed]);
+  }, [submissionData, userAccountsRead?.data, showValidationTyping, validationPassed, validationFailed]);
 
   // ─── Handle polling results (separate from validation) ───
   useEffect(() => {
@@ -273,6 +380,17 @@ export default function Block() {
       }
     }
   }, [submissionData, isSubmitted, showVideoFrame]);
+
+  // ─── Helper: extract ALL values from a lookup field (multi-row aware) ───
+  function extractFieldValues(raw) {
+    if (Array.isArray(raw)) {
+      return raw
+        .map((v) => String(v?.label ?? v ?? '').trim().toLowerCase())
+        .filter(Boolean);
+    }
+    const one = extractFieldValue(raw);
+    return one ? [one] : [];
+  }
 
   // ─── Helper: extract value from Airtable fields (handles arrays of objects) ───
   function extractFieldValue(raw) {
@@ -333,6 +451,47 @@ export default function Block() {
     }, 4000);
   }, []);
 
+  // Reset every piece of downstream state when the user switches or
+  // deselects a mode chip. Keeps the initial greeting (showTyping1,
+  // showMessage1, showCards) intact — only wipes what was triggered
+  // *after* the chip was picked.
+  const resetAfterMode = () => {
+    setShowValidationTyping(false);
+    setValidationPassed(false);
+    setValidationFailed(false);
+    setValidationError('');
+    setValidationErrorType('');
+    setShowTyping3(false);
+    setShowMessage2(false);
+    setShowTyping4(false);
+    setShowUploadOptions(false);
+    setShowUploadUI(false);
+    setShowTyping5(false);
+    setShowMessage3(false);
+    setShowContextOptions(false);
+    setShowTyping6(false);
+    setShowMessage4(false);
+    setShowButton(false);
+    setShowLoadingTyping(false);
+    setShowLoadingMessage(false);
+    setShowVideoFrame(false);
+    setReviewReady(false);
+    setSubmissionRecordId(null);
+    setPollingTimedOut(false);
+    setNotificationTitle('');
+    setNotificationMessage('');
+    setUploadMethod(null);
+    setVideoFile(null);
+    setVideoFiles([]);
+    setVideoLink('');
+    setBriefFile(null);
+    setNotes('');
+    setShowNotesTextarea(false);
+    setNoThanksClicked(false);
+    setIsBulkUpload(false);
+    setShowBulkUpload(false);
+  };
+
   // ─── After mode selection: create record immediately ───
   useEffect(() => {
     if (!selectedMode || selectedMode === 'campaign') return;
@@ -341,11 +500,25 @@ export default function Block() {
     // Show validation typing indicator
     setShowValidationTyping(true);
 
-    // Create submission with just user + type
-    createRecord.mutate({
-      submission_type: SUBMISSION_TYPES[selectedMode],
-      users: [user.id],
-    });
+    // Create a thin validation record (user + type). Its lookup fields drive the
+    // plan/credit check. It is intentionally NOT marked "proceed", so the 20-min
+    // cleanup workflow removes it; the real submission is created on submit.
+    (async () => {
+      try {
+        const created = await createRecord.mutateAsync({
+          submission_type: SUBMISSION_TYPES[selectedMode],
+          users: [user.id],
+        });
+        const id = created?.id || created?.recordId;
+        if (id) {
+          setSubmissionRecordId(id);
+          setTimeout(() => refetchSubmission(), 1500);
+        }
+      } catch (error) {
+        toast.error('Something went wrong', { description: error?.message });
+        setShowValidationTyping(false);
+      }
+    })();
   }, [selectedMode, user]);
 
   // ─── Reset context when switching to Remix mode ───
@@ -548,7 +721,7 @@ export default function Block() {
     return choices;
   };
 
-  // ─── Submit handler — uploads files then UPDATES the existing record ───
+  // ─── Submit handler — uploads files then CREATES the real submission ───
   const handleSubmit = async () => {
     if (!videoFile && videoFiles.length === 0 && !videoLink) {
       toast.error('Please upload a video or paste a link');
@@ -565,11 +738,16 @@ export default function Block() {
 
     try {
       const payload = {
+        submission_type: SUBMISSION_TYPES[selectedMode],
+        users: [user.id],
         logic: buildLogicChoices(),
         submission_notes: notes.trim() || null,
         is_bulk: isBulkUpload,
-        user_validation: 'proceed', // Set to proceed — validation already passed
+        user_validation: 'proceed', // validation already passed
       };
+
+      // Tie the submission to the chosen workspace (from the switcher) when known.
+      if (activeWorkspaceId) payload.accounts = activeWorkspaceId;
 
       // Upload video file(s)
       if (isBulkUpload && videoFiles.length > 0) {
@@ -619,11 +797,25 @@ export default function Block() {
         }
       }
 
-      // UPDATE the existing record (not create new)
-      updateRecord.mutate({
-        recordId: submissionRecordId,
-        ...payload,
-      });
+      // CREATE a fresh submission with everything. The early record was only the
+      // plan/credit check and gets cleaned up. Creating (not updating) avoids the
+      // data layer's "Cannot read properties of undefined (reading 'video_file')"
+      // throw, matching the working app/submit-single-video block.
+      const created = await createRecord.mutateAsync(payload);
+      const newId = created?.id || created?.recordId;
+      if (!newId) throw new Error('Submission was not created.');
+      setSubmissionRecordId(newId); // poll + link the real record
+
+      toast.success('Submission created!');
+      setShowLoadingTyping(true);
+      setTimeout(() => {
+        setShowLoadingTyping(false);
+        setShowLoadingMessage(true);
+      }, 1800);
+      setTimeout(() => {
+        setShowVideoFrame(true);
+        startPolling(newId);
+      }, 2300);
     } catch (error) {
       console.error('Submit error:', error);
       toast.error('Upload failed', {
@@ -666,53 +858,9 @@ export default function Block() {
     { value: 'url', label: 'Paste a link', icon: Link },
   ];
 
-  // ─── Reusable components ───
-
-  const TypingIndicator = ({ withAvatar = true }) => (
-    <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-300">
-      <div className="flex gap-2.5 items-start">
-        {withAvatar ? (
-          <img
-            src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png"
-            alt="Lee"
-            className="w-8 h-8 rounded-full flex-shrink-0"
-          />
-        ) : (
-          <div className="w-8 h-8 flex-shrink-0"></div>
-        )}
-        <div
-          className="bg-white rounded-2xl rounded-tl-sm p-3 px-5 shadow-sm"
-          style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}
-        >
-          <div className="flex gap-1.5">
-            <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#879CF7' }}></div>
-            <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#879CF7' }}></div>
-            <div className="w-2 h-2 rounded-full typing-dot" style={{ backgroundColor: '#879CF7' }}></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const LeeMessage = ({ children }) => (
-    <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
-      <div className="flex gap-2.5 items-start">
-        <img
-          src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png"
-          alt="Lee"
-          className="w-8 h-8 rounded-full flex-shrink-0"
-        />
-        <div
-          className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm max-w-lg"
-          style={{ border: '1px solid rgba(217, 224, 255, 0.4)' }}
-        >
-          <p className="text-sm leading-relaxed" style={{ color: '#000F4D', fontWeight: 300 }}>
-            {children}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+  // Reusable presentational components (TypingIndicator, LeeMessage) and the
+  // hero greeting now live at module scope above, so they keep a stable
+  // identity across re-renders and never remount the chat.
 
   // ─── Message 4 text depends on context choice ───
   const getMessage4Text = () => {
@@ -906,16 +1054,8 @@ export default function Block() {
         `}
       </style>
 
-      {/* Hero greeting */}
-      <div className="hero-greeting container mx-auto px-4 max-w-2xl">
-        <div>
-          Time to{' '}
-          <span className="rotating-verb">
-            <span key={verbIdx} className="verb-anim">{HERO_VERBS[verbIdx]}</span>
-          </span>
-          {' '}a video{firstName ? `, ${firstName}` : ''}
-        </div>
-      </div>
+      {/* Hero greeting (isolated — see HeroGreeting at module scope) */}
+      <HeroGreeting firstName={firstName} selectedMode={selectedMode} />
 
       {/* Contained chat bubble (with shimmering halo) */}
       <div className="container mx-auto px-4 max-w-2xl w-full">
@@ -978,7 +1118,19 @@ export default function Block() {
                   return (
                     <button
                       key={mode.value}
-                      onClick={() => !isSubmitted && !selectedMode && setSelectedMode(mode.value)}
+                      onClick={() => {
+                        if (isSubmitted) return;
+                        // Click the same chip → deselect (back to picker).
+                        // Click a different chip → switch (wipe downstream
+                        // state so the new mode starts clean).
+                        if (selectedMode === mode.value) {
+                          setSelectedMode(null);
+                          resetAfterMode();
+                        } else {
+                          if (selectedMode) resetAfterMode();
+                          setSelectedMode(mode.value);
+                        }
+                      }}
                       className="w-full text-left px-4 py-3 rounded-xl transition-all duration-200 bg-white shadow-sm"
                       style={{
                         border:
@@ -987,9 +1139,9 @@ export default function Block() {
                             : '1px solid rgba(217, 224, 255, 0.4)',
                         backgroundColor:
                           selectedMode === mode.value ? 'rgba(135, 156, 247, 0.05)' : '#FFFFFF',
-                        opacity: isSubmitted || (selectedMode && selectedMode !== mode.value) ? 0.6 : 1,
-                        cursor: isSubmitted || selectedMode ? 'default' : 'pointer',
-                        pointerEvents: isSubmitted || selectedMode ? 'none' : 'auto',
+                        opacity: isSubmitted ? 0.6 : (selectedMode && selectedMode !== mode.value ? 0.7 : 1),
+                        cursor: isSubmitted ? 'default' : 'pointer',
+                        pointerEvents: isSubmitted ? 'none' : 'auto',
                       }}
                     >
                       <div className="flex items-center gap-2 mb-1.5">
@@ -1024,7 +1176,7 @@ export default function Block() {
             <div className="mb-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
               <div className="flex gap-2.5 items-start">
                 <img
-                  src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png"
+                  src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png"
                   alt="Lee"
                   className="w-8 h-8 rounded-full flex-shrink-0"
                 />
@@ -1038,7 +1190,7 @@ export default function Block() {
                     </p>
                   </div>
                   <a
-                    href="/billing"
+                    href="/settings"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm transition-all duration-200"
@@ -1050,7 +1202,7 @@ export default function Block() {
                       boxShadow: '0 2px 8px rgba(135, 156, 247, 0.3)',
                     }}
                   >
-                    Update billing →
+                    Manage your plan in Settings →
                   </a>
                 </div>
               </div>
@@ -1473,7 +1625,7 @@ export default function Block() {
             <div className="mb-4 ml-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
               <Button
                 onClick={handleSubmit}
-                disabled={!hasContent || updateRecord.status === 'pending'}
+                disabled={!hasContent || isSubmitted}
                 className="text-sm py-2 px-5 shadow-sm hover:shadow-md transition-all duration-300"
                 style={{
                   backgroundColor: hasContent ? '#879CF7' : '#D9E0FF',
@@ -1483,7 +1635,7 @@ export default function Block() {
                   cursor: hasContent ? 'pointer' : 'not-allowed',
                 }}
               >
-                {updateRecord.status === 'pending'
+                {isSubmitted
                   ? 'Submitting...'
                   : selectedMode === 'remix'
                   ? 'Remix this video →'

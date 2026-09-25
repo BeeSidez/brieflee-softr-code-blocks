@@ -1,5 +1,12 @@
 # Softr Events and Selectors Reference
 
+**Created:** 2026-04-09
+**Updated:** 2026-04-09
+
+**Canonical copy:** `Docs/softr-events-and-selectors.md`. Identical copies live in `Brieflee/brieflee-softr-code-blocks/docs/` and `Creator Scans/Softr Vibe Code Blocks/docs/`. Change the canonical one and copy it across in the same session.
+
+> Not reviewed since 2026-04-09. Verify against the live tool before relying on it.
+
 Full reference for all custom events, global variables, CSS selectors, and code patterns available in Softr custom code.
 
 ---

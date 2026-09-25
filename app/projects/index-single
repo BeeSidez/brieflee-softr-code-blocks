@@ -1,0 +1,2251 @@
+// =====================================================================
+// /app/projects — Projects list (Vibe Code block)
+// =====================================================================
+// First foundation block of the projects rebuild. Replaces the Softr
+// native projects list. Contains:
+//
+//   • Header (Projects + "Hey {firstName}" greeting)
+//   • View tabs: Grid / List / Inactive / Unassigned
+//     - Grid + List = layout toggles, show non-inactive projects
+//     - Inactive = filters to status = Inactive
+//     - Unassigned = filters to projects with no linked workspace
+//   • Search input
+//   • Status filter (Draft / Active / Closed)
+//   • Workspace filter (the user's own accounts)
+//   • Create Review button → opens vibe-coded "New Project" modal
+//     (same file — captures name + description + workspace, writes to
+//     the projects table via useRecordCreate)
+//   • Card grid (default) / list rows — each tile shows thumbnail,
+//     private/public lock, name, brief count, status pill. Clicking
+//     navigates to /project/details/?recordId=...
+//
+// SOFTR UI SETUP:
+//   1. Source tab → Database: brieflee beta → Table: projects
+//   2. Actions tab → enable Add Record (aliases auto-populate from
+//      createFields below)
+//   3. Visibility tab → logged-in user groups (Active / Paid / etc.)
+//   4. Source filter optional — Softr's built-in row-level security
+//      via the users relation already scopes projects to the current
+//      user. We do additional client-side filtering for the tabs.
+// =====================================================================
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useRecord, useRecords, useRecordCreate, useRecordUpdate, useRecordDelete,
+  useUpload, q,
+} from "@/lib/datasource";
+import { useCurrentUser } from "@/lib/user";
+import {
+  ArrowRight, Archive, Inbox, Grid as GridIcon, List as ListIcon,
+  Lock, LockOpen, Plus, Search, X,
+  MoreHorizontal, UserPlus, Copy as CopyIcon, Link2 as LinkIcon,
+  Settings, Trash2, Upload as UploadIcon, ArrowUpDown,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
+
+// ─── Brand palette ────────────────────────────────────────────
+const NAVY = "#000F4D";
+const NAVY_DEEP = "#001364";
+const PERIWINKLE = "#879CF7";
+const PERIWINKLE_HOVER = "#294FF6";
+const MUTED = "#6B7A99";
+const BORDER = "rgba(217, 224, 255, 0.55)";
+const TRACK = "rgba(217, 224, 255, 0.6)";
+
+// ─── projects table field aliases (brieflee beta · hne0kugPrigIMs) ───
+const select = q.select({
+  name: "bvDEj", // SINGLE_LINE_TEXT (primary)
+  description: "j2HQW", // LONG_TEXT
+  status: "O7yxh", // SELECT — Draft / Active / Closed / Inactive
+  accounts: "IBYGK", // LINKED_RECORD → accounts
+  thumbnail: "hJd3v", // ATTACHMENT
+  privateMode: "UP5QR", // CHECKBOX
+  isDemo: "Halzm", // CHECKBOX — onboarding sample project
+  totalBriefs: "wLX5S", // ROLLUP
+  totalSubmissions: "74YXf", // ROLLUP
+  totalReviews: "pMHqN", // ROLLUP
+  pendingReviews: "TK0cc", // ROLLUP
+  internalLink: "sgt6I", // FORMULA → /projects/details/?recordId=...
+  createdAt: "SCgzt", // CREATED_AT
+  updatedAt: "NTH6u", // UPDATED_AT
+  users: "2YWNF", // LINKED_RECORD → users
+});
+
+// Aliases used by the user-record read + write for the demo-dismiss flag.
+const userSelect = q.select({ demoDismissed: "dXPOQ" });
+
+// Create Project flow opens a separate Softr modal page; the form
+// + workspace logic lives there. We just construct the URL with the
+// current workspace context and call openSwModal.
+const CREATE_PROJECT_PATH = "/create-project";
+const CREATE_PROJECT_MODAL_SIZE = "md";
+
+// Fields written when creating a new project. Status defaults to Draft
+// per the schema's defaultValue, so we don't need to set it explicitly.
+const createFields = q.select({
+  name: "bvDEj",
+  description: "j2HQW",
+  accounts: "IBYGK",
+  users: "2YWNF",
+});
+
+// Fields written by the per-card actions (Settings, Mark Inactive, Duplicate).
+const updateFields = q.select({
+  name: "bvDEj",
+  status: "O7yxh",
+  accounts: "IBYGK",
+  thumbnail: "hJd3v",
+  privateMode: "UP5QR",
+});
+
+// Status SELECT option ids (from schema, pinned so we don't fetch).
+const STATUS_OPTIONS = [
+  { id: "66aed7a1-e9d0-454a-a8b7-db8ab34863df", label: "Draft", color: "#c2e9d7" },
+  { id: "027772eb-5fa0-41c4-8f22-01b3f5a3a27b", label: "Active", color: "#c9e4ff" },
+  { id: "02c2c8bb-a2bc-4df5-9631-eb566d938d86", label: "Closed", color: "#ffbcb3" },
+  { id: "f65b9d24-c9e5-42c9-b05c-cc9d10800d73", label: "Inactive", color: "#cccfd4" },
+];
+const INACTIVE_ID = "f65b9d24-c9e5-42c9-b05c-cc9d10800d73";
+
+// Default project thumbnail when none uploaded — Brieflee 3D mascot.
+const DEFAULT_THUMB =
+  "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_brand_isometric-smiley-face-tilted-disc-blue-outline-cream-mark_2026-03.png";
+
+// Shared demo project — surfaced to every logged-in user until they
+// dismiss it (which flips users.demo_dismissed via the X button).
+// The projects table is scoped per-user by Softr's row-level security
+// on the `users` link, so we fetch the demo by ID separately to bypass
+// that filter. Multiple demo IDs supported in case we add more later;
+// each is fetched individually because the q-builder doesn't expose a
+// stable "checkbox = true" filter we can rely on across Softr versions.
+const DEMO_PROJECT_IDS = ["1duDpSxMregIZy"]; // Velouré — Sunkissed Lip Oil — Launch UGC
+
+// ─── Helpers ──────────────────────────────────────────────────
+function deriveBrandLabel(websiteUrl) {
+  if (!websiteUrl) return "";
+  try {
+    const u = new URL(/^https?:\/\//i.test(websiteUrl) ? websiteUrl : `https://${websiteUrl}`);
+    const host = u.hostname.replace(/^www\./, "");
+    const root = host.split(".")[0];
+    return root ? root.charAt(0).toUpperCase() + root.slice(1) : "";
+  } catch {
+    return "";
+  }
+}
+function unwrap(raw) {
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw.trim();
+  if (Array.isArray(raw)) return raw.map(unwrap).filter(Boolean).join(", ");
+  if (typeof raw === "object") return raw.label || raw.value || raw.name || "";
+  return String(raw);
+}
+function extractThumbUrl(raw) {
+  if (!raw) return null;
+  if (typeof raw === "string") return raw;
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  if (!first) return null;
+  if (typeof first === "string") return first;
+  return first.thumbnailUrl || first.url || null;
+}
+function statusFor(record) {
+  const raw = record?.fields?.status;
+  if (!raw) return null;
+  if (Array.isArray(raw)) return raw[0] || null;
+  return raw;
+}
+function accountIdsFor(record) {
+  const raw = record?.fields?.accounts;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((a) => (a?.id || a)).filter(Boolean);
+}
+function getInternalLink(record) {
+  const v = unwrap(record?.fields?.internalLink);
+  return v || `/projects/details/?recordId=${record?.id || ""}`;
+}
+function isDemoProject(record) {
+  return record?.fields?.isDemo === true;
+}
+
+// =====================================================================
+// MAIN BLOCK
+// =====================================================================
+export default function Block() {
+  const user = useCurrentUser();
+  const firstName =
+    user?.firstName || user?.first_name ||
+    (user?.fullName || user?.name || "").split(" ")[0] || "";
+
+  // Pull projects — Softr scopes via Source binding; we additionally
+  // filter client-side based on tab + search + dropdowns.
+  const { data, status: loadStatus, refetch } = useRecords({ select });
+  const ownProjects = useMemo(() => {
+    const pages = data?.pages;
+    if (Array.isArray(pages)) return pages.flatMap((p) => p?.items ?? []);
+    return Array.isArray(data) ? data : [];
+  }, [data]);
+
+  // Demo project(s) — fetched by ID so Softr's row-level security on
+  // projects.users doesn't filter them out for users who aren't
+  // explicitly linked. Hooks can't be called in a loop, so we wire up
+  // one useRecord per known demo ID. Keep DEMO_PROJECT_IDS small.
+  const demoRecord0 = useRecord({
+    recordId: DEMO_PROJECT_IDS[0],
+    select,
+    enabled: !!DEMO_PROJECT_IDS[0],
+  });
+  const demoProjects = useMemo(() => {
+    const rec = demoRecord0?.data;
+    if (!rec?.id) return [];
+    // Only surface projects actually flagged is_demo — defensive in
+    // case the flag gets unchecked.
+    return rec?.fields?.isDemo === true ? [rec] : [];
+  }, [demoRecord0?.data]);
+
+  // Merge own + demo projects, deduping by id (the user may already be
+  // linked to the demo project, e.g. the seed demo account itself).
+  const projects = useMemo(() => {
+    const seen = new Set(ownProjects.map((p) => p.id));
+    return [...ownProjects, ...demoProjects.filter((d) => !seen.has(d.id))];
+  }, [ownProjects, demoProjects]);
+
+  // Pull the user's accounts so the Workspace dropdown has options.
+  // Fallback chain for the visible label: account name → derived from
+  // website (e.g. "huel.com" → "Huel") → "Untitled workspace". Never
+  // shows the record id.
+  const accountsSelect = q.select({
+    name: "aAKkT",
+    website: "RaK4B",
+  });
+  const accountsQuery = useRecords({ select: accountsSelect });
+  const accountOptions = useMemo(() => {
+    const pages = accountsQuery.data?.pages;
+    const items = Array.isArray(pages)
+      ? pages.flatMap((p) => p?.items ?? [])
+      : (Array.isArray(accountsQuery.data) ? accountsQuery.data : []);
+    return items.map((a) => {
+      const name = unwrap(a?.fields?.name);
+      const fromWebsite = deriveBrandLabel(unwrap(a?.fields?.website));
+      return {
+        id: a.id,
+        label: name || fromWebsite || "Untitled workspace",
+      };
+    });
+  }, [accountsQuery.data]);
+
+  // ─── View + filter state ──────────────────────────────────
+  const [view, setView] = useState("grid"); // 'grid' | 'list' | 'inactive' | 'unassigned'
+  const [sortBy, setSortBy] = useState("updated"); // 'updated' | 'name' | 'created'
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState(""); // option id or ""
+  // workspaceFilter reads from the URL `?workspace=` param, which is
+  // a comma-separated list of workspace IDs written by the workspace-
+  // switcher block above. Empty = no filter (normal state, sample
+  // visible). One id = filter to that workspace. Many ids = OR filter
+  // (project matches if any of its accounts is in the set).
+  const [workspaceFilter] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URL(window.location.href).searchParams.get("workspace") || "";
+  });
+  const workspaceFilterSet = useMemo(() => {
+    if (!workspaceFilter) return null;
+    const ids = workspaceFilter.split(",").map((s) => s.trim()).filter(Boolean);
+    return ids.length ? new Set(ids) : null;
+  }, [workspaceFilter]);
+
+  // Softr's page dialog, anchored to the right edge. The renderer
+  // exposes it imperatively, so the panel slides in with no reload and
+  // browser Back closes it; setting the same modal params by hand is
+  // the fallback, and the centred modal is the last resort. Every modal
+  // opened from an index page goes through here.
+  const openSidePanel = (path) => {
+    if (typeof window === "undefined") return;
+    const renderer = window.SoftrPageRenderer;
+    if (renderer && typeof renderer.setOpenPageModal === "function") {
+      renderer.setOpenPageModal({ src: path, size: "M", placement: "end" });
+      return;
+    }
+    try {
+      const next = new URL(window.location.href);
+      next.searchParams.set("modal", path);
+      next.searchParams.set("modalSize", "M");
+      next.searchParams.set("modalPlacement", "end");
+      window.location.href = next.toString();
+      return;
+    } catch (e) {
+      console.error("Side panel URL failed:", e);
+    }
+    if (typeof window.openSwModal === "function") {
+      window.openSwModal(path, CREATE_PROJECT_MODAL_SIZE);
+    } else {
+      window.location.href = path;
+    }
+  };
+
+  // Opens the standalone /create-project page as that side panel.
+  // Passes the currently-ticked workspace (if any) via the URL so the
+  // page can pre-select it. It handles user.accounts + workspace
+  // selection itself; this block doesn't need to know.
+  const openCreateProject = () => {
+    if (typeof window === "undefined") return;
+    const tickedWorkspace = (new URL(window.location.href)
+      .searchParams.get("workspace") || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)[0] || "";
+    const url = tickedWorkspace
+      ? `${CREATE_PROJECT_PATH}?workspace=${encodeURIComponent(tickedWorkspace)}`
+      : CREATE_PROJECT_PATH;
+    openSidePanel(url);
+  };
+
+  // Listen for postMessages from the /create-project modal — when it
+  // successfully creates a project, refetch the grid so the new one
+  // appears without a manual reload.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onMessage = (e) => {
+      if (e?.data?.type === "brieflee:project-created") {
+        refetch?.();
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [refetch]);
+
+  const createRecord = useRecordCreate({ fields: createFields });
+  const updateRecord = useRecordUpdate({ fields: updateFields });
+  const deleteRecord = useRecordDelete();
+  const upload = useUpload();
+
+  // ─── Demo (onboarding sample) state ──────────────────────
+  // Read the current user's demo_dismissed flag and offer a single
+  // updateUser hook to flip it true when they confirm "Hide sample".
+  // One shared demo project lives in the projects table tagged
+  // is_demo=true — visible to every logged-in user until they dismiss
+  // it. The X on the demo card opens a confirmation modal (rather
+  // than dismissing immediately) so users understand the action is
+  // permanent on this account — we don't surface a way to un-hide it
+  // from the UI later.
+  const userRecord = useRecord({
+    recordId: user?.id,
+    select: userSelect,
+    enabled: !!user?.id,
+  });
+  const demoDismissed = userRecord?.data?.fields?.demoDismissed === true;
+  const updateUser = useRecordUpdate({ fields: userSelect });
+
+  const [dismissDemoOpen, setDismissDemoOpen] = useState(false);
+  const [dismissDemoSubmitting, setDismissDemoSubmitting] = useState(false);
+  const requestDismissDemo = () => setDismissDemoOpen(true);
+  const closeDismissDemo = () => {
+    if (dismissDemoSubmitting) return;
+    setDismissDemoOpen(false);
+  };
+  const handleDismissDemo = async () => {
+    if (!user?.id) return;
+    setDismissDemoSubmitting(true);
+    try {
+      await updateUser.mutateAsync({
+        recordId: user.id,
+        fields: { demoDismissed: true },
+      });
+      toast.success("Sample project hidden");
+      setDismissDemoOpen(false);
+      await userRecord.refetch?.();
+    } catch (e) {
+      console.error("Dismiss demo failed:", e);
+      toast.error("Couldn't dismiss", { description: e?.message || "Try again." });
+    } finally {
+      setDismissDemoSubmitting(false);
+    }
+  };
+
+  // ─── Per-card menu + per-card modal state ────────────────
+  // Only one card's menu open at a time. Outside-click closes.
+  const [cardMenuOpenId, setCardMenuOpenId] = useState(null);
+  const menuRef = useRef(null);
+  useEffect(() => {
+    if (!cardMenuOpenId) return;
+    const onDown = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setCardMenuOpenId(null);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [cardMenuOpenId]);
+
+  // Which modal (if any) is open — and the project it acts on.
+  const [activeModal, setActiveModal] = useState(null); // 'rename' | 'settings' | 'delete'
+  const [activeProjectId, setActiveProjectId] = useState(null);
+  const activeProject = useMemo(
+    () => projects.find((p) => p.id === activeProjectId) || null,
+    [projects, activeProjectId],
+  );
+
+  // Settings form state — Rename is folded into Settings as the
+  // top-most Name field; there's no separate Rename modal anymore.
+  const [stName, setStName] = useState("");
+  const [stPrivate, setStPrivate] = useState(false);
+  const [stStatus, setStStatus] = useState("");
+  const [stWorkspace, setStWorkspace] = useState("");
+  const [stThumbSaved, setStThumbSaved] = useState(null);    // existing attachment array (or null)
+  const [stThumbPending, setStThumbPending] = useState(null); // new File pending save
+  const [stThumbCleared, setStThumbCleared] = useState(false);
+  const stThumbInputRef = useRef(null);
+
+  const [actionSubmitting, setActionSubmitting] = useState(false);
+
+  const openCardMenu = (id) => setCardMenuOpenId((cur) => (cur === id ? null : id));
+
+  const openModalForProject = (type, project) => {
+    if (!project) return;
+    setCardMenuOpenId(null);
+    setActiveProjectId(project.id);
+    setActiveModal(type);
+    const f = project?.fields || {};
+    if (type === "settings") {
+      setStName(unwrap(f.name));
+      setStPrivate(f.privateMode === true);
+      const s = statusFor(project);
+      setStStatus(s?.id || "");
+      const accIds = accountIdsFor(project);
+      setStWorkspace(accIds[0] || "");
+      setStThumbSaved(Array.isArray(f.thumbnail) ? f.thumbnail : null);
+      setStThumbPending(null);
+      setStThumbCleared(false);
+    }
+  };
+  const closeAnyModal = () => {
+    setActiveModal(null);
+    setActiveProjectId(null);
+    setStName("");
+    setStPrivate(false);
+    setStStatus("");
+    setStWorkspace("");
+    setStThumbSaved(null);
+    setStThumbPending(null);
+    setStThumbCleared(false);
+    if (stThumbInputRef.current) stThumbInputRef.current.value = "";
+  };
+
+  // ─── Per-card action handlers ────────────────────────────
+  const handleAddPeople = (project) => {
+    setCardMenuOpenId(null);
+    if (typeof window === "undefined") return;
+    window.location.href = `/projects/details?recordId=${encodeURIComponent(project.id)}`;
+  };
+
+  const handleMarkInactive = async (project) => {
+    setCardMenuOpenId(null);
+    if (!project?.id) return;
+    try {
+      await updateRecord.mutateAsync({
+        recordId: project.id,
+        fields: { status: { id: INACTIVE_ID, label: "Inactive" } },
+      });
+      const name = unwrap(project?.fields?.name) || "Project";
+      toast.success(`${name} marked inactive`);
+      await refetch?.();
+    } catch (e) {
+      console.error("Mark inactive failed:", e);
+      toast.error("Couldn't update", { description: e?.message || "Try again." });
+    }
+  };
+
+  // ─── Copy Link ─────────────────────────────────────────────
+  // Copies the absolute project detail URL to the clipboard. Uses
+  // the `internalLink` formula field as the source-of-truth path
+  // (falls back to /projects/details/?recordId=... if blank), then
+  // builds an absolute URL with window.location.origin so the
+  // recipient can paste it straight into Slack / email and land on
+  // the right page.
+  const handleCopyLink = async (project) => {
+    setCardMenuOpenId(null);
+    if (!project?.id) return;
+    const href = getInternalLink(project);
+    const absolute = typeof window !== "undefined" && href.startsWith("/")
+      ? `${window.location.origin}${href}`
+      : href;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(absolute);
+      } else {
+        // Fallback for older browsers / non-secure contexts.
+        const ta = document.createElement("textarea");
+        ta.value = absolute;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      toast.success("Link copied");
+    } catch (e) {
+      console.error("Copy link failed:", e);
+      toast.error("Couldn't copy link", { description: e?.message || "Try again." });
+    }
+  };
+
+  // ─── Duplicate Project ────────────────────────────────────
+  // Shell-only clone — copies name (prefixed with "Copy of"),
+  // description, workspace, privacy, thumbnail. Briefs/submissions/
+  // reviews are NOT copied — those belong to the original. Status
+  // defaults to Draft via the schema default; we set it explicitly so
+  // the duplicate doesn't inherit Inactive from the source.
+  const handleDuplicate = async (project) => {
+    setCardMenuOpenId(null);
+    if (!project?.id || !user?.id) return;
+    if (!createRecord.enabled) {
+      toast.error("Cannot create records right now");
+      return;
+    }
+    const f = project?.fields || {};
+    const originalName = unwrap(f.name) || "Untitled project";
+    try {
+      await createRecord.mutateAsync({
+        name: `Copy of ${originalName}`,
+        description: unwrap(f.description) || "",
+        accounts: accountIdsFor(project).map((id) => ({ id })),
+        users: [{ id: user.id }],
+      });
+      toast.success(`Duplicated ${originalName}`);
+      await refetch?.();
+    } catch (e) {
+      console.error("Duplicate failed:", e);
+      toast.error("Couldn't duplicate", { description: e?.message || "Try again." });
+    }
+  };
+
+  const handleSettingsSubmit = async () => {
+    if (!activeProjectId) return;
+    if (!stName.trim()) {
+      toast.error("Name can't be empty");
+      return;
+    }
+    setActionSubmitting(true);
+    try {
+      // Resolve the new thumbnail value (upload first if needed).
+      let thumbnailForWrite; // undefined = don't touch
+      if (stThumbPending) {
+        const uploaded = await upload.mutateAsync(stThumbPending);
+        thumbnailForWrite = Array.isArray(uploaded) ? uploaded : [uploaded];
+      } else if (stThumbCleared) {
+        thumbnailForWrite = null;
+      }
+      const fields = {
+        name: stName.trim(),
+        privateMode: stPrivate,
+      };
+      if (stStatus) {
+        const opt = STATUS_OPTIONS.find((o) => o.id === stStatus);
+        if (opt) fields.status = { id: opt.id, label: opt.label };
+      }
+      if (stWorkspace) {
+        fields.accounts = [{ id: stWorkspace }];
+      }
+      if (thumbnailForWrite !== undefined) fields.thumbnail = thumbnailForWrite;
+
+      await updateRecord.mutateAsync({
+        recordId: activeProjectId,
+        fields,
+      });
+      toast.success("Project settings updated");
+      closeAnyModal();
+      await refetch?.();
+    } catch (e) {
+      console.error("Settings save failed:", e);
+      toast.error("Couldn't save settings", { description: e?.message || "Try again." });
+    } finally {
+      setActionSubmitting(false);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!activeProjectId) return;
+    setActionSubmitting(true);
+    try {
+      // useRecordDelete takes the record id DIRECTLY, not { recordId }.
+      // (useRecordUpdate is the one that takes an object — easy to mix up.)
+      // Passing an object here is what produced "Failed to delete record: 400".
+      await deleteRecord.mutateAsync(activeProjectId);
+      const name = unwrap(activeProject?.fields?.name) || "Project";
+      toast.success(`${name} deleted`);
+      closeAnyModal();
+      await refetch?.();
+    } catch (e) {
+      console.error("Delete failed:", e);
+      // A bare status code tells the user nothing, so swap it for the
+      // likeliest cause. Anything with a real message shows as-is.
+      const raw = (e?.message || "").trim();
+      const bareStatus = !raw || /^failed to delete record:?\s*\d+$/i.test(raw);
+      toast.error("Couldn't delete", {
+        description: bareStatus
+          ? "This project couldn't be removed. It may still have briefs or submissions linked to it — clear those first."
+          : raw,
+      });
+    } finally {
+      setActionSubmitting(false);
+    }
+  };
+
+  const handleThumbnailFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setStThumbPending(file);
+    setStThumbCleared(false);
+  };
+  const handleThumbnailRemove = () => {
+    setStThumbPending(null);
+    setStThumbCleared(true);
+    if (stThumbInputRef.current) stThumbInputRef.current.value = "";
+  };
+  const previewThumbnailUrl = useMemo(() => {
+    if (stThumbCleared) return null;
+    if (stThumbPending) return URL.createObjectURL(stThumbPending);
+    return extractThumbUrl(stThumbSaved);
+  }, [stThumbCleared, stThumbPending, stThumbSaved]);
+
+  // Single dispatcher the card menus call into. Keeps ProjectCard
+  // dumb — it only emits action names + the project record.
+  const dispatchAction = (action, project) => {
+    if (!project) return;
+    switch (action) {
+      case "copy-link": return handleCopyLink(project);
+      case "duplicate": return handleDuplicate(project);
+      case "mark-inactive": return handleMarkInactive(project);
+      case "settings": return openModalForProject("settings", project);
+      case "add-people": return handleAddPeople(project);
+      case "delete": return openModalForProject("delete", project);
+      default: return;
+    }
+  };
+
+  // ─── Filtered list ────────────────────────────────────────
+  const filtered = useMemo(() => {
+    const list = projects.filter((p) => {
+      const s = statusFor(p);
+      const sid = s?.id;
+      const accIds = accountIdsFor(p);
+      const demo = isDemoProject(p);
+
+      // Demos only appear on Grid + List. Hide everywhere if the user
+      // has dismissed them. Hide from Inactive + Unassigned tabs too —
+      // the sample never lives in those buckets.
+      if (demo) {
+        if (demoDismissed) return false;
+        if (view === "inactive" || view === "unassigned") return false;
+      }
+
+      // Tab gate
+      if (view === "inactive") {
+        if (sid !== INACTIVE_ID) return false;
+      } else if (view === "unassigned") {
+        if (accIds.length > 0) return false;
+      } else {
+        // grid / list — exclude inactive
+        if (sid === INACTIVE_ID) return false;
+      }
+
+      // Status filter (only applies on grid + list views)
+      if ((view === "grid" || view === "list") && statusFilter) {
+        if (sid !== statusFilter) return false;
+      }
+
+      // Workspace filter — multi-select. Project passes if any of its
+      // linked accounts is in the user-selected set. Empty set = no
+      // filter, everything passes.
+      if (workspaceFilterSet && view !== "unassigned") {
+        const matches = accIds.some((id) => workspaceFilterSet.has(id));
+        if (!matches) return false;
+      }
+
+      // Search
+      if (search.trim()) {
+        const needle = search.trim().toLowerCase();
+        const haystack = [
+          unwrap(p?.fields?.name),
+          unwrap(p?.fields?.description),
+        ].join(" ").toLowerCase();
+        if (!haystack.includes(needle)) return false;
+      }
+
+      return true;
+    });
+
+    // Sort. Demos always pin to the top so the onboarding card doesn't
+    // get buried, regardless of which sort is active.
+    const getDate = (p, key) => {
+      const raw = p?.fields?.[key];
+      if (!raw) return 0;
+      const t = new Date(raw).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+    const cmp = (() => {
+      if (sortBy === "name") {
+        return (a, b) => unwrap(a?.fields?.name).localeCompare(unwrap(b?.fields?.name));
+      }
+      if (sortBy === "created") {
+        return (a, b) => getDate(b, "createdAt") - getDate(a, "createdAt");
+      }
+      // default: recently updated
+      return (a, b) => getDate(b, "updatedAt") - getDate(a, "updatedAt");
+    })();
+    const sorted = [...list].sort(cmp);
+    sorted.sort((a, b) => Number(isDemoProject(b)) - Number(isDemoProject(a)));
+    return sorted;
+  }, [projects, view, statusFilter, workspaceFilterSet, search, sortBy, demoDismissed]);
+
+  // ─── Render ───────────────────────────────────────────────
+  const isLoading = loadStatus === "pending";
+  const isEmpty = !isLoading && filtered.length === 0;
+
+  return (
+    <>
+      <Style />
+      <div className="bl-projects">
+        <div className="bl-projects-inner">
+
+          {/* Header */}
+          <header className="bl-projects-header">
+            <h1 className="bl-projects-title">Projects</h1>
+            <p className="bl-projects-greeting">
+              <span className="bl-greeting-spark" aria-hidden>✨</span>{" "}
+              Hey {firstName || "there"}
+            </p>
+          </header>
+
+          {/* View tabs */}
+          <nav className="bl-projects-tabs" role="tablist" aria-label="Project views">
+            <TabButton
+              icon={GridIcon}
+              label="Grid"
+              active={view === "grid"}
+              onClick={() => setView("grid")}
+            />
+            <TabButton
+              icon={ListIcon}
+              label="List"
+              active={view === "list"}
+              onClick={() => setView("list")}
+            />
+            <TabButton
+              icon={Archive}
+              label="Inactive"
+              active={view === "inactive"}
+              onClick={() => setView("inactive")}
+            />
+            <TabButton
+              icon={Inbox}
+              label="Unassigned"
+              active={view === "unassigned"}
+              onClick={() => setView("unassigned")}
+            />
+          </nav>
+
+          {/* Controls row: search · filters · create button */}
+          <div className="bl-projects-controls">
+            <div className="bl-projects-search">
+              <Search className="bl-projects-search-icon" size={14} />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search projects"
+                className="bl-projects-search-input"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="bl-projects-search-clear"
+                  aria-label="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            <div className="bl-projects-filters">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="bl-projects-select"
+                aria-label="Status filter"
+                disabled={view === "inactive" || view === "unassigned"}
+              >
+                <option value="">Status</option>
+                {STATUS_OPTIONS
+                  .filter((o) => o.id !== INACTIVE_ID)
+                  .map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+              </select>
+
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="bl-projects-select"
+                aria-label="Sort projects"
+              >
+                <option value="updated">Recently updated</option>
+                <option value="created">Recently created</option>
+                <option value="name">Name (A → Z)</option>
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => openCreateProject()}
+              className="bl-btn bl-btn-primary bl-btn-end"
+            >
+              <Plus size={14} strokeWidth={2} />
+              Create Review
+            </button>
+          </div>
+
+          {/* Body */}
+          {isLoading ? (
+            <div className="bl-projects-loading">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="bl-projects-skeleton" />
+              ))}
+            </div>
+          ) : isEmpty ? (
+            <EmptyState view={view} onCreate={() => openCreateProject()} />
+          ) : view === "list" ? (
+            <ListView
+              projects={filtered}
+              menuOpenId={cardMenuOpenId}
+              onOpenMenu={openCardMenu}
+              onAction={dispatchAction}
+              menuRef={menuRef}
+              onDismissDemo={requestDismissDemo}
+            />
+          ) : (
+            <GridView
+              projects={filtered}
+              menuOpenId={cardMenuOpenId}
+              onOpenMenu={openCardMenu}
+              onAction={dispatchAction}
+              menuRef={menuRef}
+              onDismissDemo={requestDismissDemo}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* ============ Project Settings Modal ============ */}
+      {activeModal === "settings" && activeProject && (
+        <div className="bl-modal-backdrop" onClick={closeAnyModal}>
+          <div
+            className="bl-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="st-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 520 }}
+          >
+            <header className="bl-modal-header">
+              <div>
+                <h3 id="st-title" className="bl-modal-title">Project settings</h3>
+                <p className="bl-modal-sub">Visibility, status, thumbnail, workspace.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeAnyModal}
+                className="bl-modal-close"
+                aria-label="Close"
+              ><X size={18} /></button>
+            </header>
+
+            <div className="bl-modal-body">
+              {/* Name (Rename folded into Settings) */}
+              <div className="bl-modal-field">
+                <label className="bl-modal-label" htmlFor="st-name">
+                  Name <span style={{ color: "#d92626" }}>*</span>
+                </label>
+                <Input
+                  id="st-name"
+                  value={stName}
+                  onChange={(e) => setStName(e.target.value)}
+                  disabled={actionSubmitting}
+                  autoFocus
+                />
+              </div>
+
+              {/* Project access (private toggle) */}
+              <div className="bl-modal-field">
+                <label className="bl-toggle-row">
+                  <input
+                    type="checkbox"
+                    checked={stPrivate}
+                    onChange={(e) => setStPrivate(e.target.checked)}
+                    disabled={actionSubmitting}
+                  />
+                  <span>
+                    <span className="bl-toggle-label">
+                      {stPrivate ? "Private" : "Public"}
+                    </span>
+                    <span className="bl-toggle-hint">
+                      {stPrivate
+                        ? "Only people you add can see this project."
+                        : "Anyone with the link can view this project."}
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              {/* Status */}
+              <div className="bl-modal-field">
+                <label className="bl-modal-label" htmlFor="st-status">Status</label>
+                <select
+                  id="st-status"
+                  value={stStatus}
+                  onChange={(e) => setStStatus(e.target.value)}
+                  className="bl-projects-select"
+                  disabled={actionSubmitting}
+                >
+                  <option value="">Select…</option>
+                  {STATUS_OPTIONS.map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Thumbnail */}
+              <div className="bl-modal-field">
+                <label className="bl-modal-label">Thumbnail</label>
+                <div className="bl-thumb-row">
+                  <div className="bl-thumb-preview">
+                    {previewThumbnailUrl ? (
+                      <img src={previewThumbnailUrl} alt="Project thumbnail" />
+                    ) : (
+                      <span className="bl-thumb-empty">No thumbnail</span>
+                    )}
+                  </div>
+                  <div className="bl-thumb-actions">
+                    <input
+                      ref={stThumbInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleThumbnailFile}
+                      style={{ display: "none" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => stThumbInputRef.current?.click()}
+                      disabled={actionSubmitting}
+                      className="bl-thumb-btn"
+                    >
+                      <UploadIcon size={14} />
+                      {previewThumbnailUrl ? "Change" : "Upload"}
+                    </button>
+                    {previewThumbnailUrl && (
+                      <button
+                        type="button"
+                        onClick={handleThumbnailRemove}
+                        disabled={actionSubmitting}
+                        className="bl-thumb-btn bl-thumb-btn-ghost"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Workspace */}
+              <div className="bl-modal-field">
+                <label className="bl-modal-label" htmlFor="st-ws">Workspace</label>
+                <select
+                  id="st-ws"
+                  value={stWorkspace}
+                  onChange={(e) => setStWorkspace(e.target.value)}
+                  className="bl-projects-select"
+                  disabled={actionSubmitting}
+                >
+                  <option value="">Select…</option>
+                  {accountOptions.map((a) => (
+                    <option key={a.id} value={a.id}>{a.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <footer className="bl-modal-footer">
+              <button
+                type="button"
+                onClick={closeAnyModal}
+                disabled={actionSubmitting}
+                className="bl-modal-cancel"
+              >Cancel</button>
+              <Button
+                onClick={handleSettingsSubmit}
+                disabled={actionSubmitting || !stName.trim()}
+                style={{ backgroundColor: PERIWINKLE, color: "#fff" }}
+              >
+                {actionSubmitting ? "Saving…" : "Save"}
+              </Button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {/* ============ Delete Confirmation Modal ============ */}
+      {activeModal === "delete" && activeProject && (
+        <div className="bl-modal-backdrop" onClick={closeAnyModal}>
+          <div
+            className="bl-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dl-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 420 }}
+          >
+            <header className="bl-modal-header">
+              <div>
+                <h3 id="dl-title" className="bl-modal-title">Delete this project?</h3>
+                <p className="bl-modal-sub">
+                  This permanently removes <strong>{unwrap(activeProject?.fields?.name)}</strong> and everything inside it. This can't be undone.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeAnyModal}
+                className="bl-modal-close"
+                aria-label="Close"
+              ><X size={18} /></button>
+            </header>
+            <footer className="bl-modal-footer">
+              <button
+                type="button"
+                onClick={closeAnyModal}
+                disabled={actionSubmitting}
+                className="bl-modal-cancel"
+              >Cancel</button>
+              <Button
+                onClick={handleDeleteConfirm}
+                disabled={actionSubmitting}
+                style={{ backgroundColor: "#d92626", color: "#fff" }}
+              >
+                {actionSubmitting ? "Deleting…" : "Delete"}
+              </Button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {/* ============ Dismiss Demo Confirmation Modal ============ */}
+      {dismissDemoOpen && (
+        <div className="bl-modal-backdrop" onClick={closeDismissDemo}>
+          <div
+            className="bl-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dd-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 420 }}
+          >
+            <header className="bl-modal-header">
+              <div>
+                <h3 id="dd-title" className="bl-modal-title">Hide this sample?</h3>
+                <p className="bl-modal-sub">
+                  We added this sample project so you can poke around a real
+                  Brieflee review. Hide it and it won't come back on this
+                  account.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeDismissDemo}
+                className="bl-modal-close"
+                aria-label="Close"
+              ><X size={18} /></button>
+            </header>
+            <footer className="bl-modal-footer">
+              <button
+                type="button"
+                onClick={closeDismissDemo}
+                disabled={dismissDemoSubmitting}
+                className="bl-modal-cancel"
+              >Cancel</button>
+              <Button
+                onClick={handleDismissDemo}
+                disabled={dismissDemoSubmitting}
+                style={{ backgroundColor: PERIWINKLE, color: "#fff" }}
+              >
+                {dismissDemoSubmitting ? "Hiding…" : "Hide sample"}
+              </Button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+    </>
+  );
+}
+
+// =====================================================================
+// Subcomponents
+// =====================================================================
+
+function TabButton({ icon: Icon, label, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`bl-projects-tab ${active ? "is-active" : ""}`}
+      role="tab"
+      aria-selected={active}
+    >
+      <Icon size={14} />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+// Defensive label normalization — until the Softr Tables UI rename
+// of "Archive" → "Inactive" is done by hand, records may still surface
+// the old label. Map both to the current user-facing word.
+function normalizeStatusLabel(raw) {
+  if (!raw) return "";
+  return raw === "Archive" ? "Inactive" : raw;
+}
+
+function StatusPill({ status }) {
+  if (!status) return null;
+  const label = normalizeStatusLabel(status.label || "");
+  const bg = (status.color || "#cccfd4") + "33"; // ~20% alpha for fill
+  const border = (status.color || "#cccfd4") + "66";
+  return (
+    <span
+      className="bl-status-pill"
+      style={{ backgroundColor: bg, border: `1px solid ${border}`, color: NAVY }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function PrivacyOverlay({ isPrivate }) {
+  return (
+    <span className="bl-privacy-overlay">
+      {isPrivate ? <Lock size={11} /> : <LockOpen size={11} />}
+      {isPrivate ? "Private" : "Public"}
+    </span>
+  );
+}
+
+function ProjectCard({
+  project, menuOpen, onOpenMenu, onAction, menuRef, onDismissDemo,
+}) {
+  const f = project?.fields || {};
+  const thumb = extractThumbUrl(f.thumbnail) || DEFAULT_THUMB;
+  const status = statusFor(project);
+  const name = unwrap(f.name) || "Untitled project";
+  const briefs = Number(unwrap(f.totalBriefs)) || 0;
+  const pending = Number(unwrap(f.pendingReviews)) || 0;
+  const isPrivate = f.privateMode === true;
+  const href = getInternalLink(project);
+  const demo = isDemoProject(project);
+  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+
+  return (
+    <a href={href} className={`bl-card ${menuOpen ? "is-menu-open" : ""} ${demo ? "is-demo" : ""}`}>
+      <div className="bl-card-thumb">
+        <img src={thumb} alt={name} draggable={false} />
+        {demo ? (
+          <span className="bl-card-sample-badge">Sample</span>
+        ) : (
+          <PrivacyOverlay isPrivate={isPrivate} />
+        )}
+        {status && <span className="bl-card-status"><StatusPill status={status} /></span>}
+        {demo && (
+          <div
+            className="bl-card-menu-wrap"
+            onMouseDown={stop}
+            onClick={stop}
+          >
+            <button
+              type="button"
+              className="bl-card-menu-trigger bl-card-dismiss-btn is-open"
+              aria-label="Hide sample project"
+              title="Hide sample"
+              onClick={(e) => { stop(e); onDismissDemo?.(); }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="bl-card-body">
+        <div className="bl-card-name">{name}</div>
+        <div className="bl-card-meta">
+          {briefs === 0 && !demo ? (
+            <button
+              type="button"
+              className="bl-card-invite"
+              onClick={(e) => { stop(e); onAction("add-people", project); }}
+            >
+              <UserPlus size={11} />
+              <span>Invite team</span>
+            </button>
+          ) : (
+            <span>{briefs} {briefs === 1 ? "brief" : "briefs"}</span>
+          )}
+          {pending > 0 && (
+            <span className="bl-card-pending">{pending} pending</span>
+          )}
+          {!demo && (
+            <div className="bl-card-meta-actions">
+              <CardMenu
+                project={project}
+                isOpen={menuOpen}
+                onOpenMenu={onOpenMenu}
+                onAction={onAction}
+                menuRef={menuRef}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </a>
+  );
+}
+
+// Shared `…` menu rendered on each card (Grid) and each list row.
+// Trigger is hover-visible (or always visible when the menu is open).
+// Stops event propagation on every interaction so the wrapping <a>
+// never navigates while the user is using the menu.
+function CardMenu({ project, isOpen, onOpenMenu, onAction, menuRef }) {
+  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+  return (
+    <div
+      className="bl-card-menu-wrap"
+      ref={isOpen ? menuRef : undefined}
+      onMouseDown={stop}
+      onClick={stop}
+    >
+      <button
+        type="button"
+        className={`bl-card-menu-trigger ${isOpen ? "is-open" : ""}`}
+        aria-label="Project actions"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        onClick={(e) => { stop(e); onOpenMenu(project.id); }}
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {isOpen && (
+        <div className="bl-card-menu" role="menu">
+          <MenuItem
+            icon={LinkIcon}
+            label="Copy link"
+            onClick={(e) => { stop(e); onAction("copy-link", project); }}
+          />
+          <MenuItem
+            icon={CopyIcon}
+            label="Duplicate Project"
+            onClick={(e) => { stop(e); onAction("duplicate", project); }}
+          />
+          <MenuItem
+            icon={Archive}
+            label="Mark Inactive"
+            onClick={(e) => { stop(e); onAction("mark-inactive", project); }}
+          />
+          <MenuItem
+            icon={Settings}
+            label="Project Settings"
+            onClick={(e) => { stop(e); onAction("settings", project); }}
+          />
+          <MenuItem
+            icon={UserPlus}
+            label="Add people"
+            onClick={(e) => { stop(e); onAction("add-people", project); }}
+          />
+          <div className="bl-menu-divider" role="separator" />
+          <MenuItem
+            icon={Trash2}
+            label="Delete"
+            danger
+            onClick={(e) => { stop(e); onAction("delete", project); }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuItem({ icon: Icon, label, danger, onClick }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className={`bl-menu-item ${danger ? "is-danger" : ""}`}
+      onClick={onClick}
+    >
+      <Icon size={14} />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function GridView({ projects, menuOpenId, onOpenMenu, onAction, menuRef, onDismissDemo }) {
+  return (
+    <div className="bl-projects-grid">
+      {projects.map((p) => (
+        <ProjectCard
+          key={p.id}
+          project={p}
+          menuOpen={menuOpenId === p.id}
+          onOpenMenu={onOpenMenu}
+          onAction={onAction}
+          menuRef={menuRef}
+          onDismissDemo={onDismissDemo}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ListView({ projects, menuOpenId, onOpenMenu, onAction, menuRef, onDismissDemo }) {
+  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+  return (
+    <div className="bl-projects-list">
+      <div className="bl-projects-list-head">
+        <div>Name</div>
+        <div>Status</div>
+        <div>Briefs</div>
+        <div>Pending</div>
+        <div>Visibility</div>
+        <div></div>
+      </div>
+      {projects.map((p) => {
+        const f = p?.fields || {};
+        const thumb = extractThumbUrl(f.thumbnail) || DEFAULT_THUMB;
+        const status = statusFor(p);
+        const name = unwrap(f.name) || "Untitled project";
+        const briefs = Number(unwrap(f.totalBriefs)) || 0;
+        const pending = Number(unwrap(f.pendingReviews)) || 0;
+        const isPrivate = f.privateMode === true;
+        const href = getInternalLink(p);
+        const isMenuOpen = menuOpenId === p.id;
+        const demo = isDemoProject(p);
+        return (
+          <a
+            key={p.id}
+            href={href}
+            className={`bl-projects-list-row ${isMenuOpen ? "is-menu-open" : ""} ${demo ? "is-demo" : ""}`}
+          >
+            <div className="bl-projects-list-name">
+              <img src={thumb} alt="" className="bl-projects-list-thumb" />
+              <span>{name}</span>
+              {demo && <span className="bl-list-sample-badge">Sample</span>}
+            </div>
+            <div><StatusPill status={status} /></div>
+            <div>{briefs}</div>
+            <div>{pending > 0 ? <span className="bl-card-pending">{pending}</span> : "—"}</div>
+            <div className="bl-projects-list-priv">
+              {isPrivate ? <Lock size={12} /> : <LockOpen size={12} />}
+              <span>{isPrivate ? "Private" : "Public"}</span>
+            </div>
+            <div className="bl-projects-list-actions">
+              {demo ? (
+                <button
+                  type="button"
+                  className="bl-card-menu-trigger bl-card-dismiss-btn is-open"
+                  aria-label="Dismiss sample project"
+                  title="Dismiss sample"
+                  onClick={(e) => { stop(e); onDismissDemo?.(); }}
+                >
+                  <X size={14} />
+                </button>
+              ) : (
+                <CardMenu
+                  project={p}
+                  isOpen={isMenuOpen}
+                  onOpenMenu={onOpenMenu}
+                  onAction={onAction}
+                  menuRef={menuRef}
+                />
+              )}
+            </div>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+function EmptyState({ view, onCreate }) {
+  const messages = {
+    grid: { title: "No projects yet", body: "Create your first project to group briefs, content, and reviews." },
+    list: { title: "No projects yet", body: "Create your first project to group briefs, content, and reviews." },
+    inactive: { title: "Nothing marked inactive", body: "Inactive projects will show up here." },
+    unassigned: { title: "All projects have a workspace", body: "Projects with no workspace linked appear here." },
+  };
+  const m = messages[view] || messages.grid;
+  return (
+    <div className="bl-projects-empty">
+      <div className="bl-projects-empty-icon">
+        <Inbox size={28} strokeWidth={1.5} />
+      </div>
+      <h3 className="bl-projects-empty-title">{m.title}</h3>
+      <p className="bl-projects-empty-body">{m.body}</p>
+      {(view === "grid" || view === "list") && (
+        <Button
+          onClick={onCreate}
+          style={{ backgroundColor: PERIWINKLE, color: "#fff" }}
+          className="mt-4"
+        >
+          <Plus className="h-4 w-4 mr-1.5" strokeWidth={2.5} />
+          Create Review
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// =====================================================================
+// Style
+// =====================================================================
+function Style() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+
+      .bl-projects,
+      .bl-projects * { font-family: 'League Spartan', sans-serif; box-sizing: border-box; }
+
+      /* ---- Softr's own button, matched exactly -------------------
+         Read off the live native buttons and the theme tokens behind
+         them: Inter 13/20, label weight 600, 6px 12px, 32px tall,
+         radius 8, and a calm .15s background darken on hover.
+           primary  #879CF7 → #6C7CC5 → #515D94
+           navy     #001364 → #192A73 → #334283
+           neutral  #FFFFFF → #F2F2F2 → #E5E5E5
+         Scoped .bl-projects .bl-btn so the block's League Spartan rule
+         cannot win on specificity. */
+      .bl-projects .bl-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        gap: 4px;
+        height: 32px;
+        padding: 6px 12px;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        font-family: 'Inter', sans-serif;
+        font-size: 13px;
+        line-height: 20px;
+        font-weight: 600;
+        white-space: nowrap;
+        text-decoration: none;
+        cursor: pointer;
+        transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, color 0.15s ease-in-out;
+      }
+      .bl-projects .bl-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .bl-projects .bl-btn svg { flex-shrink: 0; }
+      .bl-projects .bl-btn-end { margin-left: auto; }
+      .bl-projects .bl-btn-primary {
+        background: ${PERIWINKLE}; color: #FFFFFF; border-color: ${PERIWINKLE};
+      }
+      .bl-projects .bl-btn-primary:hover:not(:disabled) { background: #6C7CC5; border-color: #6C7CC5; }
+      .bl-projects .bl-btn-primary:active:not(:disabled) { background: #515D94; border-color: #515D94; }
+      .bl-projects .bl-btn-navy {
+        background: ${NAVY_DEEP}; color: #FBFBFB; border-color: rgba(0, 0, 0, 0.1);
+      }
+      .bl-projects .bl-btn-navy:hover:not(:disabled) { background: #192A73; }
+      .bl-projects .bl-btn-navy:active:not(:disabled) { background: #334283; }
+      .bl-projects .bl-btn-neutral {
+        background: #FFFFFF; color: ${NAVY_DEEP}; border-color: rgba(0, 0, 0, 0.1);
+      }
+      .bl-projects .bl-btn-neutral:hover:not(:disabled) { background: #F2F2F2; }
+      .bl-projects .bl-btn-neutral:active:not(:disabled) { background: #E5E5E5; }
+
+      .bl-projects {
+        background: #FAFBFF;
+        min-height: 100vh;
+        padding: 24px 0 64px;
+      }
+      .bl-projects-inner {
+        width: 100%;
+        max-width: 1140px;
+        margin: 0 auto;
+        padding: 0 20px;
+      }
+
+      /* Header */
+      .bl-projects-header { margin-bottom: 22px; }
+      .bl-projects-title {
+        font-size: 24px;
+        font-weight: 600;
+        color: ${NAVY_DEEP};
+        letter-spacing: -0.015em;
+        line-height: 1.2;
+        margin: 0;
+      }
+      .bl-projects-greeting {
+        font-size: 14px;
+        color: ${MUTED};
+        margin: 6px 0 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .bl-greeting-spark { color: ${PERIWINKLE}; }
+
+      /* Tabs */
+      .bl-projects-tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 18px;
+        padding: 4px;
+        background: #FFFFFF;
+        border: 1px solid ${BORDER};
+        border-radius: 12px;
+        width: fit-content;
+      }
+      .bl-projects-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 14px;
+        background: transparent;
+        color: ${MUTED};
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+      }
+      .bl-projects-tab:hover:not(.is-active) {
+        background: rgba(135, 156, 247, 0.08);
+        color: ${NAVY};
+      }
+      .bl-projects-tab.is-active {
+        background: rgba(135, 156, 247, 0.12);
+        color: ${NAVY_DEEP};
+        font-weight: 500;
+      }
+
+      /* Controls row */
+      .bl-projects-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+      }
+      .bl-projects-search {
+        position: relative;
+        flex: 1 1 280px;
+        min-width: 200px;
+      }
+      .bl-projects-search-icon {
+        position: absolute;
+        left: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: ${MUTED};
+      }
+      .bl-projects-search-input {
+        width: 100%;
+        height: 32px;
+        padding: 0 32px;
+        font-family: 'Inter', sans-serif;
+        font-size: 13px;
+        background: #FFFFFF;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+        color: ${NAVY_DEEP};
+        outline: none;
+        transition: border-color 0.15s;
+      }
+      .bl-projects-search-input:focus { border-color: ${PERIWINKLE}; }
+      .bl-projects-search-clear {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: ${TRACK};
+        color: ${MUTED};
+        border: none;
+        border-radius: 999px;
+        width: 22px;
+        height: 22px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .bl-projects-search-clear:hover { color: ${NAVY}; }
+
+      .bl-projects-filters {
+        display: inline-flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .bl-projects-select {
+        height: 32px;
+        padding: 0 30px 0 10px;
+        font-family: 'Inter', sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        background: #FFFFFF url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7A99' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>") no-repeat right 9px center / 13px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+        color: ${NAVY_DEEP};
+        outline: none;
+        appearance: none;
+        cursor: pointer;
+        transition: background-color 0.15s ease-in-out;
+      }
+      .bl-projects-select:hover { background-color: #F2F2F2; }
+      .bl-projects-select:focus { border-color: ${PERIWINKLE}; }
+      .bl-projects-select:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      .bl-projects-cta {
+        height: 38px;
+        border-radius: 10px;
+        font-weight: 500;
+        font-size: 13px;
+        padding: 0 16px;
+        margin-left: auto;
+      }
+      .bl-projects-cta:hover:not(:disabled) {
+        background-color: ${PERIWINKLE_HOVER} !important;
+      }
+
+      /* Status pill */
+      .bl-status-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+      }
+
+      /* Privacy overlay on card */
+      .bl-privacy-overlay {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        background: rgba(0, 15, 77, 0.72);
+        color: #FFFFFF;
+        font-size: 10px;
+        font-weight: 500;
+        padding: 3px 8px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        backdrop-filter: blur(8px);
+      }
+
+      /* Sample badge on demo project card */
+      .bl-card-sample-badge {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        background: ${PERIWINKLE};
+        color: #FFFFFF;
+        font-size: 10px;
+        font-weight: 500;
+        padding: 3px 8px;
+        border-radius: 999px;
+        letter-spacing: 0.02em;
+        box-shadow: 0 4px 12px -4px rgba(135, 156, 247, 0.6);
+      }
+
+      /* Sample badge inline in list view */
+      .bl-list-sample-badge {
+        margin-left: 8px;
+        background: ${PERIWINKLE};
+        color: #FFFFFF;
+        font-size: 10px;
+        font-weight: 500;
+        padding: 2px 7px;
+        border-radius: 999px;
+        letter-spacing: 0.02em;
+      }
+
+      /* Demo project card visual treatment */
+      .bl-card.is-demo {
+        border-color: rgba(135, 156, 247, 0.45);
+        background: linear-gradient(180deg, rgba(135, 156, 247, 0.04), #FFFFFF 60%);
+      }
+      .bl-card.is-demo:hover {
+        border-color: rgba(135, 156, 247, 0.8);
+      }
+      .bl-projects-list-row.is-demo {
+        background: rgba(135, 156, 247, 0.03);
+      }
+
+      /* Dismiss (X) button — always visible on demo cards */
+      .bl-card-dismiss-btn {
+        background: rgba(255, 255, 255, 0.95);
+        border: 1px solid ${BORDER};
+        color: ${NAVY_DEEP};
+      }
+      .bl-card-dismiss-btn:hover {
+        background: #FFFFFF;
+        border-color: ${PERIWINKLE};
+        color: ${PERIWINKLE};
+      }
+
+      /* Grid view */
+      .bl-projects-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 16px;
+      }
+      .bl-card {
+        display: flex;
+        flex-direction: column;
+        background: #FFFFFF;
+        border: 1px solid ${BORDER};
+        border-radius: 14px;
+        /* overflow: visible so the meta-row dropdown can open past the
+           card edge. The thumbnail clips its own rounded top corners
+           via .bl-card-thumb. */
+        overflow: visible;
+        text-decoration: none;
+        color: inherit;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        cursor: pointer;
+        position: relative;
+      }
+      .bl-card:hover {
+        transform: translateY(-2px);
+        border-color: rgba(135, 156, 247, 0.7);
+        box-shadow: 0 12px 28px -16px rgba(0, 15, 77, 0.25);
+      }
+      .bl-card-thumb {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        background: linear-gradient(135deg, rgba(135, 156, 247, 0.10), rgba(135, 156, 247, 0.02));
+        overflow: hidden;
+        border-radius: 14px 14px 0 0;
+      }
+      .bl-card-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .bl-card-status {
+        position: absolute;
+        bottom: 8px;
+        right: 8px;
+      }
+      .bl-card-body {
+        padding: 12px 14px 14px;
+      }
+      .bl-card-name {
+        font-size: 14px;
+        font-weight: 500;
+        color: ${NAVY_DEEP};
+        line-height: 1.3;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        margin-bottom: 6px;
+      }
+      .bl-card-meta {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 11px;
+        color: ${MUTED};
+      }
+      .bl-card-pending {
+        color: #C97D3F;
+        font-weight: 500;
+      }
+      /* Inline CTA shown when briefs === 0 (Dropbox Replay-style soft
+         nudge toward collaboration). Replaces the "0 briefs" label. */
+      .bl-card-invite {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        background: transparent;
+        color: ${PERIWINKLE};
+        border: 1px dashed rgba(135, 156, 247, 0.55);
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s, color 0.15s;
+      }
+      .bl-card-invite:hover {
+        background: rgba(135, 156, 247, 0.10);
+        border-color: ${PERIWINKLE};
+        color: ${PERIWINKLE_HOVER};
+      }
+
+      /* List view */
+      .bl-projects-list {
+        background: #FFFFFF;
+        border: 1px solid ${BORDER};
+        border-radius: 14px;
+        /* overflow: visible so the per-row action menu doesn't get
+           clipped by the rounded container. First row's rounded
+           top corners come from the parent border-radius + the row
+           background only kicking in on hover. */
+        overflow: visible;
+      }
+      .bl-projects-list-head,
+      .bl-projects-list-row {
+        display: grid;
+        grid-template-columns: 1.8fr 0.8fr 0.6fr 0.7fr 0.7fr 44px;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 18px;
+        font-size: 13px;
+      }
+      .bl-projects-list-head {
+        background: rgba(135, 156, 247, 0.05);
+        color: ${MUTED};
+        font-weight: 500;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        border-bottom: 1px solid ${BORDER};
+      }
+      .bl-projects-list-row {
+        text-decoration: none;
+        color: ${NAVY_DEEP};
+        border-bottom: 1px solid ${BORDER};
+        transition: background 0.15s;
+      }
+      .bl-projects-list-row:last-child { border-bottom: none; }
+      .bl-projects-list-row:hover {
+        background: rgba(135, 156, 247, 0.05);
+      }
+      .bl-projects-list-name {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 500;
+      }
+      .bl-projects-list-thumb {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        object-fit: cover;
+        background: ${TRACK};
+      }
+      .bl-projects-list-priv {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: ${MUTED};
+        font-size: 12px;
+      }
+
+      /* Loading skeleton */
+      .bl-projects-loading {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 16px;
+      }
+      .bl-projects-skeleton {
+        aspect-ratio: 1 / 1.3;
+        background: linear-gradient(120deg, ${TRACK} 30%, #f0f4ff 50%, ${TRACK} 70%);
+        background-size: 200% 100%;
+        animation: blShimmer 1.2s ease-in-out infinite;
+        border-radius: 14px;
+      }
+      @keyframes blShimmer {
+        0%   { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+
+      /* Empty state */
+      .bl-projects-empty {
+        text-align: center;
+        padding: 64px 20px;
+        background: #FFFFFF;
+        border: 1px dashed ${BORDER};
+        border-radius: 14px;
+      }
+      .bl-projects-empty-icon {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 12px;
+        background: rgba(135, 156, 247, 0.10);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: ${PERIWINKLE};
+      }
+      .bl-projects-empty-title {
+        font-size: 16px;
+        font-weight: 500;
+        color: ${NAVY_DEEP};
+        margin: 0 0 4px;
+      }
+      .bl-projects-empty-body {
+        font-size: 13px;
+        color: ${MUTED};
+        margin: 0;
+      }
+
+      /* Modal */
+      @keyframes blBackdropFade { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes blModalRise    { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+      .bl-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        /* Softr's own modals dim with neutral black at 60%. Matching it
+           stops these in-block modals reading as a different app. */
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        padding: 20px;
+        animation: blBackdropFade 0.16s ease-out;
+      }
+      .bl-modal {
+        width: 100%;
+        max-width: 480px;
+        background: #FAFBFF;
+        border: 1px solid ${BORDER};
+        border-radius: 16px;
+        padding: 22px 24px 18px;
+        box-shadow: 0 24px 60px -20px rgba(0, 15, 77, 0.30);
+        animation: blModalRise 0.18s ease-out;
+        max-height: calc(100vh - 40px);
+        overflow-y: auto;
+      }
+      .bl-modal-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+      .bl-modal-title {
+        font-size: 18px;
+        font-weight: 500;
+        color: ${NAVY_DEEP};
+        margin: 0;
+      }
+      .bl-modal-sub {
+        font-size: 12px;
+        color: ${MUTED};
+        margin: 4px 0 0;
+      }
+      .bl-modal-close {
+        width: 30px;
+        height: 30px;
+        background: transparent;
+        color: ${MUTED};
+        border: none;
+        border-radius: 999px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        transition: background 0.15s;
+      }
+      .bl-modal-close:hover { background: rgba(135, 156, 247, 0.10); color: ${NAVY_DEEP}; }
+
+      .bl-modal-body { display: flex; flex-direction: column; gap: 14px; }
+      .bl-modal-field { display: flex; flex-direction: column; gap: 6px; }
+      .bl-modal-label {
+        font-size: 12px;
+        font-weight: 500;
+        color: ${NAVY_DEEP};
+        letter-spacing: 0.01em;
+      }
+      .bl-modal-optional {
+        color: ${MUTED};
+        font-weight: 400;
+      }
+      /* Static read-only field display (e.g. Workspace in the
+         Create modal — driven by the switcher above, not pickable
+         from inside the modal). */
+      .bl-modal-static {
+        padding: 9px 12px;
+        background: #F7F9FF;
+        border: 1px solid ${BORDER};
+        border-radius: 10px;
+        font-size: 13px;
+        color: ${NAVY_DEEP};
+        line-height: 1.3;
+      }
+      .bl-modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 8px;
+        margin-top: 22px;
+        padding-top: 16px;
+        border-top: 1px solid ${BORDER};
+      }
+      .bl-modal-cancel {
+        background: transparent;
+        color: ${MUTED};
+        border: none;
+        font-size: 13px;
+        font-weight: 500;
+        padding: 8px 14px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: color 0.15s;
+      }
+      .bl-modal-cancel:hover:not(:disabled) { color: ${NAVY_DEEP}; }
+      .bl-modal-cancel:disabled { color: #C5CFE8; cursor: not-allowed; }
+
+      /* ===== Card actions menu trigger + dropdown ===== */
+      /* Default wrap = absolute top-right of the thumbnail — used by
+         the demo X button only. The regular Grid card menu lives in
+         the card-body meta row (see .bl-card-meta-actions overrides
+         further down). */
+      .bl-card-menu-wrap {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        z-index: 5;
+      }
+      .bl-card-menu-trigger {
+        width: 28px;
+        height: 28px;
+        border: none;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.92);
+        color: ${NAVY_DEEP};
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px -2px rgba(0, 15, 77, 0.18);
+        opacity: 0;
+        transition: opacity 0.15s, background 0.15s, color 0.15s;
+      }
+      .bl-card:hover .bl-card-menu-trigger,
+      .bl-card-menu-trigger:focus,
+      .bl-card-menu-trigger.is-open,
+      .bl-projects-list-row:hover .bl-card-menu-trigger,
+      .bl-projects-list-row.is-menu-open .bl-card-menu-trigger {
+        opacity: 1;
+      }
+      .bl-card-menu-trigger:hover {
+        background: #FFFFFF;
+      }
+      @media (hover: none) {
+        .bl-card-menu-trigger { opacity: 1; }
+      }
+      .bl-card-menu {
+        position: absolute;
+        top: 32px;
+        right: 0;
+        min-width: 200px;
+        background: #FFFFFF;
+        border: 1px solid ${BORDER};
+        border-radius: 12px;
+        box-shadow: 0 16px 36px -16px rgba(0, 15, 77, 0.30);
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        animation: blModalRise 0.14s ease-out;
+        z-index: 20;
+      }
+      .bl-menu-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        background: transparent;
+        color: ${NAVY_DEEP};
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        text-align: left;
+        cursor: pointer;
+        transition: background 0.12s;
+      }
+      .bl-menu-item:hover {
+        background: rgba(135, 156, 247, 0.10);
+      }
+      .bl-menu-item.is-danger {
+        color: #d92626;
+      }
+      .bl-menu-item.is-danger:hover {
+        background: rgba(217, 38, 38, 0.08);
+      }
+      /* Faint divider above Delete (and any other section break) */
+      .bl-menu-divider {
+        height: 1px;
+        background: ${BORDER};
+        margin: 4px 2px;
+      }
+
+      /* ===== Card-body meta-row actions (Grid view) =====
+         Three-dot menu lives next to the brief count. Trigger is
+         small + chromeless inside the meta row, with the dropdown
+         opening UPWARD so it doesn't get cut off below the card. */
+      .bl-card-meta-actions {
+        margin-left: auto;
+        position: relative;
+        display: inline-flex;
+      }
+      .bl-card-meta-actions .bl-card-menu-wrap {
+        position: relative;
+        top: auto;
+        right: auto;
+        z-index: 5;
+      }
+      .bl-card-meta-actions .bl-card-menu-trigger {
+        width: 24px;
+        height: 24px;
+        background: transparent;
+        color: ${MUTED};
+        box-shadow: none;
+        border-radius: 6px;
+      }
+      .bl-card:hover .bl-card-meta-actions .bl-card-menu-trigger,
+      .bl-card-meta-actions .bl-card-menu-trigger.is-open {
+        background: rgba(135, 156, 247, 0.10);
+        color: ${NAVY_DEEP};
+      }
+      .bl-card-meta-actions .bl-card-menu {
+        top: 28px;
+        bottom: auto;
+        right: 0;
+      }
+
+      /* List row actions cell */
+      .bl-projects-list-row { position: relative; }
+      .bl-projects-list-actions {
+        position: relative;
+        display: flex;
+        justify-content: flex-end;
+      }
+      .bl-projects-list-actions .bl-card-menu-wrap {
+        position: relative;
+        top: auto;
+        right: auto;
+      }
+
+      /* ===== Settings modal: privacy toggle row ===== */
+      .bl-toggle-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px;
+        background: #F7F9FF;
+        border: 1px solid ${BORDER};
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .bl-toggle-row input[type="checkbox"] {
+        margin-top: 2px;
+        width: 18px;
+        height: 18px;
+        accent-color: ${PERIWINKLE};
+        cursor: pointer;
+      }
+      .bl-toggle-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 500;
+        color: ${NAVY_DEEP};
+      }
+      .bl-toggle-hint {
+        display: block;
+        font-size: 12px;
+        color: ${MUTED};
+        margin-top: 2px;
+      }
+
+      /* ===== Settings modal: thumbnail uploader ===== */
+      .bl-thumb-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .bl-thumb-preview {
+        width: 64px;
+        height: 64px;
+        border-radius: 12px;
+        background: #F2F4FB url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23BFC6E0' stroke-width='1.5'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='9' cy='9' r='2'/><path d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/></svg>") center / 24px no-repeat;
+        border: 1px solid ${BORDER};
+        overflow: hidden;
+        flex-shrink: 0;
+      }
+      .bl-thumb-preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .bl-thumb-empty {
+        display: none;
+      }
+      .bl-thumb-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .bl-thumb-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 32px;
+        padding: 0 12px;
+        background: #FFFFFF;
+        color: ${NAVY_DEEP};
+        border: 1px solid ${BORDER};
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: border-color 0.15s;
+      }
+      .bl-thumb-btn:hover:not(:disabled) {
+        border-color: ${PERIWINKLE};
+      }
+      .bl-thumb-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+      .bl-thumb-btn-ghost {
+        background: transparent;
+        color: ${MUTED};
+        border-color: transparent;
+      }
+      .bl-thumb-btn-ghost:hover:not(:disabled) {
+        color: ${NAVY_DEEP};
+        background: rgba(135, 156, 247, 0.08);
+        border-color: transparent;
+      }
+
+      /* Responsive tweaks */
+      @media (max-width: 640px) {
+        .bl-projects-controls { gap: 8px; }
+        .bl-projects-cta { margin-left: 0; width: 100%; justify-content: center; }
+        .bl-projects-list-head { display: none; }
+        .bl-projects-list-row {
+          grid-template-columns: 1fr;
+          gap: 6px;
+        }
+        .bl-card-menu { right: -4px; }
+      }
+    `}</style>
+  );
+}

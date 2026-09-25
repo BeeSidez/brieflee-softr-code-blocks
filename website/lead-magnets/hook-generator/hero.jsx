@@ -23,8 +23,8 @@
 //   2. Visibility tab → public.
 // =====================================================================
 
-import { useState, useRef, useEffect } from "react";
-import { ArrowRight, Check, X, Sparkles, RefreshCw, Loader2 } from "lucide-react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { ArrowRight, Check, X, Sparkles, RefreshCw, Loader2, Copy, Download } from "lucide-react";
 
 const NAVY = "#001364";
 const PERIWINKLE = "#879CF7";
@@ -262,66 +262,48 @@ function FloatingLogo({ logo, isDesktop }) {
   );
 }
 
-function HookCard({ hook, kept, onKeep, onSkip }) {
-  const arche = findArchetype(hook.archetype);
+function HookRow({ hook, kept, onKeep, onSkip }) {
   return (
     <div
-      className="relative rounded-2xl bg-card border p-5 md:p-6 transition-shadow"
+      className="group rounded-xl border bg-card px-4 py-3.5 flex items-start gap-3 transition-colors"
       style={{
-        borderLeftWidth: 4,
-        borderLeftColor: PERIWINKLE,
         borderColor: kept ? PERIWINKLE : "hsl(var(--border))",
-        boxShadow: kept ? `0 0 0 1px ${PERIWINKLE}` : "0 1px 2px rgba(0,0,0,0.04)",
+        background: kept ? "rgba(135,156,247,0.07)" : undefined,
       }}
     >
-      <div className="flex items-start gap-4">
-        <div className="flex-1 min-w-0">
-          <p className="text-base md:text-lg font-semibold leading-snug" style={{ color: NAVY }}>
-            &ldquo;{hook.quote}&rdquo;
-          </p>
-        </div>
-        <div className="shrink-0 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onKeep}
-            aria-label="Keep this hook"
-            className={`w-10 h-10 rounded-xl inline-flex items-center justify-center border-2 transition-colors ${
-              kept
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-card text-foreground border-border hover:border-primary/40"
-            }`}
-          >
-            <Check className="w-5 h-5" />
-          </button>
-          <button
-            type="button"
-            onClick={onSkip}
-            aria-label="Skip this hook"
-            className="w-10 h-10 rounded-xl inline-flex items-center justify-center border-2 border-border bg-card text-muted-foreground hover:border-destructive/40 hover:text-destructive transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+      <button
+        type="button"
+        onClick={onKeep}
+        aria-label={kept ? "Kept" : "Keep this hook"}
+        className="shrink-0 w-6 h-6 mt-0.5 rounded-full inline-flex items-center justify-center border-2 transition-colors"
+        style={{
+          background: kept ? PERIWINKLE : "transparent",
+          borderColor: kept ? PERIWINKLE : "hsl(var(--border))",
+          color: "#fff",
+        }}
+      >
+        {kept ? <Check className="w-3.5 h-3.5" strokeWidth={3} /> : null}
+      </button>
+      <div className="min-w-0 flex-1">
+        <p className="text-[15px] font-semibold leading-snug" style={{ color: NAVY }}>
+          &ldquo;{hook.quote}&rdquo;
+        </p>
+        {hook.whyItWorks ? (
+          <p className="text-sm text-muted-foreground leading-relaxed mt-1">{hook.whyItWorks}</p>
+        ) : null}
       </div>
-      {(arche || hook.whyItWorks) && (
-        <div
-          className="mt-4 rounded-xl px-4 py-3 flex items-start gap-3"
-          style={{ background: "rgba(135,156,247,0.08)" }}
-        >
-          {arche?.icon ? (
-            <img src={arche.icon} alt="" className="w-6 h-6 shrink-0 object-contain mt-0.5" draggable={false} />
-          ) : null}
-          <div className="text-xs md:text-sm leading-relaxed text-muted-foreground">
-            {arche?.name ? (
-              <span className="font-bold mr-1.5" style={{ color: NAVY }}>{arche.name}.</span>
-            ) : null}
-            {hook.whyItWorks || arche?.description || ""}
-          </div>
-        </div>
-      )}
+      <button
+        type="button"
+        onClick={onSkip}
+        aria-label="Skip this hook"
+        className="shrink-0 w-8 h-8 rounded-lg inline-flex items-center justify-center text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
+      >
+        <X className="w-4 h-4" />
+      </button>
     </div>
   );
 }
+
 
 // =====================================================================
 // MAIN BLOCK
@@ -358,6 +340,49 @@ export default function Block() {
   const LOW_BUFFER_THRESHOLD = 3;
 
   const hasResults = step === "result";
+
+  // Group the visible hooks by the angle they take, so the result reads
+  // as a set of angles rather than a flat list of twenty lines.
+  const groupedHooks = useMemo(() => {
+    const by = new Map();
+    displayed.forEach((h) => {
+      const a = findArchetype(h.archetype);
+      const name = a?.name || "Other";
+      if (!by.has(name)) by.set(name, { name, archetype: a, items: [] });
+      by.get(name).items.push(h);
+    });
+    return [...by.values()];
+  }, [displayed]);
+
+  // Copy and download take the kept hooks when there are any, otherwise
+  // everything on screen, so the buttons always do something useful.
+  const hooksToTake = () => {
+    const kept = displayed.filter((h) => keptIds.has(h.id));
+    return kept.length ? kept : displayed;
+  };
+  const hooksAsText = () => {
+    const list = hooksToTake();
+    const head = keptIds.size ? "Hooks you kept" : "Hook options";
+    return [head, brandLabel || website.trim(), ""]
+      .concat(list.map((h, i) => {
+        const a = findArchetype(h.archetype);
+        return `${i + 1}. "${h.quote}"` +
+          (a ? `\n   ${a.name}` : "") +
+          (h.whyItWorks ? `\n   ${h.whyItWorks}` : "");
+      }))
+      .join("\n");
+  };
+  const handleCopyHooks = async () => {
+    try { await navigator.clipboard.writeText(hooksAsText()); } catch (e) { console.error(e); }
+  };
+  const handleDownloadHooks = () => {
+    const blob = new Blob([hooksAsText()], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "hooks.txt";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
   const targetComplete =
     targetType === "brand" ||
@@ -799,20 +824,77 @@ export default function Block() {
                 Keep the ones you love. Skip the rest.
               </h2>
               <p className="text-sm md:text-base text-muted-foreground mt-2 max-w-xl mx-auto leading-relaxed">
-                Every skip swaps in the next hook from your batch. Run out? Tap Generate more.
+                Grouped by the angle each one takes. Every skip swaps in the next hook from your batch.
               </p>
             </div>
 
-            <div className="space-y-3 md:space-y-4">
-              {displayed.map((hook, idx) => (
-                <HookCard
-                  key={hook.id}
-                  hook={hook}
-                  kept={keptIds.has(hook.id)}
-                  onKeep={() => handleKeep(hook.id)}
-                  onSkip={() => handleSkip(idx)}
-                />
-              ))}
+            {/* The hooks as a document, grouped by angle rather than a flat list */}
+            <div className="rounded-2xl border border-border bg-card overflow-hidden">
+              <div
+                className="px-5 md:px-7 py-5 border-b border-border flex items-center gap-3"
+                style={{ background: "linear-gradient(180deg, rgba(135,156,247,0.10), transparent)" }}
+              >
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt={brandLabel}
+                    className="w-11 h-11 shrink-0 rounded-lg object-contain bg-white p-1.5 border border-border/50"
+                    draggable={false}
+                  />
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-lg md:text-xl font-bold truncate" style={{ color: NAVY }}>
+                    {brandLabel || website.trim()}
+                  </h3>
+                  <p className="text-xs md:text-sm text-muted-foreground mt-0.5">
+                    {displayed.length} hooks across {groupedHooks.length} angle{groupedHooks.length === 1 ? "" : "s"}
+                  </p>
+                </div>
+                {keptIds.size > 0 && (
+                  <span
+                    className="shrink-0 inline-flex items-center h-7 px-3 rounded-full text-xs font-bold"
+                    style={{ background: PERIWINKLE, color: "#fff" }}
+                  >
+                    {keptIds.size} kept
+                  </span>
+                )}
+              </div>
+
+              <div className="px-5 md:px-7 pb-6">
+                {groupedHooks.map((group, gi) => (
+                  <section
+                    key={group.name}
+                    className={gi === 0 ? "pt-6" : "pt-7 mt-7 border-t border-border"}
+                  >
+                    <div className="flex items-center gap-2.5 mb-1">
+                      {group.archetype?.icon ? (
+                        <img src={group.archetype.icon} alt="" className="w-6 h-6 object-contain" draggable={false} />
+                      ) : null}
+                      <h4 className="text-base font-bold" style={{ color: NAVY }}>{group.name}</h4>
+                      <span className="ml-auto text-[11px] font-bold tracking-widest text-muted-foreground">
+                        {String(gi + 1).padStart(2, "0")}
+                      </span>
+                    </div>
+                    {group.archetype?.description ? (
+                      <p className="text-sm text-muted-foreground leading-relaxed mb-3">
+                        {group.archetype.description}
+                      </p>
+                    ) : null}
+
+                    <div className="space-y-2.5">
+                      {group.items.map((hook) => (
+                        <HookRow
+                          key={hook.id}
+                          hook={hook}
+                          kept={keptIds.has(hook.id)}
+                          onKeep={() => handleKeep(hook.id)}
+                          onSkip={() => handleSkip(displayed.findIndex((d) => d.id === hook.id))}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
             </div>
 
             {/* Embedded mid-flow CTA card */}
@@ -837,31 +919,51 @@ export default function Block() {
               </a>
             </div>
 
-            {/* Generate-more / status footer */}
+            {/* Take it with you + generate more */}
             <div className="mt-6 md:mt-8 flex flex-col items-center gap-3">
               {moreError && <p className="text-sm text-destructive">{moreError}</p>}
-              <button
-                type="button"
-                onClick={handleGenerateMore}
-                disabled={generatingMore}
-                className="inline-flex items-center gap-2 h-11 px-6 rounded-xl border-2 border-border bg-card text-sm font-semibold text-foreground hover:border-primary/40 transition-colors disabled:opacity-60"
-                style={{ color: NAVY }}
-              >
-                {generatingMore ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Generating more…
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4" />
-                    {lowBuffer && buffer.length === 0 ? "Generate more hooks" : `Generate more (${buffer.length} queued)`}
-                  </>
-                )}
-              </button>
+              <div className="flex flex-wrap items-center justify-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleCopyHooks}
+                  className="inline-flex items-center gap-2 h-11 px-5 rounded-xl border-2 border-border bg-card text-sm font-semibold hover:border-primary/40 transition-colors"
+                  style={{ color: NAVY }}
+                >
+                  <Copy className="w-4 h-4" />
+                  Copy {keptIds.size > 0 ? "kept" : "all"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadHooks}
+                  className="inline-flex items-center gap-2 h-11 px-5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                  style={{ background: PERIWINKLE }}
+                >
+                  <Download className="w-4 h-4" />
+                  Download
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGenerateMore}
+                  disabled={generatingMore}
+                  className="inline-flex items-center gap-2 h-11 px-5 rounded-xl border-2 border-border bg-card text-sm font-semibold text-foreground hover:border-primary/40 transition-colors disabled:opacity-60"
+                  style={{ color: NAVY }}
+                >
+                  {generatingMore ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Generating more…
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4" />
+                      {lowBuffer && buffer.length === 0 ? "Generate more" : `More (${buffer.length} queued)`}
+                    </>
+                  )}
+                </button>
+              </div>
               {keptIds.size > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  {keptIds.size} hook{keptIds.size === 1 ? "" : "s"} kept. Copy your favourites before you close the page.
+                  {keptIds.size} hook{keptIds.size === 1 ? "" : "s"} kept. Copy or download takes just those.
                 </p>
               )}
             </div>

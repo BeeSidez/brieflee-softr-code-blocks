@@ -67,6 +67,8 @@ const CUSTOMER_LOGOS = [
 ];
 
 // ─── Field map (USERS table) ────────────────────────────────────────
+// READ select. Safe to include read-only fields (lookups, formulas,
+// fields other pages write) because it only feeds useRecords.
 const select = q.select({
   fullName:     "Pk6Tx",
   email:        "PBrIP",
@@ -76,6 +78,20 @@ const select = q.select({
   teamName:     "ZOm63",   // SINGLE_LINE_TEXT
   teamEmails:   "EuCXi",   // LONG_TEXT (comma-separated; BL | Onboarding workflow splits downstream)
   accounts:     "Nz6VX",   // LINKED_RECORD → accounts (read only)
+  subscriptionStatus: "SQuxf", // LOOKUP via accounts (read only)
+  trialStart:   "J06K2",   // DATETIME — written by /payment-success (read only here)
+});
+
+// UPDATE select — ONLY the fields this block writes. Softr's analyzer
+// builds the block's Edit action from this map; a read-only field (lookup,
+// formula) in here makes it register NO actions at all, which disables
+// useRecordUpdate for every user. Same split as app/settings/workspace.
+const updateFields = q.select({
+  workType:     "Xqhif",
+  heardAboutUs: "B8uMy",
+  plan:         "Ux1pf",
+  teamName:     "ZOm63",
+  teamEmails:   "EuCXi",
 });
 
 // ─── SELECT option UUIDs (captured at field creation 2026-05-05) ────
@@ -252,6 +268,19 @@ export default function Block() {
   const { data: userRows } = useRecords({ select, count: 1 });
   const userRecord = userRows?.[0] ?? null;
 
+  // Paid guard — a user with a live subscription or trial dates has
+  // already been through checkout. Rendering the plan flow again risks
+  // double-checkout, so those users get a friendly redirect instead.
+  const guardFields = userRecord?.fields ?? userRecord ?? {};
+  const alreadyHasPlan = useMemo(() => {
+    const raw = guardFields.subscriptionStatus;
+    const status = Array.isArray(raw)
+      ? String(raw[0]?.label ?? raw[0] ?? "").trim().toLowerCase()
+      : String(raw?.label ?? raw ?? "").trim().toLowerCase();
+    if (status === "trialing" || status === "trial" || status === "active") return true;
+    return Boolean(guardFields.trialStart);
+  }, [guardFields.subscriptionStatus, guardFields.trialStart]);
+
   useEffect(() => {
     if (!userRecord) return;
     if (userRecord.teamName && !teamName) setTeamName(userRecord.teamName);
@@ -270,7 +299,7 @@ export default function Block() {
   }, [userRecord]); // eslint-disable-line
 
   const updateRecord = useRecordUpdate({
-    fields: select,
+    fields: updateFields,
     onError(err) {
       console.error("=== get-started save error:", err);
       toast.error("Save failed", { description: err?.message || "Open the console for details." });
@@ -349,43 +378,76 @@ export default function Block() {
             {/* Logo is intentionally not a link — keeping users in the
                 signup flow. Contact us is the only escape hatch. */}
             <img src={LOGO_WORDMARK} alt="Brieflee" className="gs-logo" />
-            <div className="gs-stepper-wrap"><Stepper currentId={step} /></div>
+            {!alreadyHasPlan && (
+              <div className="gs-stepper-wrap"><Stepper currentId={step} /></div>
+            )}
             <div className="gs-help">Need help? <a href="/book-a-demo">Contact us</a></div>
           </div>
         </header>
 
-        {step === "team" && (
-          <TeamStep
-            teamName={teamName} setTeamName={setTeamName}
-            teamEmails={teamEmails} setTeamEmails={setTeamEmails}
-            onNext={() => handleTeamNext({ skip: false })}
-            onSkip={() => handleTeamNext({ skip: true })}
-            saving={saving}
-          />
-        )}
-        {step === "personalize" && (
-          <PersonalizeStep
-            workTypeId={workTypeId} setWorkTypeId={setWorkTypeId}
-            heardAboutUsId={heardAboutUsId} setHeardAboutUsId={setHeardAboutUsId}
-            onNext={handlePersonalizeNext} onBack={goBack}
-            saving={saving}
-          />
-        )}
-        {step === "pricing" && (
-          <PricingStep
-            billingInterval={billingInterval} setBillingInterval={setBillingInterval}
-            selectedPlanId={selectedPlanId} setSelectedPlanId={setSelectedPlanId}
-            onNext={handlePlanNext} onBack={goBack}
-            saving={saving}
-          />
-        )}
-        {step === "checkout" && (
-          <CheckoutStep
-            selectedPlanId={selectedPlanId} billingInterval={billingInterval}
-            user={user} onBack={goBack}
-          />
+        {alreadyHasPlan ? (
+          <AlreadySubscribed />
+        ) : (
+          <>
+            {step === "team" && (
+              <TeamStep
+                teamName={teamName} setTeamName={setTeamName}
+                teamEmails={teamEmails} setTeamEmails={setTeamEmails}
+                onNext={() => handleTeamNext({ skip: false })}
+                onSkip={() => handleTeamNext({ skip: true })}
+                saving={saving}
+              />
+            )}
+            {step === "personalize" && (
+              <PersonalizeStep
+                workTypeId={workTypeId} setWorkTypeId={setWorkTypeId}
+                heardAboutUsId={heardAboutUsId} setHeardAboutUsId={setHeardAboutUsId}
+                onNext={handlePersonalizeNext} onBack={goBack}
+                saving={saving}
+              />
+            )}
+            {step === "pricing" && (
+              <PricingStep
+                billingInterval={billingInterval} setBillingInterval={setBillingInterval}
+                selectedPlanId={selectedPlanId} setSelectedPlanId={setSelectedPlanId}
+                onNext={handlePlanNext} onBack={goBack}
+                saving={saving}
+              />
+            )}
+            {step === "checkout" && (
+              <CheckoutStep
+                selectedPlanId={selectedPlanId} billingInterval={billingInterval}
+                user={user} onBack={goBack}
+              />
+            )}
+          </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Already-subscribed state — shown instead of the plan flow when the
+// logged-in user already has a live subscription or trial dates.
+// ═══════════════════════════════════════════════════════════════════
+function AlreadySubscribed() {
+  return (
+    <div className="gs-page gs-page-narrow text-center">
+      <div className="team-hero">
+        <img src={LOGO_COMPACT} alt="" />
+      </div>
+      <h1 className="gs-headline">You already have a plan</h1>
+      <p className="gs-sub">Head to your dashboard.</p>
+      <a href="/new" className="bl-btn bl-btn-primary mt-6" style={{ textDecoration: "none" }}>
+        Go to dashboard <I.ArrowRight size={14} />
+      </a>
+      <p className="mt-6" style={{ fontSize: 13, color: "#555" }}>
+        Something wrong with your account? Email{" "}
+        <a href="mailto:support@brieflee.co" style={{ color: "#294ff6", fontWeight: 600 }}>
+          support@brieflee.co
+        </a>
+      </p>
     </div>
   );
 }
@@ -714,8 +776,17 @@ function CheckoutStep({ selectedPlanId, billingInterval, user, onBack }) {
   const trialEnds = new Date(Date.now() + TRIAL_DAYS * 86400000)
     .toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
-  const emailParam = user?.email ? `?prefilled_email=${encodeURIComponent(user.email)}` : "";
-  const paymentLinkUrl = `${plan.trialPaymentLink}${emailParam}`;
+  // Pin the Stripe customer email to the signup email and carry the
+  // Softr user record id into the webhook via client_reference_id.
+  // The price behind the checkout is derived workflow-side from
+  // data.object.payment_link (static map in "BL | New Stripe Checkout").
+  // Handles links that already carry a query.
+  const checkoutParams = [];
+  if (user?.email) checkoutParams.push(`prefilled_email=${encodeURIComponent(user.email)}`);
+  if (user?.id) checkoutParams.push(`client_reference_id=${encodeURIComponent(user.id)}`);
+  const paymentLinkUrl = checkoutParams.length
+    ? `${plan.trialPaymentLink}${plan.trialPaymentLink.includes("?") ? "&" : "?"}${checkoutParams.join("&")}`
+    : plan.trialPaymentLink;
 
   const handlePay = () => {
     window.location.href = paymentLinkUrl;

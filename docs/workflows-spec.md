@@ -316,7 +316,14 @@ Same idea: when `Daily Trial Check` flips status to `expired`, remove from Trial
 Every workflow that sends marketing emails or enrols audiences should check `user.is_internal` first. Test users + Brieflee staff should never receive these emails.
 
 ### 4. Transactional vs marketing legal split
-EmailIt automatically adds List-Unsubscribe headers for compliance. But account-related emails (e.g. `payment-failed`) shouldn't have an unsubscribe — they're transactional/necessary. EmailIt distinguishes these via "transactional" vs "broadcast" categories on send. Mark transactional emails as such in the API call to skip unsubscribe footer.
+Account-related emails (e.g. `payment-failed`) shouldn't have an unsubscribe — they're transactional/necessary. Marketing emails must have one.
+
+**Corrected 2026-07-28.** This section used to claim "EmailIt automatically adds List-Unsubscribe headers for compliance" and "EmailIt distinguishes these via transactional vs broadcast categories on send. Mark transactional emails as such in the API call." Both are false:
+
+- **No List-Unsubscribe header is added.** Verified by reading the raw MIME of delivered sends — the header is simply absent. The send API does accept a `headers` field, but audience automations send by template and expose no header hook, so it cannot be set on automation sends either.
+- **There is no transactional/broadcast field.** The send endpoint's fields are `from, to, subject, html, text, reply_to, cc, bcc, template, variables, attachments, headers, meta, scheduled_at, tracking`. Nothing classifies the send. The template object has no such field either.
+
+The split is therefore enforced by us, not EmailIt: marketing templates hardcode a link to the self-hosted `/unsubscribe` page, transactional ones deliberately omit it and are listed in `emails/email_constants.py -> TRANSACTIONAL_NO_UNSUBSCRIBE`. The pre-push validator (`emails/template_validator.py`) enforces both halves. See `sop/10-unsubscribe-workflow-spec.md`.
 
 ### 5. Scheduled workflows in Softr
 Softr's scheduled workflows fire at a fixed time. For a daily 09:00 UTC check, that's fine. If you ever need finer granularity (e.g. send `trial-reminder-48h` at the exact 48h mark, not aligned to 09:00), you'd need a more sophisticated approach. Acceptable to not do that for v1.

@@ -38,10 +38,10 @@ const videoFormatsSelect = q.select({
 });
 
 const SIGNUP_URL = "https://www.brieflee.co/sign-up";
-// Shared lead-capture workflow — fires on hero submit so we log the
-// touch (which URL pasted or file uploaded) before redirecting to
-// /sign-up where the email is captured. Best-effort, never blocks UX.
-const EMAIL_WORKFLOW_URL = "https://workflows-api.softr.io/v1/workflows/1e28685f-1a24-4042-80ac-cadfedef7336/executions/22b90d5d-a73b-43b5-ac1b-f24843b781bd";
+// The hero hands a pasted link to the umbrella breakdown page, which
+// takes any platform and reads ?url= straight onto its gate. Relative
+// so it works on the preview app and on the live domain alike.
+const BREAKDOWN_URL = "/free-tool-video-breakdown";
 
 // Hero background. Base = nav colour (#FAFBFF) so the seam between nav
 // and hero disappears. On top of that, a soft periwinkle "cloud"
@@ -726,9 +726,12 @@ function MobileFormatCard({ card, cards = [] }) {
   );
 }
 
-// ─── CTA flow: trojan horse · URL/file → fake loading → /signup ──────
-// Pasted URL and uploaded file are both throwaway. After the fake
-// loading animation, the user redirects to /signup. No data captured.
+// ─── CTA flow: URL or file → breakdown page ─────────────────────────
+// The hero's only job is to take the content and hand it over. The video
+// travels to the breakdown page so the visitor never faces a blank field
+// twice, and the email is captured there, on the page that has something
+// to trade for it. Nothing is written here: a row with no email address
+// is worth nothing, and this hero produced 106 of them.
 function CtaFlow() {
   const [tab, setTab] = useState("url");
   const [url, setUrl] = useState("");
@@ -742,32 +745,12 @@ function CtaFlow() {
       setError("Paste a valid TikTok, Instagram Reel, YouTube Short, or Facebook Reel URL.");
       return;
     }
-    if (tab === "file" && !file) {
-      setError("Choose a video file to upload.");
-      return;
-    }
     setStep("loading");
 
-    // Best-effort lead-touch capture via shared workflow. Logs the URL or
-    // filename so we know which video the visitor pasted before they
-    // signed up. Email is captured at /sign-up.
-    fetch(EMAIL_WORKFLOW_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: "",
-        website: "",
-        source: "home-hero",
-        video_url: tab === "url" ? url.trim() : "",
-        file_name: tab === "file" && file ? file.name : "",
-        page_url: typeof window !== "undefined" ? window.location.href : "",
-        submitted_at: new Date().toISOString(),
-      }),
-    }).catch((e) => console.error("Lead-touch capture failed (continuing):", e));
-
-    setTimeout(() => {
-      window.location.href = SIGNUP_URL;
-    }, 3500);
+    const q = new URLSearchParams();
+    if (tab === "url") q.set("url", url.trim());
+    else q.set("upload", "1");
+    window.location.href = `${BREAKDOWN_URL}?${q.toString()}`;
   };
 
   return (
@@ -807,7 +790,7 @@ function CtaFlow() {
               Paste URL
             </button>
             <button
-              onClick={() => { setTab("file"); setError(""); }}
+              onClick={() => { window.location.href = `${BREAKDOWN_URL}?upload=1`; }}
               style={{
                 display: "inline-flex", alignItems: "center", gap: 8,
                 padding: "10px 20px", borderRadius: 999,
@@ -941,15 +924,14 @@ function LoadingCard() {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
         <Spinner color={PERI} />
-        <span style={{ fontSize: 18, fontWeight: 800, color: NAVY }}>Analysing your video</span>
+        <span style={{ fontSize: 18, fontWeight: 800, color: NAVY }}>Opening your breakdown</span>
       </div>
       {[
-        "Detecting hook timing and opening frame",
-        "Mapping scene transitions frame by frame",
-        "Scoring engagement pacing and CTA placement",
+        "Handing your video to the 24 Review Agents",
+        "Taking you to the breakdown",
       ].map((t, i) => (
-        <div key={t} style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, fontSize: 15, color: NAVY, opacity: i === 2 ? 0.65 : 1 }}>
-          {i < 2 ? (
+        <div key={t} style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, fontSize: 15, color: NAVY, opacity: i === 1 ? 0.65 : 1 }}>
+          {i < 1 ? (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={PERI} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12" />
             </svg>

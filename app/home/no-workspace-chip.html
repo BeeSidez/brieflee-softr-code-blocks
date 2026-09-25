@@ -1,0 +1,147 @@
+<!-- ====================================================================
+     Custom Code block: "Create a workspace" chip (in-app home page)
+     ====================================================================
+     Discreet companion to /app/home/no-workspace-empty — same visibility
+     trigger (signed-in user with no linked workspace / project) but a
+     small floating chip instead of the full-page illustrated card. Use
+     this on pages where there IS other content to show (briefs grid,
+     boards grid) and you only want a quiet nudge.
+
+     Click behaviour: opens /set-up in a Softr modal (size: lg)
+     via window.openSwModal. Matches the URL used by no-workspace-empty
+     so the flow is consistent. Swap to /new-workspace if the workspace
+     creation page lives there instead.
+
+     Visibility: filter on "user has no workspace" (e.g. accounts count
+     = 0 on the user record).
+
+     SPA-safe — DOM scoped to this block.
+==================================================================== -->
+
+<a
+  href="/set-up"
+  class="bl-workspace-chip"
+  id="bl-workspace-chip"
+  aria-label="You haven't created a workspace yet"
+>
+  <span class="bl-workspace-chip-dot" aria-hidden="true"></span>
+  <span class="bl-workspace-chip-text">
+    <span class="bl-workspace-chip-title">You haven't created a workspace yet</span>
+    <span class="bl-workspace-chip-sub">Set up your space to get started</span>
+  </span>
+  <span class="bl-workspace-chip-caret" aria-hidden="true">›</span>
+</a>
+
+<style>
+  .bl-workspace-chip {
+    position: fixed;
+    left: 20px;
+    bottom: 20px;
+    z-index: 9998;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px 9px 12px;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow:
+      0 10px 24px -8px rgba(0, 19, 100, 0.16),
+      0 4px 10px -3px rgba(0, 19, 100, 0.08),
+      0 0 0 1px rgba(0, 19, 100, 0.05);
+    text-decoration: none !important;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    color: #001364;
+    cursor: pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    max-width: calc(100vw - 40px);
+  }
+  .bl-workspace-chip:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 16px 32px -8px rgba(0, 19, 100, 0.22),
+      0 6px 14px -3px rgba(0, 19, 100, 0.12),
+      0 0 0 1px rgba(135, 156, 247, 0.4);
+  }
+  .bl-workspace-chip:focus-visible {
+    outline: 3px solid #879CF7;
+    outline-offset: 2px;
+  }
+
+  /* Periwinkle status dot — same as no-trial-chip for a consistent
+     in-app chip language. */
+  .bl-workspace-chip-dot {
+    flex-shrink: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: #879CF7;
+    box-shadow: 0 0 0 4px rgba(135, 156, 247, 0.18);
+    animation: bl-workspace-chip-pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes bl-workspace-chip-pulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(135, 156, 247, 0.18); }
+    50%      { box-shadow: 0 0 0 6px rgba(135, 156, 247, 0.28); }
+  }
+
+  .bl-workspace-chip-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    line-height: 1.25;
+    min-width: 0;
+  }
+  .bl-workspace-chip-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #001364;
+    letter-spacing: -0.005em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bl-workspace-chip-sub {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #001364;
+    opacity: 0.6;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bl-workspace-chip-caret {
+    font-size: 18px;
+    line-height: 1;
+    color: #879CF7;
+    opacity: 0.6;
+    transition: transform 0.18s ease, opacity 0.18s ease;
+  }
+  .bl-workspace-chip:hover .bl-workspace-chip-caret {
+    transform: translateX(2px);
+    opacity: 1;
+  }
+
+  @media (max-width: 480px) {
+    .bl-workspace-chip {
+      left: 12px;
+      bottom: 12px;
+      padding: 8px 12px 8px 10px;
+      gap: 8px;
+    }
+    .bl-workspace-chip-title { font-size: 12.5px; }
+    .bl-workspace-chip-sub   { font-size: 11px; }
+  }
+</style>
+
+<script type="module">
+  // Open /set-up as a Softr modal. Falls back to the anchor's
+  // href navigation if openSwModal isn't available.
+  const chip = document.getElementById('bl-workspace-chip');
+  if (chip) {
+    chip.addEventListener('click', (e) => {
+      if (typeof window !== 'undefined' && typeof window.openSwModal === 'function') {
+        e.preventDefault();
+        window.openSwModal('/set-up', 'lg');
+      }
+    });
+  }
+</script>

@@ -1,0 +1,56 @@
+// =====================================================================
+// /app/projects/create-brief-button — the "Create a brief" button
+// that lives on the project details page.
+//
+// What it does:
+//   1. Reads the current project (id + name) using Softr's page context.
+//   2. When the user clicks the button, stashes those two values in
+//      sessionStorage under "brieflee:current-project".
+//   3. Opens the brief creation modal.
+//
+// The brief creation chat block (/app/briefs/create-brief) reads
+// sessionStorage at mount to know which project the brief belongs to.
+//
+// SOFTR CONFIG:
+//   - Page: any project details page (e.g. /projects/details).
+//   - Source tab → Database: brieflee beta → Table: projects.
+//   - Visibility: logged-in users.
+// =====================================================================
+
+import { useRecord, useCurrentRecordId, q } from "@/lib/datasource";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
+
+const select = q.select({
+  name: "bvDEj", // projects.name
+});
+
+export default function Block() {
+  const recordId = useCurrentRecordId();
+  const { data } = useRecord({ recordId, select });
+  const projectName = data?.fields?.name || "";
+
+  const handleClick = () => {
+    if (!recordId) return;
+    try {
+      sessionStorage.setItem(
+        "brieflee:current-project",
+        JSON.stringify({ id: recordId, name: projectName })
+      );
+    } catch {
+      /* sessionStorage disabled — modal will toast about missing context */
+    }
+    if (typeof window.openSwModal === "function") {
+      window.openSwModal("/brief", "lg");
+    }
+  };
+
+  return (
+    <div className="p-2">
+      <Button onClick={handleClick} disabled={!recordId}>
+        <Plus className="w-4 h-4 mr-1" />
+        Create a brief
+      </Button>
+    </div>
+  );
+}

@@ -15,6 +15,11 @@
 //     /assign-board?recordId=<videoId> as a "md" Softr modal. The
 //     /assign-board page owns the add/remove board logic; this block
 //     only reads `boards` to render the filled-vs-outline indicator.
+//   • Analyse or remix (sparkle, left of the bookmark) — opens the New
+//     video panel (/review, right-hand side panel) with this video's
+//     file and name handed over: /review?url=<mp4>&name=<title>. The
+//     panel then asks Analyse or Remix. No write happens here; the
+//     engine on /review files the result under the user's workspace.
 //   • Card click → /videos-details?recordId=<videoId> opened in an
 //     XL Softr modal (window.openSwModal). Cmd/ctrl/middle-click falls
 //     back to a normal new-tab navigation.
@@ -161,6 +166,43 @@ function FilterPill({ label, options, selected, onChange }) {
   );
 }
 
+// ─── New video hand-off ──────────────────────────────────────
+// Opens /review as the right-hand side panel (the same call the
+// /videos index uses for its New video button) with the video's file
+// and title in the query. The engine on /review reads them and opens
+// on the Analyse or Remix choice.
+function openNewVideo(videoUrl, name) {
+  const src = `/review?url=${encodeURIComponent(videoUrl)}${name ? `&name=${encodeURIComponent(name)}` : ""}`;
+  try {
+    const r = window.SoftrPageRenderer;
+    if (r && typeof r.setOpenPageModal === "function") { r.setOpenPageModal({ src, size: "M", placement: "end" }); return; }
+  } catch { /* fall through */ }
+  try {
+    const u = new URL(window.location.href);
+    u.searchParams.set("modal", src); u.searchParams.set("modalSize", "M"); u.searchParams.set("modalPlacement", "end");
+    window.location.href = u.toString(); return;
+  } catch { /* fall through */ }
+  if (typeof window.openSwModal === "function") { window.openSwModal(src, "md"); return; }
+  window.location.href = src;
+}
+
+function AnalyseButton({ videoUrl, name }) {
+  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+  return (
+    <button
+      type="button"
+      data-card-action="analyse"
+      onMouseDown={stop}
+      onClick={(e) => { stop(e); openNewVideo(videoUrl, name); }}
+      className="inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+      aria-label="Analyse or remix this video"
+      title="Analyse or remix this video"
+    >
+      <Sparkles className="w-4 h-4" />
+    </button>
+  );
+}
+
 // ─── Boards button (per-card) ────────────────────────────────
 // Click → opens /assign-board?recordId=<videoId> as a "md" Softr
 // modal. The /assign-board page handles the actual add/remove board
@@ -204,6 +246,9 @@ function ClipCard({ rec, currentUserId, isSaving, onToggleSave }) {
   const f = rec.fields || {};
   const url = f.videoUrl || "";
   const brand = f.brand?.label || "";
+  // The library names every row "<Brand> <Format> Swipe file"; the hand-off
+  // drops the suffix so the submission reads as the video, not the row.
+  const title = String(f.name || "").replace(/\s*swipe\s*file\s*$/i, "").trim();
   const logo = f.logoUrl || "";
 
   // Format chip — first linked format's label (e.g. "ASMR").
@@ -301,7 +346,10 @@ function ClipCard({ rec, currentUserId, isSaving, onToggleSave }) {
           <span className="font-semibold text-foreground text-sm truncate">{brand || "Brand"}</span>
         </div>
 
-        <BoardsButton video={rec} isOnAnyBoard={isOnAnyBoard} />
+        <div className="flex items-center gap-0.5 shrink-0">
+          <AnalyseButton videoUrl={url} name={title} />
+          <BoardsButton video={rec} isOnAnyBoard={isOnAnyBoard} />
+        </div>
       </div>
     </a>
   );
@@ -315,7 +363,12 @@ export default function Block() {
   const currentUserId = user?.id || null;
 
   const currentFormatId = useCurrentRecordId();
-  const { data, status, refetch } = useRecords({ select: createFields, count: 500 });
+  // 20 at a time, not the whole table. Every card mounts a <video>, so
+  // fetching 500 records meant the page downloaded hundreds of clips
+  // before it could paint. "Load more" pulls the next 20.
+  const {
+    data, status, refetch, fetchNextPage, hasNextPage, isFetchingNextPage,
+  } = useRecords({ select: createFields, count: 20 });
   const allRecords = data?.pages?.flatMap((p) => p?.items ?? []) ?? [];
 
   // Single mutation hook for the save toggle. The bookmark button on
@@ -681,6 +734,21 @@ export default function Block() {
                   onToggleSave={handleToggleSave}
                 />
               ))}
+            </div>
+          )}
+
+          {/* Load more — only once the first batch has rendered, and
+              only while the table still has records left to fetch. */}
+          {status !== "loading" && status !== "pending" && hasNextPage && (
+            <div className="flex justify-center mt-8">
+              <button
+                type="button"
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+                className="rounded-full border px-6 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-60"
+              >
+                {isFetchingNextPage ? "Loading…" : "Load more"}
+              </button>
             </div>
           )}
         </div>

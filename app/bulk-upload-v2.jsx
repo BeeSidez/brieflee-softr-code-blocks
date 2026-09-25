@@ -423,7 +423,7 @@ function BriefStep({ briefs, briefsLoading, briefMode, onModeChange, batchBrief,
   );
 }
 
-function ReviewStep({ videos, updateVideo, briefs, user, createEnabled, onSubmitOne, isSubmitting, onBack, creditsLeft }) {
+function ReviewStep({ videos, updateVideo, briefs, user, createEnabled, onSubmitOne, onBatchStart, onBatchDone, isSubmitting, onBack, creditsLeft }) {
   const [rowStates, setRowStates] = useState(() => videos.map(() => "pending"));
   const [importedIds, setImportedIds] = useState(new Set());
   const [runningIds, setRunningIds] = useState(new Set());
@@ -450,15 +450,28 @@ function ReviewStep({ videos, updateVideo, briefs, user, createEnabled, onSubmit
     const left = creditsNow();
     if (acceptedRows.length > left) { toast.error(`You have ${left} video${left === 1 ? "" : "s"} left this cycle.`, { description: `Remove ${acceptedRows.length - left} and try again.` }); return; }
     let success = 0; let fail = 0;
+    // One id for the whole run. Every submission carries it, and the
+    // summary at the end is the only thing anyone is told about.
+    const batchId = onBatchStart ? onBatchStart() : "";
+    const results = [];
     for (let i = 0; i < videos.length; i++) {
       if (rowStates[i] === "rejected" || importedIds.has(i)) continue;
       markRunning(i, true);
-      try { await onSubmitOne(videos[i]); setImportedIds((prev) => new Set([...prev, i])); success++; }
+      try {
+        const r = await onSubmitOne(videos[i], batchId);
+        if (r) results.push(r);
+        setImportedIds((prev) => new Set([...prev, i])); success++;
+      }
       catch (e) { fail++; toast.error(`Video ${i + 1} failed`, { description: e.message || "Unknown error" }); }
       finally { markRunning(i, false); }
     }
     if (success > 0) toast.success(`${success} video${success > 1 ? "s" : ""} reviewed`);
     if (fail > 0) toast.error(`${fail} video${fail > 1 ? "s" : ""} failed.`);
+    // Told once, after the last video, never per video.
+    if (results.length && onBatchDone) {
+      try { await onBatchDone(results, batchId); }
+      catch (e) { console.error("batch summary failed:", e); }
+    }
   };
   return (
     <div className="w-full max-w-6xl mx-auto">
@@ -712,6 +725,7 @@ const submissionCreate = q.select({
   originalReviewId:   "N1Gzr",
   revisionNumber:     "jHVKv",
   isBulk:             "CIp0E",
+  batchId:            "BqqJ6",
   reviews:            "kdfMm",
 });
 
@@ -1594,6 +1608,96 @@ export default function Block() {
     setStep(5);
   };
 
+  // One id per run of Submit All, written on every submission it makes,
+  // so the summary email can link to exactly these videos and the queue
+  // can filter to them. A second batch an hour later is a different id.
+  const newBatchId = () =>
+    "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+  // Everything the run has to say, said once. Counts are composed here as
+  // finished sentences, so the templates need no conditionals and nothing
+  // can render as an empty line.
+  const handleBatchDone = async (results, batchId) => {
+    const rows = (results || []).filter(Boolean);
+    if (rows.length === 0) return;
+    const count = (d) => rows.filter((x) => String(x.decision || "").toUpperCase() === d).length;
+    const approved = count("APPROVED"); const rejected = count("REJECTED");
+    const flagged = rows.length - approved - rejected;
+    const phrase = (n, w) => n + " " + w;
+    const countsLine = [phrase(approved, "passed"), phrase(flagged, "flagged"), phrase(rejected, "rejected")].join(", ");
+    const needing = rows.filter((x) => String(x.decision || "").toUpperCase() !== "APPROVED");
+    const namesOf = (list) => list.slice(0, 12).map((x) => x.title).filter(Boolean).join(", ")
+      + (list.length > 12 ? ", and " + (list.length - 12) + " more" : "");
+    const batchUrl = `${APP_ORIGIN}/videos?batch=${encodeURIComponent(batchId)}`;
+    const briefNameFor = (list) => {
+      const names = [...new Set(list.map((x) => x.briefName).filter(Boolean))];
+      if (names.length === 1) return names[0];
+      if (names.length > 1) return names.length + " briefs";
+      return workspaceName || "this workspace";
+    };
+
+    const emailit = async (alias, to, vars) => {
+      if (!to) return;
+      const key = `${batchId}-${alias}-${to}`.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 200);
+      try {
+        await proxyEmailit("https://api.emailit.com/v2/emails", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Idempotency-Key": key },
+          body: JSON.stringify({ from: EMAIL_FROM, to, template: alias, variables: vars }),
+        });
+      } catch (e) { console.error("batch email failed:", alias, to, e); }
+    };
+
+    // the brand, once
+    await emailit("bl-sub-batch-user", brandEmail, {
+      account_name: workspaceName,
+      brief_name: briefNameFor(rows),
+      user_first_name: brandFirstName,
+      batch_total: String(rows.length),
+      batch_counts: countsLine,
+      batch_needs_you: needing.length ? namesOf(needing) : "Nothing. Every video passed.",
+      batch_url: batchUrl,
+    });
+
+    // each creator, once, about their own videos only
+    const byCreator = new Map();
+    for (const x of rows) {
+      const to = String(x.creatorEmail || "").trim().toLowerCase();
+      if (!to) continue;
+      if (!byCreator.has(to)) byCreator.set(to, []);
+      byCreator.get(to).push(x);
+    }
+    for (const [to, mine] of byCreator) {
+      const a = mine.filter((x) => String(x.decision || "").toUpperCase() === "APPROVED").length;
+      const rj = mine.filter((x) => String(x.decision || "").toUpperCase() === "REJECTED").length;
+      const fl = mine.length - a - rj;
+      const theirs = mine.filter((x) => String(x.decision || "").toUpperCase() !== "APPROVED");
+      await emailit("bl-sub-batch-creator", to, {
+        account_name: workspaceName,
+        brief_name: briefNameFor(mine),
+        creator_first_name: String(mine[0].creatorName || "there").split(" ")[0] || "there",
+        creator_name: mine[0].creatorName || "the creator",
+        batch_total: String(mine.length),
+        batch_counts: [phrase(a, "passed"), phrase(fl, "flagged"), phrase(rj, "rejected")].join(", "),
+        batch_needs_you: theirs.length ? namesOf(theirs) : "Nothing. All of them passed.",
+      });
+    }
+
+    // and one row in the bell, not one per video
+    if (createNotification.enabled) {
+      try {
+        await createNotification.mutateAsync({
+          isRead: false,
+          accounts: [{ id: selectedAccount }],
+          users: user?.id ? [{ id: user.id }] : null,
+          type: needing.length ? OPT.notif.flagged : OPT.notif.completed,
+          title: `${rows.length} video${rows.length === 1 ? "" : "s"} reviewed`,
+          message: `${countsLine}.${needing.length ? " Waiting on you: " + namesOf(needing) + "." : ""}`,
+        });
+      } catch (e) { console.error("batch notification failed:", e); }
+    }
+  };
+
   // ─── The engine's view of this block: one workspace, review only ───
   const workspaceId = selectedAccount || "";
   const kind = "review"; const context = "workspace"; const isCreator = false; const multi = true;
@@ -1874,6 +1978,7 @@ export default function Block() {
       originalReviewId: context === "submission" ? (unwrap(parent?.originalReviewId) || parentReviewId) : "",
       revisionNumber: context === "submission" ? (OPT.revision[revisionNo] || OPT.revision[10]) : null,
       isBulk: !!multi,
+      batchId: ctx.batchId || "",
     };
     let sub = null;
     try { sub = await createSubmission.mutateAsync(subFields); }
@@ -1915,11 +2020,17 @@ export default function Block() {
     };
     const creatorEmailFinal = subFields.creatorEmail;
     const what = context === "submission" ? `Revision ${revisionNo} of ${videoTitle}` : videoTitle;
-    if (creatorEmailFinal) await notify(OPT.notif.received, "Submission received", `${what} was submitted${brief ? ` for ${unwrap(brief.name)}` : ""}.`);
-    await notify(OPT.notif.completed, "Review completed", `${what}: ${decision.toLowerCase()} by the Review Agents${failed.length ? ` (${failed.length} flagged)` : ""}.`);
-    const decisionType = decision === "APPROVED" ? OPT.notif.approved : decision === "REJECTED" ? OPT.notif.rejected : OPT.notif.flagged;
-    const decisionTitle = decision === "APPROVED" ? "Content approved" : decision === "REJECTED" ? "Content rejected" : "Flagged for review";
-    await notify(decisionType, decisionTitle, stripEmDash(ov.decision_reasoning || "").slice(0, 500));
+    // A batch tells the story once, at the end, in handleBatchDone. Per
+    // video it would be fifty emails and a hundred and fifty bell rows
+    // for one upload.
+    const quiet = !!ctx.batchId;
+    if (!quiet) {
+      if (creatorEmailFinal) await notify(OPT.notif.received, "Submission received", `${what} was submitted${brief ? ` for ${unwrap(brief.name)}` : ""}.`);
+      await notify(OPT.notif.completed, "Review completed", `${what}: ${decision.toLowerCase()} by the Review Agents${failed.length ? ` (${failed.length} flagged)` : ""}.`);
+      const decisionType = decision === "APPROVED" ? OPT.notif.approved : decision === "REJECTED" ? OPT.notif.rejected : OPT.notif.flagged;
+      const decisionTitle = decision === "APPROVED" ? "Content approved" : decision === "REJECTED" ? "Content rejected" : "Flagged for review";
+      await notify(decisionType, decisionTitle, stripEmDash(ov.decision_reasoning || "").slice(0, 500));
+    }
 
     // 7. EmailIt by alias, idempotent per submission + event
     const reviewUrl = `${APP_ORIGIN}${DETAILS_PATH}?recordId=${encodeURIComponent(subId)}`;
@@ -1962,18 +2073,20 @@ export default function Block() {
     };
     const outcome = decision === "APPROVED" ? "approved" : decision === "REJECTED" ? "rejected" : "flagged";
     const mode = aiModeLabel === "Autonomous" ? "auto" : aiModeLabel === "Manual" ? "manual" : "hybrid";
-    const sendsEmail = !(STEPPER && kind !== "review");
+    const sendsEmail = !(STEPPER && kind !== "review") && !quiet;
     if (sendsEmail && creatorEmailFinal) await send("bl-sub-received-creator", creatorEmailFinal);
-    if (!sendsEmail) { /* analyse and remix are for the brand's own eyes */ }
+    if (!sendsEmail) { /* analyse and remix are for the brand's own eyes, and a batch speaks at the end */ }
     else if (mode === "auto") { if (creatorEmailFinal) await send(`bl-sub-${outcome}-auto-creator`, creatorEmailFinal); }
     else if (mode === "hybrid") { if (creatorEmailFinal) await send(`bl-sub-${outcome}-hybrid-creator`, creatorEmailFinal); await send(`bl-sub-${outcome}-hybrid-user`, brandEmail); }
     else { await send(`bl-sub-${outcome}-manual-user`, brandEmail); }
 
-    return { subId, reviewId, decision, title: videoTitle, failed, checks: byName.size, thumb: cldThumb(publicId) };
+    return { subId, reviewId, decision, title: videoTitle, failed, checks: byName.size, thumb: cldThumb(publicId),
+             creatorEmail: creatorEmailFinal || "", creatorName: subFields.creatorName || "",
+             briefName: unwrap(brief?.name) || "" };
   }
 
   // One video through the engine, with that row's own settings.
-  const submitOneVideo = async (video) => {
+  const submitOneVideo = async (video, batchId) => {
     if (!createSubmission.enabled || !createReview.enabled) throw new Error("The review can't start right now. Refresh and try again.");
     if (!user?.id) throw new Error("User not detected.");
     if (!video.uploadedUrl) throw new Error("This video has not finished uploading.");
@@ -1988,6 +2101,7 @@ export default function Block() {
       pdfUploaded: video.pdf || null,
       creatorName: video.creatorName || "",
       creatorEmail: video.creatorEmail || "",
+      batchId: batchId || "",
     };
     const item = { kind: "file", file: video.file, label: video.file.name, uploaded: { filename: video.file.name, url: video.uploadedUrl } };
     const r = await runPipeline(item, runRef.current, { stage: () => {}, preview: () => {} }, ctx);
@@ -2037,7 +2151,7 @@ export default function Block() {
         {step === 2 && <WorkspaceStep accounts={filteredAccounts} isLoading={accountsLoading} selectedAccount={selectedAccount} onSelect={setSelectedAccount} onNext={() => setStep(3)} onBack={() => setStep(1)} />}
         {step === 3 && <QAChecklistStep selected={batchQaChecklist} onToggle={toggleQaBatch} onSelectAll={() => setBatchQaChecklist(QA_OPTIONS.map((o) => o.id))} onDeselectAll={() => setBatchQaChecklist([])} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
         {step === 4 && <BriefStep briefs={briefs} briefsLoading={briefsLoading} briefMode={briefMode} onModeChange={setBriefMode} batchBrief={batchBrief} onSelectBrief={setBatchBrief} batchNotes={batchNotes} onNotesChange={setBatchNotes} batchPdf={batchPdf} onPdfUpload={handlePdfUpload} isUploading={isUploading} onNext={goToReview} onBack={() => setStep(3)} />}
-        {step === 5 && <ReviewStep videos={videos} updateVideo={updateVideo} briefs={briefs} user={user} createEnabled={(createSubmission.enabled && createReview.enabled)} onSubmitOne={submitOneVideo} isSubmitting={isSubmitting} creditsLeft={creditsLeft} onBack={() => setStep(4)} />}
+        {step === 5 && <ReviewStep videos={videos} updateVideo={updateVideo} briefs={briefs} user={user} createEnabled={(createSubmission.enabled && createReview.enabled)} onSubmitOne={submitOneVideo} onBatchStart={newBatchId} onBatchDone={handleBatchDone} isSubmitting={isSubmitting} creditsLeft={creditsLeft} onBack={() => setStep(4)} />}
           </>
         )}
       </div>

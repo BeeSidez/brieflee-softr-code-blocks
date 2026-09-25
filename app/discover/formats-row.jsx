@@ -46,6 +46,10 @@ const PAGE_SLUG = "swipe-formats";
 const NAVY = "#001364";
 const BRIEFLEE_EYES = "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_sticker-blue-cartoon-eyes-looking-side-navy_2026-03.png";
 
+// How many format cards the row renders. Each card fans 3 clips, so
+// this number times 3 is how many videos the row loads.
+const MAX_FORMAT_CARDS = 12;
+
 const FAN_LAYOUT = [
   { rotate: -8, x: "-22%", y: "4%", z: 1 },  // left
   { rotate:  0, x: "0",    y: "0",  z: 3 },  // middle (front)
@@ -126,8 +130,8 @@ function FormatCard({ rec, urls }) {
 export default function Block() {
   const scrollerRef = useRef(null);
 
-  const { data: formatsData, status } = useRecords({ select: formatSelect, count: 100 });
-  const { data: videosData }          = useRecords({ select: videoSelect,  count: 500 });
+  const { data: formatsData, status } = useRecords({ select: formatSelect, count: 40 });
+  const { data: videosData }          = useRecords({ select: videoSelect,  count: 100 });
 
   const formats = formatsData?.pages?.flatMap((p) => p?.items ?? []) ?? [];
   const videos  = videosData?.pages?.flatMap((p) => p?.items ?? []) ?? [];
@@ -151,12 +155,17 @@ export default function Block() {
     return map;
   }, [videos]);
 
-  // Sort by linked-video count desc so most-populated formats lead.
-  const sorted = [...formats].sort((a, b) => {
-    const ac = Array.isArray(a?.fields?.videoFormats) ? a.fields.videoFormats.length : 0;
-    const bc = Array.isArray(b?.fields?.videoFormats) ? b.fields.videoFormats.length : 0;
-    return bc - ac;
-  });
+  // Sort by linked-video count desc so most-populated formats lead,
+  // then cap the row. Each card mounts 3 clips, so an uncapped row was
+  // loading well over a hundred videos before the page could settle.
+  // Sorted first, so the cap keeps the fullest formats.
+  const sorted = [...formats]
+    .sort((a, b) => {
+      const ac = Array.isArray(a?.fields?.videoFormats) ? a.fields.videoFormats.length : 0;
+      const bc = Array.isArray(b?.fields?.videoFormats) ? b.fields.videoFormats.length : 0;
+      return bc - ac;
+    })
+    .slice(0, MAX_FORMAT_CARDS);
 
   // Pick 3 URLs for a format: top Feature=true clip lands in the MIDDLE slot
   // (FAN_LAYOUT index 1, z:3). Left + right fill with remaining featured, then

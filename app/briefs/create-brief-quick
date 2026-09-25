@@ -1,0 +1,606 @@
+// =====================================================================
+// /app/briefs/create-brief-quick — New brief · Vibe Code block.
+//
+// The whole create flow. Three routes, and the two questions that
+// decide whether the AI writes something specific or something that
+// could belong to anyone:
+//
+//   [AI]      answer the questions, and the brief is written before it
+//             opens. One OpenRouter call, the section model, not the
+//             legacy JSON body.
+//   [Guided]  same questions, no writing. The brief opens in the
+//             builder with the answers saved, so every per-section
+//             Write-with-AI already has the product and the channel.
+//   [Blank]   name it and go.
+//
+// The questions exist because the model cannot be specific about a
+// product it was never given. "No product, this is brand or organic
+// content" is a real answer and is recorded as such, so nothing is
+// invented to fill the gap.
+//
+// Product picker: choose from the workspace catalog, or paste a URL
+// and Firecrawl reads the page once. Adding writes the product to the
+// account, so the catalog builds itself as briefs get made.
+//
+// The brief is created WITH its project linked, taken from the project
+// page that opened this modal. Vibe Code CAN map a linked record on
+// create; the old comment claiming otherwise is what kept the
+// unassigned workaround alive. The project id is read once in an
+// inline useState initialiser, because URL parsing anywhere else stops
+// Softr's analyzer registering the create action.
+//
+// SOFTR CONFIG:
+//   1. Rendered as the /new-brief modal, opened from a project page
+//      so the URL carries ?recordId=<projectId>.
+//   2. Sources: briefs, accounts, products, Firecrawl, OpenRouter.
+//      MULTI-SOURCE, so every hook passes `from`.
+//   3. Visibility: logged-in users.
+// =====================================================================
+
+import { useMemo, useState } from "react";
+import {
+  datasource, useRecords, useRecordCreate, useProxyFetch, q,
+} from "@/lib/datasource";
+import { useCurrentUser } from "@/lib/user";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+
+// ─── Datasources (ids from this block's Source tab) ───────────
+const ds = datasource.define({
+  briefs:     "59eddd1c-60c2-47d3-a61a-91d1af15f605",
+  accounts:   "accounts",
+  products:   "products",
+  firecrawl:  "7c13a820-6c8b-4082-b461-9ef88c1e7cac",
+  openrouter: "4f7ba450-9ddc-4278-b283-1881b58b1429",
+});
+
+const DETAIL_PATH = "/briefs/details";
+const WRITE_MODEL = "deepseek/deepseek-v4-pro";
+
+// Post-create hook, unchanged envelope.
+const BRIEF_HOOK_URL =
+  "https://workflows-api.softr.io/v1/workflows/403e60cf-ac29-454d-98a9-208a4d26e941/executions/da73003d-c1a2-4656-ab60-8d85224629f4";
+
+const STATUS_DRAFT_ID     = "775ba6ba-5fda-4d17-bd02-53be5e9ea2ca";
+const GENERATED_MANUAL_ID = "598d6f2e-9830-4790-9d3b-c04005deb5f3";
+const GENERATED_AI_ID     = "beb6ff69-51d6-417b-abfa-c8dbac6ec760";
+const PRODUCT_TYPE_PRODUCT_ID  = "09733eb9-9e77-4e11-bbdf-4e5e9d5a445e";
+const PRODUCT_STATUS_ACTIVE_ID = "8e6bd9b0-6f7a-4d69-b23d-bb69577c1de3";
+
+const CHANNELS = [
+  { id: "ba9af748-7695-46b2-b5e3-f9c58b5b8288", label: "Organic" },
+  { id: "2c767823-7430-4f24-9fdb-69485d1ff1b3", label: "Paid" },
+];
+const CREATOR_TYPES = [
+  { id: "5a290e3b-2905-41b6-9bbb-1b98964dcbf0", label: "UGC" },
+  { id: "7adfce93-0c2f-4cec-af91-c7a4c99d64d3", label: "Influencer" },
+  { id: "34ce4bad-c106-438e-8adb-d0a862a99abb", label: "Affiliate" },
+  { id: "a06a4342-d693-4013-a4ef-26fede8289f7", label: "Customer" },
+  { id: "cf25288c-918f-444a-afbe-bc8c7b4aab82", label: "Employee Ambassador" },
+  { id: "437357f6-a391-4acd-afb2-2c6698ff87fd", label: "Founder" },
+];
+
+// The core shape a new brief opens with. Keys match the builder's
+// SECTION_DEFS; everything else waits in the rail.
+const STARTER_SECTIONS = "brand,offer,productFeature,deliverables,hook,guidelines,examples,submissions";
+
+const createFields = q.select({
+  name:          "z3lpx",
+  users:         "EdhwS",
+  projects:      "yrYvH",
+  product_link:  "Mn8mc",
+  description:   "FCBU5",
+  status:        "71Oud",
+  generated:     "n4tCi",
+  section_order: "cp3Rg",
+  creator_type:  "N1vCS",
+  channel:       "nbZAV",
+  // Section bodies, written by the AI route.
+  brand:               "FJq4K",
+  offer:               "4g59H",
+  audience_customer:   "uuHYp",
+  product_feature_description: "CSvl8",
+  hooks:               "8EyqU",
+  talking_points:      "YEfyw",
+  dos:                 "CSbqb",
+  donts:               "I5wOP",
+  submission_notes:    "gx4hJ",
+});
+
+const accountSelect = q.select({
+  name:       "aAKkT",
+  users:      "LNSSK",
+  website:    "RaK4B",
+  blueprint:  "wGkPN",
+  brand_voice:"ybmp8",
+});
+
+const productSelect = q.select({
+  name:        "kNM2x",
+  accounts:    "MDPv7",
+  url:         "NpnYk",
+  description: "XGsxw",
+  price:       "DATrL",
+  scrape:      "ovQUJ",
+  status:      "Es5IA",
+});
+
+const productCreate = q.select({
+  name:        "kNM2x",
+  accounts:    "MDPv7",
+  type:        "I2vm9",
+  url:         "NpnYk",
+  description: "XGsxw",
+  image_url:   "wRahq",
+  price:       "DATrL",
+  scrape:      "ovQUJ",
+  scraped_at:  "VzmXP",
+  status:      "Es5IA",
+});
+
+// ─── Helpers ──────────────────────────────────────────────────
+function linkIds(raw) {
+  const arr = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+  return arr.map((x) => (x && typeof x === "object" ? x.id : x)).filter(Boolean);
+}
+function selectLabel(raw) {
+  if (!raw) return "";
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw)) return raw.map(selectLabel).filter(Boolean).join(", ");
+  return raw.label || "";
+}
+// The model returns HTML per section. Strip anything that is not a
+// simple block so a bad response can never inject markup.
+function cleanHtml(v) {
+  if (typeof v !== "string") return "";
+  return v
+    .replace(/```html?/gi, "")
+    .replace(/```/g, "")
+    .replace(/<(script|style|iframe)[^>]*>[\s\S]*?<\/\1>/gi, "")
+    .replace(/\s*—\s*/g, ", ")
+    .trim();
+}
+
+export default function Block() {
+  const user = useCurrentUser();
+
+  // Read once, inline. URL parsing in the render body, a useMemo or a
+  // named helper stops the analyzer registering Create Record.
+  const [urlProjectId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      return new URL(window.location.href).searchParams.get("recordId") || "";
+    } catch (e) {
+      return "";
+    }
+  });
+
+  const createRecord  = useRecordCreate({ fields: createFields, from: ds.briefs });
+  const createProduct = useRecordCreate({ fields: productCreate, from: ds.products });
+  const aiFetch       = useProxyFetch(ds.openrouter);
+  const scrapeFetch   = useProxyFetch(ds.firecrawl);
+
+  // The workspace behind this user, and its product catalog.
+  // Scoped in the query, not after it. Filtering client-side would pull
+  // other brands' account rows into this browser first.
+  const { data: accountsRaw } = useRecords({
+    select: accountSelect, from: ds.accounts, count: 20, enabled: !!user?.id,
+    where: q.array("users").is(user?.id || ""),
+  });
+  const account = useMemo(() => {
+    const items = accountsRaw?.pages?.flatMap((p) => p?.items ?? []) ?? [];
+    if (!user?.id) return items[0] || null;
+    return items.find((it) => linkIds(it.fields?.users).includes(user.id)) || items[0] || null;
+  }, [accountsRaw, user?.id]);
+  const accountId = account?.id || null;
+
+  const { data: productsRaw } = useRecords({
+    select: productSelect, from: ds.products, count: 100, enabled: !!accountId,
+    where: q.array("accounts").is(accountId || ""),
+  });
+  const products = useMemo(() => {
+    const items = productsRaw?.pages?.flatMap((p) => p?.items ?? []) ?? [];
+    return items.filter((it) => {
+      const pf = it.fields || {};
+      if (selectLabel(pf.status) === "Archived") return false;
+      const ids = linkIds(pf.accounts);
+      return !accountId || !ids.length || ids.includes(accountId);
+    });
+  }, [productsRaw, accountId]);
+
+  // ─── Flow state ───────────────────────────────────────────
+  const [route, setRoute] = useState("");     // "" | ai | guided | blank
+  const [step, setStep] = useState(0);
+  const [name, setName] = useState("");
+  const [product, setProduct] = useState(null);   // a product record
+  const [brandOnly, setBrandOnly] = useState(false);
+  const [newUrl, setNewUrl] = useState("");
+  const [scraping, setScraping] = useState(false);
+  const [channel, setChannel] = useState(CHANNELS[0]);
+  const [creatorType, setCreatorType] = useState(CREATOR_TYPES[0]);
+  const [busy, setBusy] = useState(false);
+  const [busyNote, setBusyNote] = useState("");
+
+  const needsQuestions = route === "ai" || route === "guided";
+  const lastStep = needsQuestions ? 3 : 1;
+  const canAdvance =
+    step === 1 ? name.trim().length > 0
+    : step === 2 ? (!!product || brandOnly)
+    : true;
+
+  const startRoute = (r) => { setRoute(r); setStep(1); };
+
+  // ─── Add a product by URL, scraping the page once ─────────
+  const addProductByUrl = async () => {
+    const url = newUrl.trim();
+    if (!url) return;
+    if (!createProduct.enabled) { toast.error("You don't have permission to add products."); return; }
+    setScraping(true);
+    try {
+      let md = "", title = "", desc = "", img = "";
+      try {
+        const res = await scrapeFetch("https://api.firecrawl.dev/v1/scrape", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true }),
+        });
+        if (res.ok) {
+          const j = await res.json();
+          const d = j?.data || j || {};
+          md = d.markdown || "";
+          title = d.metadata?.title || d.metadata?.ogTitle || "";
+          desc = d.metadata?.description || d.metadata?.ogDescription || "";
+          img = d.metadata?.ogImage || "";
+        }
+      } catch (e) {
+        // A failed scrape must not lose the product.
+        console.warn("Firecrawl scrape failed:", e?.message);
+      }
+      const created = await createProduct.mutateAsync({
+        name: title || url.replace(/^https?:\/\//, "").split("/")[0],
+        accounts: accountId ? [{ id: accountId }] : null,
+        type: PRODUCT_TYPE_PRODUCT_ID,
+        url,
+        description: desc || (md ? md.slice(0, 600) : ""),
+        image_url: img || "",
+        scrape: md ? md.slice(0, 20000) : "",
+        scraped_at: md ? new Date().toISOString() : null,
+        status: PRODUCT_STATUS_ACTIVE_ID,
+      });
+      const newId = created?.id || created?.recordId || "";
+      setProduct({
+        id: newId,
+        fields: { name: title || url, url, description: desc, scrape: md, price: "" },
+      });
+      setBrandOnly(false);
+      setNewUrl("");
+      toast.success(md ? "Product added and page read" : "Product added (page could not be read)");
+    } catch (e) {
+      console.error("Add product failed:", e);
+      toast.error("Couldn't add that product", { description: e?.message || "Try again." });
+    } finally {
+      setScraping(false);
+    }
+  };
+
+  // ─── The AI write ─────────────────────────────────────────
+  const writeBrief = async () => {
+    const af = account?.fields || {};
+    const pf = product?.fields || null;
+    const brandContext = [
+      af.name ? "Brand: " + af.name : "",
+      af.website ? "Website: " + af.website : "",
+      af.blueprint ? String(af.blueprint) : "",
+      af.brand_voice ? "Brand voice: " + af.brand_voice : "",
+    ].filter(Boolean).join("\n");
+    const productContext = pf
+      ? [
+          "Product: " + (pf.name || ""),
+          pf.description ? "Description: " + pf.description : "",
+          pf.price ? "Price: " + pf.price : "",
+          pf.url ? "Page: " + pf.url : "",
+          pf.scrape ? "From the product page: " + String(pf.scrape).slice(0, 4000) : "",
+        ].filter(Boolean).join("\n")
+      : "This brief is NOT about a specific product. It is brand or organic content. Do not invent a product.";
+
+    const sys =
+      "You write creator briefs. Return ONLY a JSON object, no prose, no code fences. " +
+      "Every value is clean HTML using <p>, <ul><li> or <b>. No headings. NEVER use em dashes. " +
+      "Write to the creator in second person. Be specific to the brand and product given; " +
+      "if something is not in the context, leave that field as an empty string rather than inventing it.";
+    const keys = [
+      "brand", "offer", "audience_customer", "product_feature_description",
+      "hooks",
+      "talking_points", "dos", "donts", "submission_notes",
+    ];
+    const usr =
+      `Brief name: ${name.trim()}\n` +
+      `Who is filming: ${creatorType.label}\n` +
+      `Channel: ${channel.label}\n\n` +
+      `Brand context:\n${brandContext || "(none on file)"}\n\n` +
+      `What this brief promotes:\n${productContext}\n\n` +
+      `Return a JSON object with exactly these keys: ${keys.join(", ")}.\n` +
+      `hooks is a <ul> of three to five options, each the hook line then how to shoot it.\n` +
+      `dos and donts are each a <ul>. talking_points is a <ul>.`;
+
+    const res = await aiFetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: WRITE_MODEL,
+        messages: [{ role: "system", content: sys }, { role: "user", content: usr }],
+        temperature: 0.7,
+      }),
+    });
+    if (!res.ok) throw new Error(`OpenRouter returned HTTP ${res.status}`);
+    const json = await res.json();
+    const raw = (json?.choices?.[0]?.message?.content || "").trim()
+      .replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim();
+    let obj = {};
+    try {
+      obj = JSON.parse(raw);
+    } catch (e) {
+      // Salvage the object if the model wrapped it in anything.
+      const a = raw.indexOf("{"), b = raw.lastIndexOf("}");
+      if (a >= 0 && b > a) obj = JSON.parse(raw.slice(a, b + 1));
+      else throw new Error("The AI response could not be read");
+    }
+    const out = {};
+    keys.forEach((k) => { const v = cleanHtml(obj[k]); if (v) out[k] = v; });
+    return out;
+  };
+
+  // ─── Create ───────────────────────────────────────────────
+  const submit = async () => {
+    if (!user?.id) { toast.error("You need to be signed in."); return; }
+    if (!createRecord.enabled) { toast.error("You don't have permission to create briefs."); return; }
+    setBusy(true);
+    try {
+      let sections = {};
+      if (route === "ai") {
+        setBusyNote("Writing the brief…");
+        try {
+          sections = await writeBrief();
+        } catch (e) {
+          console.error("AI write failed:", e);
+          toast.error("The AI couldn't write this one", {
+            description: "Creating the brief anyway so you can write it in the builder.",
+          });
+        }
+      }
+      setBusyNote("Creating…");
+      const created = await createRecord.mutateAsync({
+        name: name.trim() || "Untitled brief",
+        users: [{ id: user.id }],
+        projects: urlProjectId ? [{ id: urlProjectId }] : null,
+        product_link: product?.id ? [{ id: product.id }] : null,
+        description: "",
+        status: STATUS_DRAFT_ID,
+        generated: route === "ai" ? GENERATED_AI_ID : GENERATED_MANUAL_ID,
+        section_order: STARTER_SECTIONS,
+        creator_type: needsQuestions ? creatorType.id : null,
+        channel: needsQuestions ? channel.id : null,
+        ...sections,
+      });
+      const newId = created?.id || created?.recordId || "";
+      if (!newId) throw new Error("Create returned no record id");
+
+      try {
+        fetch(BRIEF_HOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source: "in-product",
+            brief_id: newId,
+            brief_name: name.trim() || "Untitled brief",
+            user_id: user.id,
+            project_id: urlProjectId || "",
+            generated: route === "ai" ? "AI" : "Manual",
+          }),
+        }).catch((e) => console.warn("Brief-created hook failed:", e?.message));
+      } catch (e) { console.warn("Brief-created hook threw:", e?.message); }
+
+      const url = `${DETAIL_PATH}/?recordId=${encodeURIComponent(newId)}`;
+      try { window.parent?.closeSwModal?.(); } catch (e) { /* not in a modal */ }
+      (window.parent || window).open(url, "_self");
+    } catch (e) {
+      console.error("[create-brief] failed:", e);
+      toast.error("Couldn't create the brief", { description: e?.message || "Try again." });
+      setBusy(false);
+      setBusyNote("");
+    }
+  };
+
+  // ─── Render ───────────────────────────────────────────────
+  if (!route) {
+    return (
+      <div className="bl-nb">
+        <Style />
+        <h2 className="bl-nb-title">New brief</h2>
+        <p className="bl-nb-sub">How do you want to start?</p>
+        <div className="bl-nb-routes">
+          <button type="button" className="bl-nb-route" onClick={() => startRoute("ai")}>
+            <strong>Write it with AI</strong>
+            <span>Answer two questions and the brief is written before it opens.</span>
+          </button>
+          <button type="button" className="bl-nb-route" onClick={() => startRoute("guided")}>
+            <strong>Set it up, then build</strong>
+            <span>Same questions, no writing. Every section's AI starts with the context.</span>
+          </button>
+          <button type="button" className="bl-nb-route" onClick={() => startRoute("blank")}>
+            <strong>Start blank</strong>
+            <span>Name it and go straight to the builder.</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bl-nb">
+      <Style />
+      <div className="bl-nb-head">
+        <h2 className="bl-nb-title">New brief</h2>
+        <span className="bl-nb-step">Step {step} of {lastStep}</span>
+      </div>
+
+      {step === 1 && (
+        <div className="bl-nb-step-body">
+          <label className="bl-nb-label" htmlFor="bl-nb-name">What is this brief called?</label>
+          <Input
+            id="bl-nb-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Sunkissed Lip Oil, TikTok Shop affiliates"
+          />
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="bl-nb-step-body">
+          <label className="bl-nb-label">What is this brief promoting?</label>
+          {products.length > 0 && (
+            <div className="bl-nb-list">
+              {products.map((it) => (
+                <button
+                  key={it.id}
+                  type="button"
+                  className={`bl-nb-opt ${product?.id === it.id ? "is-on" : ""}`}
+                  onClick={() => { setProduct(it); setBrandOnly(false); }}
+                >
+                  <strong>{it.fields?.name || "Untitled"}</strong>
+                  {it.fields?.description && <span>{String(it.fields.description).slice(0, 90)}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="bl-nb-add">
+            <Input
+              value={newUrl}
+              onChange={(e) => setNewUrl(e.target.value)}
+              placeholder="Or paste a product page URL"
+              disabled={scraping}
+            />
+            <Button type="button" onClick={addProductByUrl} disabled={scraping || !newUrl.trim()}>
+              {scraping ? "Reading the page…" : "Add"}
+            </Button>
+          </div>
+          <button
+            type="button"
+            className={`bl-nb-brandonly ${brandOnly ? "is-on" : ""}`}
+            onClick={() => { setBrandOnly(true); setProduct(null); }}
+          >
+            No product, this is brand or organic content
+          </button>
+        </div>
+      )}
+
+      {step === 3 && (
+        <div className="bl-nb-step-body">
+          <label className="bl-nb-label">Where is it going?</label>
+          <div className="bl-nb-chips">
+            {CHANNELS.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className={`bl-nb-chip ${channel.id === c.id ? "is-on" : ""}`}
+                onClick={() => setChannel(c)}
+              >{c.label}</button>
+            ))}
+          </div>
+          <label className="bl-nb-label">Who is filming it?</label>
+          <div className="bl-nb-chips">
+            {CREATOR_TYPES.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className={`bl-nb-chip ${creatorType.id === c.id ? "is-on" : ""}`}
+                onClick={() => setCreatorType(c)}
+              >{c.label}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="bl-nb-foot">
+        <button
+          type="button"
+          className="bl-nb-back"
+          onClick={() => (step > 1 ? setStep(step - 1) : setRoute(""))}
+          disabled={busy}
+        >
+          Back
+        </button>
+        {step < lastStep ? (
+          <Button type="button" onClick={() => setStep(step + 1)} disabled={!canAdvance}>
+            Next
+          </Button>
+        ) : (
+          <Button type="button" onClick={submit} disabled={busy || !canAdvance}>
+            {busy ? (busyNote || "Working…") : route === "ai" ? "Write the brief" : "Create brief"}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Style() {
+  return (
+    <style>{`
+      .bl-nb { display: flex; flex-direction: column; gap: 14px; padding: 4px 2px; }
+      .bl-nb-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+      .bl-nb-title { margin: 0; font-size: 20px; font-weight: 600; color: #001364; }
+      .bl-nb-sub { margin: -8px 0 0; font-size: 13px; color: #6B7A99; }
+      .bl-nb-step { font-size: 12px; color: #6B7A99; }
+      .bl-nb-routes { display: flex; flex-direction: column; gap: 10px; }
+      .bl-nb-route {
+        display: flex; flex-direction: column; gap: 3px; text-align: left;
+        padding: 14px 16px; border-radius: 14px;
+        border: 1px solid rgba(217, 224, 255, 0.55); background: #fff;
+        cursor: pointer; font-family: inherit;
+        transition: border-color 0.12s, box-shadow 0.12s;
+      }
+      .bl-nb-route:hover { border-color: #879CF7; box-shadow: 0 4px 14px rgba(0, 19, 100, 0.06); }
+      .bl-nb-route strong { font-size: 14px; color: #001364; }
+      .bl-nb-route span { font-size: 12.5px; color: #6B7A99; line-height: 1.45; }
+      .bl-nb-step-body { display: flex; flex-direction: column; gap: 10px; }
+      .bl-nb-label { font-size: 13px; font-weight: 600; color: #001364; }
+      .bl-nb-list { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
+      .bl-nb-opt {
+        display: flex; flex-direction: column; gap: 2px; text-align: left;
+        padding: 10px 14px; border-radius: 10px;
+        border: 1px solid rgba(217, 224, 255, 0.55); background: #fff;
+        cursor: pointer; font-family: inherit;
+      }
+      .bl-nb-opt:hover { border-color: #879CF7; }
+      .bl-nb-opt.is-on { border-color: #879CF7; background: rgba(135, 156, 247, 0.10); }
+      .bl-nb-opt strong { font-size: 13px; color: #001364; }
+      .bl-nb-opt span { font-size: 12px; color: #6B7A99; }
+      .bl-nb-add { display: flex; gap: 8px; align-items: center; }
+      .bl-nb-add > *:first-child { flex: 1 1 auto; }
+      .bl-nb-brandonly {
+        align-self: flex-start; border: none; background: none; padding: 0;
+        font-size: 12.5px; font-weight: 500; color: #294FF6;
+        cursor: pointer; font-family: inherit;
+      }
+      .bl-nb-brandonly.is-on { text-decoration: underline; }
+      .bl-nb-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+      .bl-nb-chip {
+        padding: 8px 14px; border-radius: 999px;
+        border: 1px solid rgba(217, 224, 255, 0.55); background: #fff;
+        font-size: 12.5px; font-weight: 500; color: #001364;
+        cursor: pointer; font-family: inherit;
+      }
+      .bl-nb-chip:hover { border-color: #879CF7; }
+      .bl-nb-chip.is-on { border-color: #879CF7; background: rgba(135, 156, 247, 0.10); color: #294FF6; font-weight: 600; }
+      .bl-nb-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; }
+      .bl-nb-back {
+        border: none; background: none; padding: 0;
+        font-size: 12.5px; color: #6B7A99; cursor: pointer; font-family: inherit;
+      }
+      .bl-nb-back:hover { color: #001364; }
+    `}</style>
+  );
+}

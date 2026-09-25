@@ -1,0 +1,280 @@
+// =====================================================================
+// /app/briefs/inspo-picker — modal-on-modal review picker
+// =====================================================================
+// Page: /briefs/inspo-picker (Softr modal).
+// Source: brieflee beta → reviews.
+//
+// Opened from the chat (window.openSwModal) with:
+//   ?slot=<0|1|2>           — which inspo slot the pick fills
+//   ?formatIds=id1,id2,...  — (optional) currently picked formats; for
+//                             future filtering. v1 ignores it and shows
+//                             all the user's reviews.
+//
+// User scoping
+//   The READ scope is enforced by Softr's Source-tab filter on this page
+//   (set in Studio): "reviews.accounts includes logged-in user's
+//   accounts". That means the data layer only ever returns this user's
+//   workspace reviews — no client-side trick required.
+//
+// On pick:
+//   window.parent.postMessage({
+//     type:  "brieflee:inspo-pick",
+//     slot:  Number,
+//     review: { id, name, displayUrl, thumbnail, analysis }
+//   }, "*")
+//
+// then close the modal.
+//
+// SOFTR CONFIG REQUIRED:
+//   1. Page: /briefs/inspo-picker  (Modal, size md)
+//   2. Source tab → Database: brieflee beta → Table: reviews
+//      Filter: reviews.accounts INCLUDES logged-in user's accounts
+//      (Use the "Logged-in user accounts" predicate Softr provides.)
+//   3. Visibility tab → logged-in users.
+// =====================================================================
+
+import { useState, useMemo, useEffect } from "react";
+import { useRecords, q } from "@/lib/datasource";
+import { Search, X, Play } from "lucide-react";
+
+const INSPO_PICK_MESSAGE = "brieflee:inspo-pick";
+const CTX_STORAGE_KEY    = "brieflee:inspo-picker-ctx";
+
+// reviews table — fields we read for the picker
+const select = q.select({
+  name:        "Odw6q",   // formula → submission name
+  displayUrl:  "kIbht",   // raw video URL (Cloudinary MP4 in most cases)
+  embedCode:   "E1mnP",   // formula → iframe HTML wrapper
+  thumbnail:   "4rkuC",   // URL
+  analysis:    "TPuFi",   // formula → packed transcript + per-check comments (string)
+  overallStatus:"4flIO",  // PASS/FAIL/etc.
+  createdAt:   "jRfGK",   // for sort
+  submissionType: "zC4Z3",// lookup → Content Review / Brief / Example / Revision
+});
+
+function readSlot() {
+  if (typeof window === "undefined") return 0;
+  // Primary — sessionStorage (Softr modal strips query strings)
+  try {
+    const raw = sessionStorage.getItem(CTX_STORAGE_KEY);
+    if (raw) {
+      const ctx = JSON.parse(raw);
+      return Number(ctx.slot) || 0;
+    }
+  } catch { /* parse error */ }
+  // Fallback — URL query
+  const s = new URL(window.location.href).searchParams.get("slot");
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function unwrap(raw) {
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw.trim();
+  if (Array.isArray(raw)) {
+    const f = raw[0];
+    if (typeof f === "string") return f.trim();
+    if (f?.label) return String(f.label).trim();
+    if (f?.name)  return String(f.name).trim();
+    return "";
+  }
+  if (typeof raw === "object") return raw.label || raw.name || raw.url || "";
+  return String(raw);
+}
+
+function closeModal() {
+  if (typeof window === "undefined") return;
+  try { window.parent?.closeSwModal?.(); } catch {}
+}
+
+export default function Block() {
+  const slot = useMemo(readSlot, []);
+  const { data, status, hasNextPage, fetchNextPage, isFetchingNextPage } = useRecords({ select, count: 100 });
+
+  // Auto-paginate so the picker sees the whole library, not just page 1.
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage && typeof fetchNextPage === "function") {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, data]);
+  const items = useMemo(() => {
+    const pages = data?.pages;
+    const rows = Array.isArray(pages)
+      ? pages.flatMap((p) => p?.items ?? [])
+      : (Array.isArray(data) ? data : []);
+    return rows
+      .map((r) => {
+        const f = r?.fields || {};
+        const submissionType = unwrap(f.submissionType);
+        return {
+          id: r.id,
+          name: unwrap(f.name) || "Untitled review",
+          displayUrl: unwrap(f.displayUrl),
+          thumbnail: unwrap(f.thumbnail),
+          analysis: unwrap(f.analysis),
+          embedCode: unwrap(f.embedCode),
+          createdAt: f.createdAt || r.createdAt,
+          submissionType,
+        };
+      })
+      .filter((row) => !!row.displayUrl) // can't show what can't play
+      .sort((a, b) => {
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tb - ta;
+      });
+  }, [data]);
+
+  const [search, setSearch] = useState("");
+  const [previewId, setPreviewId] = useState(null);
+  const preview = items.find((r) => r.id === previewId);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return items;
+    const needle = search.trim().toLowerCase();
+    return items.filter((r) =>
+      r.name.toLowerCase().includes(needle) ||
+      (r.submissionType || "").toLowerCase().includes(needle)
+    );
+  }, [items, search]);
+
+  // Click a card → instant pick + close. No two-step confirm.
+  const pickAndClose = (r) => {
+    if (!r || typeof window === "undefined") return;
+    const target = window.parent || window;
+    try {
+      target.postMessage({
+        type: INSPO_PICK_MESSAGE,
+        slot,
+        review: {
+          id: r.id,
+          name: r.name,
+          displayUrl: r.displayUrl,
+          thumbnail: r.thumbnail,
+          analysis: r.analysis,
+        },
+      }, "*");
+    } catch (e) {
+      console.error("postMessage failed:", e);
+    }
+    closeModal();
+  };
+
+  return (
+    <div className="min-h-[500px]" style={{ background: "#FAFBFF" }}>
+      <Style />
+      <div className="container mx-auto px-4 py-4 max-w-3xl">
+
+        {/* Header (Softr's modal has its own close X — no need for ours) */}
+        <header className="mb-4">
+          <h2 className="text-base" style={{ color: "#000F4D", fontWeight: 600 }}>Pick from your reviews</h2>
+          <p className="text-xs mt-0.5" style={{ color: "#7A93FF", fontWeight: 300 }}>
+            Click a video to use it. The brief will reference the review so the AI uses your existing analysis.
+          </p>
+        </header>
+
+        {/* Search */}
+        <div className="mb-3 relative">
+          <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#7A93FF" }} />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or type…"
+            className="w-full text-sm rounded-lg pl-9 pr-3 py-2.5 bg-white"
+            style={{ border: "1px solid rgba(217, 224, 255, 0.7)", color: "#001364", outline: "none" }}
+          />
+        </div>
+
+        {/* Body */}
+        {status === "pending" ? (
+          <div className="grid grid-cols-3 gap-3">
+            {Array.from({ length: 6 }).map((_, i) => <div key={i} className="bln-skel rounded-lg" style={{ aspectRatio: "1 / 1.2" }} />)}
+          </div>
+        ) : items.length === 0 ? (
+          <div className="text-center py-12 rounded-xl bg-white" style={{ border: "1px dashed rgba(135, 156, 247, 0.45)" }}>
+            <p className="text-sm" style={{ color: "#000F4D", fontWeight: 500 }}>No reviews yet</p>
+            <p className="text-xs mt-1" style={{ color: "#7A93FF", fontWeight: 300 }}>Reviewed videos in this workspace will show up here.</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-10 text-sm" style={{ color: "#7A93FF" }}>No matches for "{search}".</div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {filtered.map((r) => (
+              <div
+                key={r.id}
+                className="rounded-lg bg-white overflow-hidden transition-all hover:shadow-md hover:-translate-y-0.5"
+                style={{ border: "1px solid rgba(217, 224, 255, 0.6)", cursor: "pointer" }}
+                onClick={() => pickAndClose(r)}
+              >
+                <div className="relative aspect-square overflow-hidden" style={{ background: "rgba(135, 156, 247, 0.06)" }}>
+                  {r.thumbnail ? (
+                    <img src={r.thumbnail} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-xs" style={{ color: "#7A93FF" }}>No thumbnail</div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setPreviewId(r.id); }}
+                    className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center"
+                    style={{ background: "rgba(0, 15, 77, 0.65)", color: "#fff", border: "none" }}
+                    aria-label="Preview"
+                  >
+                    <Play size={12} />
+                  </button>
+                </div>
+                <div className="px-2 py-1.5">
+                  <div className="text-xs" style={{ color: "#000F4D", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</div>
+                  {r.submissionType && (
+                    <div className="text-[10px] mt-0.5" style={{ color: "#7A93FF", fontWeight: 300 }}>{r.submissionType}</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+      </div>
+
+      {/* Preview lightbox — overlay inside the picker */}
+      {preview && (
+        <div
+          onClick={() => setPreviewId(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0, 15, 77, 0.55)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#000", borderRadius: 12, overflow: "hidden", maxWidth: 400, width: "100%" }}>
+            <div style={{ position: "relative", aspectRatio: "9 / 16", background: "#000" }}>
+              {/\.(mp4|mov|webm|m4v)(\?|$)/i.test(preview.displayUrl)
+                ? <video src={preview.displayUrl} controls autoPlay style={{ width: "100%", height: "100%" }} />
+                : <iframe srcDoc={preview.embedCode || `<a href='${preview.displayUrl}' target='_blank'>${preview.displayUrl}</a>`} style={{ width: "100%", height: "100%", border: "none" }} title="preview" />}
+              <button onClick={() => setPreviewId(null)} aria-label="Close preview"
+                style={{ position: "absolute", top: 8, right: 8, width: 32, height: 32, borderRadius: 999, background: "rgba(255,255,255,0.92)", color: "#001364", display: "inline-flex", alignItems: "center", justifyContent: "center", border: "none" }}>
+                <X size={16} />
+              </button>
+            </div>
+            <div style={{ padding: "10px 12px", color: "#fff", fontSize: 13, fontWeight: 500 }}>{preview.name}</div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+function Style() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+      * { font-family: 'League Spartan', sans-serif; }
+      .bln-skel {
+        background: linear-gradient(120deg, rgba(217, 224, 255, 0.5) 30%, rgba(240, 244, 255, 1) 50%, rgba(217, 224, 255, 0.5) 70%);
+        background-size: 200% 100%;
+        animation: blnShimmer 1.2s ease-in-out infinite;
+      }
+      @keyframes blnShimmer {
+        0%   { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+    `}</style>
+  );
+}

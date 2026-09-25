@@ -19,6 +19,7 @@ const select = q.select({
   studioMonthly:  "YXlM3",
   studioYearly:   "r7OxD",
   plan:           "Ux1pf",
+  status:         "kClk9", // status SELECT — "Active" / "Inactive". Drives active vs lapsed branching.
 });
 
 // Hours-saved values pulled from pricing.value_time_saved (rounded to integer
@@ -110,6 +111,17 @@ export default function Block() {
   const currentTier = currentPlan?.tier || null;
   const currentRank = currentPlan?.rank ?? null;
 
+  // status field on users — SELECT with "Active" / "Inactive". Anything
+  // not exactly "active" (case-insensitive) treats the plan link on the
+  // user record as their HISTORICAL plan, not the one they're paying for.
+  const rawStatus = Array.isArray(f.status)
+    ? (f.status[0] ?? "")
+    : (f.status ?? "");
+  const statusLabel = typeof rawStatus === "object" && rawStatus
+    ? (rawStatus.label ?? rawStatus.value ?? "")
+    : rawStatus;
+  const isActive = String(statusLabel).toLowerCase() === "active";
+
   const upgradeUrlFor = (tier, interval) => {
     const key = tier.toLowerCase() + interval; // "creatorYearly"
     return f[key];
@@ -125,6 +137,13 @@ export default function Block() {
 
   const handleContinue = () => {
     if (!selectedPlan) return;
+    // When the user isn't currently paying, every plan is a fresh
+    // subscribe — skip the "same plan" bail and the downgrade modal,
+    // go straight to the Payment Link.
+    if (!isActive) {
+      goTo(selectedPlan);
+      return;
+    }
     if (currentTier === selectedPlan.tier && currentPlan?.interval === selectedPlan.interval) return;
     if (currentRank !== null && selectedPlan.rank < currentRank) {
       setDowngradeTarget(selectedPlan);
@@ -149,14 +168,24 @@ export default function Block() {
       <Style />
       <div className="gs-page">
         <div className="text-center mb-6">
-          {currentTier && (
+          {currentTier && isActive && (
             <div className="trial-banner">
               <span className="trial-dot"></span>
               You're currently on {currentTier} · Switch any time
             </div>
           )}
-          <h1 className="gs-headline">Switch your plan</h1>
-          <p className="gs-sub">Upgrade for more capacity, downgrade to a smaller tier, or change interval to save. Stripe prorates the difference automatically.</p>
+          {currentTier && !isActive && (
+            <div className="trial-banner trial-banner-lapsed">
+              <span className="trial-dot"></span>
+              You were previously on {currentTier} · Pick a plan to restart
+            </div>
+          )}
+          <h1 className="gs-headline">{isActive ? "Switch your plan" : "Restart your plan"}</h1>
+          <p className="gs-sub">
+            {isActive
+              ? "Upgrade for more capacity, downgrade to a smaller tier, or change interval to save. Stripe prorates the difference automatically."
+              : "Your subscription isn't active right now. Pick any plan below to start reviewing again."}
+          </p>
           <div className="mt-6">
             <IntervalToggle value={billingInterval} onChange={setBillingInterval} maxSavings={MAX_YEARLY_SAVINGS} />
           </div>
@@ -164,30 +193,56 @@ export default function Block() {
 
         <div className="plan-grid mt-8">
           {visiblePlans.map((p) => {
-            const isCurrent = currentTier === p.tier && currentPlan?.interval === p.interval;
+            // Same TIER as the user's current plan (Creator/Crew/Studio) — the
+            // badge attaches at the tier level, since monthly vs yearly is the
+            // same plan, just a different billing cadence.
+            const isSameTier = currentPlan != null && currentTier === p.tier;
+            // Exact match (tier AND interval) is what locks the card when the
+            // user is actively paying — there's nothing to switch to.
+            const isExactMatch = isSameTier && currentPlan?.interval === p.interval;
+            const isCurrent = isExactMatch && isActive;
+            const isPrevious = isExactMatch && !isActive;
+            // Same tier, different interval — still the user's plan, but a
+            // clickable billing-interval switch.
+            const isOtherInterval = isSameTier && !isExactMatch;
             const isSelected = selectedPlanId === p.id;
             const isYearly = p.interval === "Yearly";
             const monthlyEquivalent = isYearly ? Math.round(p.price / 12) : p.price;
             const billNote = isYearly ? `Billed $${p.price.toLocaleString()} per year` : "Billed monthly";
             const savings = isYearly ? yearlySavingsPct(p.tier) : 0;
             const cls = "plan-card" +
-              (p.popular && !isCurrent ? " popular" : "") +
+              // Don't paint the user's own tier as "popular"; the current /
+              // previous plan badge wins that visual slot.
+              (p.popular && !isSameTier ? " popular" : "") +
               (isSelected && !isCurrent ? " selected" : "") +
-              (isCurrent ? " is-current" : "");
+              (isCurrent ? " is-current" : "") +
+              // When the user is lapsed, treat both intervals of their old
+              // tier as "previous" so the styling is consistent across toggles.
+              ((isPrevious || (isOtherInterval && !isActive)) ? " is-previous" : "");
 
             const ctaText = isCurrent
               ? "Your current plan"
-              : (currentRank !== null && p.rank < currentRank)
-                ? `Downgrade to ${p.tier}`
-                : (currentRank !== null && p.rank > currentRank)
-                  ? `Upgrade to ${p.tier}`
-                  : `Switch to ${p.tier}`;
+              : !isActive
+                ? (isSameTier ? `Restart ${p.tier}` : `Start ${p.tier}`)
+                : isOtherInterval
+                  ? `Switch to ${p.interval.toLowerCase()} billing`
+                  : (currentRank !== null && p.rank < currentRank)
+                    ? `Downgrade to ${p.tier}`
+                    : (currentRank !== null && p.rank > currentRank)
+                      ? `Upgrade to ${p.tier}`
+                      : `Switch to ${p.tier}`;
 
             return (
               <div key={p.id} className={cls}
                 onClick={() => { if (!isCurrent) setSelectedPlanId(p.id); }}>
-                {p.popular && !isCurrent && <div className="plan-popular-tag">Most popular</div>}
+                {p.popular && !isSameTier && <div className="plan-popular-tag">Most popular</div>}
                 {isCurrent && <div className="plan-popular-tag" style={{ background: "var(--bl-navy)" }}>Your current plan</div>}
+                {/* Other interval of the SAME tier — same "Your current plan"
+                    badge so the user sees Creator Monthly + Creator Yearly
+                    both flagged when they're on Creator. */}
+                {isOtherInterval && isActive && <div className="plan-popular-tag" style={{ background: "var(--bl-navy)" }}>Your current plan</div>}
+                {isPrevious && <div className="plan-popular-tag" style={{ background: "var(--bl-fg-muted)" }}>Your previous plan</div>}
+                {isOtherInterval && !isActive && <div className="plan-popular-tag" style={{ background: "var(--bl-fg-muted)" }}>Your previous plan</div>}
                 <div className="plan-tier">{p.tier}</div>
                 <div className="plan-name">For {p.tier === "Creator" ? "solos" : p.tier === "Crew" ? "growing teams" : "agencies"}</div>
                 <div className="plan-desc">{p.desc}</div>
@@ -231,7 +286,7 @@ export default function Block() {
           </div>
           <button className={"bl-btn bl-btn-primary" + (selectedPlan ? " pulse" : "")}
             onClick={handleContinue} disabled={!selectedPlan}>
-            {selectedPlan && currentRank !== null && selectedPlan.rank < currentRank
+            {selectedPlan && isActive && currentRank !== null && selectedPlan.rank < currentRank
               ? <>Continue downgrade <I.ArrowRight size={14} /></>
               : <>Continue to checkout <I.ArrowRight size={14} /></>}
           </button>
@@ -833,6 +888,24 @@ function Style() {
       .plan-card.is-current { background: var(--bl-light-2); opacity: 0.85; cursor: not-allowed; }
       .plan-card.is-current:hover { transform: none; border-color: var(--bl-border); box-shadow: none; }
       .plan-card.is-current .plan-cta { background: var(--bl-border); color: var(--bl-fg-muted); cursor: not-allowed; }
+
+      /* Previous-plan styling — user lapsed off this plan. Still
+         clickable so they can restart, but visually distinguished. */
+      .plan-card.is-previous { border-color: var(--bl-fg-muted); }
+      .plan-card.is-previous .plan-cta { background: var(--bl-light-2); color: var(--bl-fg); }
+      .plan-card.is-previous.selected { border-color: var(--bl-blue); }
+      .plan-card.is-previous.selected .plan-cta { background: var(--bl-blue); color: #fff; }
+
+      /* Trial banner — lapsed variant (subdued instead of green) */
+      .trial-banner-lapsed {
+        background: var(--bl-light-2);
+        color: var(--bl-fg);
+        border-color: var(--bl-border);
+      }
+      .trial-banner-lapsed .trial-dot {
+        background: var(--bl-fg-muted);
+        box-shadow: 0 0 0 4px rgba(107, 122, 153, 0.18);
+      }
 
       /* Downgrade modal */
       .dg-modal-bg {

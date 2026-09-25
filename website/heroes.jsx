@@ -305,9 +305,26 @@ const HEADLINES = [
   { a: "Score every UGC asset", em: "in 4", b: " seconds." },
 ];
 
+// Where the hero hands a pasted link over to. The umbrella breakdown
+// page takes any platform and reads ?url= straight onto its gate, so
+// the visitor arrives having already made the first move.
+const HANDOVER_PAGE = "/free-tool-video-breakdown";
+function isPastableVideoUrl(input) {
+  const v = (input || "").trim();
+  return /^(https?:\/\/)?([a-z0-9-]+\.)*(tiktok\.com|instagram\.com|youtube\.com|youtu\.be|facebook\.com|fb\.watch)\//i.test(v);
+}
+
 function HeroV1() {
   const [idx, setIdx] = React.useState(0);
   const [hl, setHl] = React.useState(0);
+  const [videoUrl, setVideoUrl] = React.useState("");
+  const [urlError, setUrlError] = React.useState(false);
+  const handOver = () => {
+    const v = videoUrl.trim();
+    if (!isPastableVideoUrl(v)) { setUrlError(true); return; }
+    const full = /^https?:\/\//i.test(v) ? v : "https://" + v;
+    window.location.href = `${HANDOVER_PAGE}?url=${encodeURIComponent(full)}`;
+  };
   React.useEffect(() => {
     const t = setInterval(() => setIdx(x => (x + 1) % ANALYSIS_CARDS.length), 5800);
     return () => clearInterval(t);
@@ -409,12 +426,20 @@ function HeroV1() {
             borderRadius: 18, padding: 10,
             boxShadow: "0 6px 24px -8px rgba(0,19,100,0.10)",
           }}>
-            <div style={{
-              flex: 1, padding: "0 18px",
-              fontSize: 18, fontWeight: 500, color: NAVY, opacity: 0.55,
-            }}>
-              https://www.tiktok.com/@creator/video/…
-            </div>
+            <input
+              type="text"
+              value={videoUrl}
+              onChange={(e) => { setVideoUrl(e.target.value); setUrlError(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter") handOver(); }}
+              placeholder="https://www.tiktok.com/@creator/video/…"
+              aria-label="Paste a video URL"
+              style={{
+                flex: 1, padding: "0 18px", minWidth: 0,
+                fontSize: 18, fontWeight: 500, color: NAVY,
+                border: "none", outline: "none", background: "transparent",
+                fontFamily: "inherit",
+              }}
+            />
             <button style={{
               display: "inline-flex", alignItems: "center", gap: 10,
               padding: "16px 24px", borderRadius: 12,
@@ -422,13 +447,18 @@ function HeroV1() {
               fontSize: 18, fontWeight: 700, border: "none",
               fontFamily: "inherit", cursor: "pointer",
               boxShadow: "0 4px 14px -2px rgba(135,156,247,0.55)",
-            }}>
+            }} onClick={handOver}>
               Break it down
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14M13 5l7 7-7 7"/>
               </svg>
             </button>
           </div>
+          {urlError ? (
+            <p style={{ margin: "10px 2px 0", fontSize: 14, color: "#c8443c", fontWeight: 500 }}>
+              Paste a link from TikTok, Instagram, YouTube or Facebook.
+            </p>
+          ) : null}
           {/* Value props row */}
           <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 28, fontSize: 16, color: NAVY, fontWeight: 600 }}>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>

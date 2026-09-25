@@ -1,7 +1,14 @@
 // /settings · Workspace tab — single Vibe Code block.
-// Three sub-sections: Identity → Brand → Audience.
+// Five sub-sections: Identity → Brand → Audience → Products & features
+// → Contact & community.
 // Each section has its own Save / Discard buttons; nothing persists
 // until the user explicitly hits Save.
+//
+// The long-text fields (Brand, Audience, Products) render as the same
+// accordion the onboarding customize block uses: collapsed rows with a
+// one-line teaser + pencil, at most ONE open across the whole tab, the
+// pencil opening straight into an inline edit. Identity and Contact
+// keep their structured controls.
 //
 // SOFTR CONFIG REQUIRED:
 //   Source tab: bind to ACCOUNTS in "brieflee beta", filter to logged-in
@@ -12,14 +19,62 @@
 import { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { X, Edit2, ChevronDown } from "lucide-react";
 import {
+  datasource,
   useRecord,
+  useRecords,
   useCurrentRecordId,
+  useRecordCreate,
   useRecordUpdate,
+  useRecordDelete,
   useUpload,
   q,
 } from "@/lib/datasource";
+import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+
+// SOURCES on this block. Naming them explicitly is NOT optional: a Vibe
+// block with a single source can get away with omitting `from`, but the
+// moment a second source is attached every hook without `from` throws at
+// runtime while the code still compiles. The products source is attached
+// for the Products & features section, so every hook below passes `from`.
+const ds = datasource.define({
+  accounts: "39b52618-2cba-4fc3-9e35-77a55ca48892",
+  products: "products",
+});
+
+// ---- Field map (PRODUCTS) -----------------------------------------
+// The Products & features section reads and writes real product records
+// rather than the three product_or_feature_* text fields on the account.
+const productFields = q.select({
+  name:        "kNM2x",
+  accounts:    "MDPv7",
+  type:        "I2vm9",
+  url:         "NpnYk",
+  description: "XGsxw",
+  imageUrl:    "wRahq",
+  image:       "HCEi9",
+  price:       "DATrL",
+  status:      "Es5IA",
+});
+const PRODUCT_TYPE_PRODUCT = { id: "09733eb9-9e77-4e11-bbdf-4e5e9d5a445e", label: "Product" };
+const PRODUCT_TYPE_FEATURE = { id: "0059fed7-4bfa-4532-bfc4-c99477589e9a", label: "Feature" };
+const PRODUCT_STATUS_ACTIVE = { id: "8e6bd9b0-6f7a-4d69-b23d-bb69577c1de3", label: "Active" };
+
+// An ATTACHMENT comes back as an array of { url, filename }. The uploaded
+// image wins over the scraped image_url, which is frequently a brand logo
+// or a promo tile rather than the product.
+function extractFileUrl(raw) {
+  if (!raw) return "";
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  if (!first) return "";
+  if (typeof first === "string") return first;
+  return first.url || first.thumbnailUrl || "";
+}
+function productImageOf(f) {
+  return extractFileUrl(f.image) || extractText(f.imageUrl) || "";
+}
 
 // ---- Field map (ACCOUNTS) -----------------------------------------
 const select = q.select({
@@ -29,11 +84,17 @@ const select = q.select({
                               // no manual upload exists
   niche:              "vOp4b",
   brandBio:           "iVPat",
-  brandVoice:         "ybmp8",
+  brandVoice:         "ybmp8", // rendered as "Content Style" in the UI
   brandCta:           "s9vzj",
   targetAudience:     "6g1Vd",
   audiencePainPoints: "B4zya",
   audienceObjectives: "5Wq2k",
+  productOrFeature1:  "FLZz5",
+  productOrFeature2:  "4nv9b",
+  productOrFeature3:  "ty0gw",
+  preferredFormats:   "V7fzw", // comma-separated format names
+  socialHandles:      "yo2NI", // JSON [{platform, handle}]
+  communityLinks:     "oHBT3", // JSON [{label, url}]
 });
 
 const updateFields = q.select({
@@ -46,6 +107,12 @@ const updateFields = q.select({
   targetAudience:     "6g1Vd",
   audiencePainPoints: "B4zya",
   audienceObjectives: "5Wq2k",
+  productOrFeature1:  "FLZz5",
+  productOrFeature2:  "4nv9b",
+  productOrFeature3:  "ty0gw",
+  preferredFormats:   "V7fzw",
+  socialHandles:      "yo2NI",
+  communityLinks:     "oHBT3",
 });
 
 const EMPTY_DRAFT = {
@@ -57,7 +124,143 @@ const EMPTY_DRAFT = {
   targetAudience: "",
   audiencePainPoints: "",
   audienceObjectives: "",
+  productOrFeature1: "",
+  productOrFeature2: "",
+  productOrFeature3: "",
+  preferredFormats: "",
 };
+
+// Platform pickers for the Contact & Community editors. "Other" swaps
+// the select for a free-text label so brand-specific links (ambassador
+// pages, affiliate sign-ups) still carry a name the brief builder can
+// render.
+const SOCIAL_PLATFORMS = ["TikTok", "Instagram", "YouTube", "Facebook", "X (Twitter)", "LinkedIn", "Pinterest", "Snapchat"];
+const COMMUNITY_PLATFORMS = ["WhatsApp", "Discord", "Slack", "Telegram", "Lark", "Facebook Group", "Ambassador page", "Affiliate sign-up"];
+
+function parseJsonList(raw) {
+  if (!raw || typeof raw !== "string") return [];
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+// [{platform|label, value}] stored rows → editor rows with an "Other"
+// custom-label escape hatch.
+function toEditorRows(list, knownPlatforms, nameKey, valueKey) {
+  return list.map((x) => {
+    const name = (x?.[nameKey] || "").trim();
+    const known = knownPlatforms.includes(name);
+    return {
+      platform: known ? name : "Other",
+      custom: known ? "" : name,
+      value: (x?.[valueKey] || "").trim(),
+    };
+  });
+}
+
+function serializeEditorRows(rows, nameKey, valueKey) {
+  const list = rows
+    .map((r) => ({
+      [nameKey]: (r.platform === "Other" ? r.custom.trim() : r.platform) || "Other",
+      [valueKey]: r.value.trim(),
+    }))
+    .filter((x) => x[valueKey]);
+  return list.length ? JSON.stringify(list) : "";
+}
+
+// product_or_feature_1-3 arrive as "Name\nDESCRIPTION\n...\nHOOKS\n..."
+// — first line is the product name, then ALL-CAPS section headings.
+// Parse that shape so the accordion can show the real product name as
+// the row label and render each section under a styled eyebrow.
+function parseProductBlob(text) {
+  if (!text) return null;
+  const lines = text.replace(/<br\s*\/?>/gi, "\n").split("\n");
+  const isHeading = (t) => t.length > 2 && t === t.toUpperCase() && /^[A-Z][A-Z &/\-]*$/.test(t.replace(/\s+/g, " "));
+  let name = "";
+  const sections = [];
+  let current = null;
+  lines.forEach((line) => {
+    const t = line.trim();
+    if (!t) return;
+    if (isHeading(t)) { current = { heading: t, body: [] }; sections.push(current); return; }
+    if (!current) {
+      if (!name) { name = t; return; }
+      current = { heading: "", body: [] };
+      sections.push(current);
+    }
+    current.body.push(line);
+  });
+  if (!name && sections.length === 0) return null;
+  return { name, sections: sections.map((s) => ({ heading: s.heading, body: s.body.join("\n") })) };
+}
+
+function ProductRead({ parsed }) {
+  return (
+    <div>
+      {parsed.sections.map((s, i) => (
+        <div key={i} style={{ marginTop: i === 0 ? 0 : 12 }}>
+          {s.heading && (
+            <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "#879CF7", marginBottom: 3 }}>
+              {s.heading}
+            </div>
+          )}
+          <div className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>
+            {formatTextWithBullets(s.body)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// One-line teaser for a collapsed field (same as onboarding customize):
+// first line(s) of plain text, CSS ellipsis does the clipping.
+function teaserOf(text) {
+  if (!text) return "";
+  return text
+    .replace(/<br\s*\/?>/gi, " ")
+    .split("\n")
+    .map((l) => l.trim().replace(/^[•\-\*]\s+/, ""))
+    .filter(Boolean)
+    .join(" · ");
+}
+
+// Read view for an expanded field: bullet lines become a real list.
+function formatTextWithBullets(text) {
+  if (!text) return null;
+  const lines = text.replace(/<br\s*\/?>/gi, "\n").split("\n").filter((l) => l.trim());
+  if (lines.length === 0) return null;
+  const elements = [];
+  let currentList = [];
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    const bullet = trimmed.match(/^([•\-\*])\s+(.+)$/);
+    if (bullet) {
+      currentList.push(bullet[2]);
+    } else {
+      if (currentList.length > 0) {
+        elements.push(
+          <ul key={`list-${elements.length}`} className="list-disc list-inside space-y-1 my-2">
+            {currentList.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        );
+        currentList = [];
+      }
+      elements.push(<div key={`text-${elements.length}`}>{trimmed}</div>);
+    }
+  });
+  if (currentList.length > 0) {
+    elements.push(
+      <ul key={`list-${elements.length}`} className="list-disc list-inside space-y-1 my-2">
+        {currentList.map((item, i) => <li key={i}>{item}</li>)}
+      </ul>
+    );
+  }
+  return elements.length > 0 ? elements : null;
+}
 
 // =====================================================================
 // Block
@@ -77,12 +280,19 @@ function useWorkspaceRecordId() {
 
 export default function Block() {
   const recordId = useWorkspaceRecordId();
-  const { data: record, status, refetch } = useRecord({ recordId, select });
+  const { data: record, status, refetch } = useRecord({ recordId, select, from: ds.accounts });
 
   // Saved state — mirrors the record after each successful save
   const [saved, setSaved] = useState(EMPTY_DRAFT);
   // Draft state — what the user is editing right now
   const [draft, setDraft] = useState(EMPTY_DRAFT);
+
+  // Contact & Community editors — rows of {platform, custom, value};
+  // saved snapshots kept as the serialized JSON for dirty checks.
+  const [socialRows, setSocialRows] = useState([]);
+  const [socialSavedJson, setSocialSavedJson] = useState("");
+  const [communityRows, setCommunityRows] = useState([]);
+  const [communitySavedJson, setCommunitySavedJson] = useState("");
 
   // Logo state (handled separately — not a plain string)
   const [logoSaved, setLogoSaved] = useState(null); // attachment array or null
@@ -93,6 +303,19 @@ export default function Block() {
   const [savingSection, setSavingSection] = useState(null);
   const [recentlySavedSection, setRecentlySavedSection] = useState(null);
 
+  // Accordion: at most ONE long-text field open across the whole tab;
+  // the pencil opens straight into an inline edit.
+  const [openField, setOpenField] = useState(null);
+  const [editingField, setEditingField] = useState(null);
+  const toggleField = (key) => {
+    if (editingField === key) return; // don't collapse mid-edit
+    setOpenField((cur) => (cur === key ? null : key));
+  };
+  const editField = (key) => {
+    setOpenField(key);
+    setEditingField(key);
+  };
+
   // Hydration is keyed by record.id so workspace switches re-hydrate
   const hydratedForRecordIdRef = useRef(null);
   const pendingSaveContextRef = useRef(null);
@@ -100,7 +323,8 @@ export default function Block() {
   const logoInputRef = useRef(null);
 
   // ---- File upload hook --------------------------------------------
-  const upload = useUpload();
+  // useUpload() returns { uploadAsync, isUploading } — NOT a mutation.
+  const { uploadAsync } = useUpload();
 
   // ---- Hydrate from record (re-runs when record.id changes) -------
   // useRecord returns data with fields nested under data.fields.<alias>.
@@ -120,15 +344,27 @@ export default function Block() {
       targetAudience:     extractText(f.targetAudience),
       audiencePainPoints: extractText(f.audiencePainPoints),
       audienceObjectives: extractText(f.audienceObjectives),
+      productOrFeature1:  extractText(f.productOrFeature1),
+      productOrFeature2:  extractText(f.productOrFeature2),
+      productOrFeature3:  extractText(f.productOrFeature3),
+      preferredFormats:   extractText(f.preferredFormats),
     };
     setSaved(next);
     setDraft(next);
     setLogoSaved(f.logo ?? null);
+
+    const socials = toEditorRows(parseJsonList(f.socialHandles), SOCIAL_PLATFORMS, "platform", "handle");
+    setSocialRows(socials);
+    setSocialSavedJson(serializeEditorRows(socials, "platform", "handle"));
+    const community = toEditorRows(parseJsonList(f.communityLinks), COMMUNITY_PLATFORMS, "label", "url");
+    setCommunityRows(community);
+    setCommunitySavedJson(serializeEditorRows(community, "label", "url"));
   }, [record]);
 
   // ---- Update hook -------------------------------------------------
   const updateRecord = useRecordUpdate({
     fields: updateFields,
+    from: ds.accounts,
     onSuccess: () => {
       const ctx = pendingSaveContextRef.current;
       pendingSaveContextRef.current = null;
@@ -177,7 +413,15 @@ export default function Block() {
     draft.targetAudience !== saved.targetAudience ||
     draft.audiencePainPoints !== saved.audiencePainPoints ||
     draft.audienceObjectives !== saved.audienceObjectives;
-  const anyDirty = isIdentityDirty || isBrandDirty || isAudienceDirty;
+  const isProductsDirty =
+    draft.productOrFeature1 !== saved.productOrFeature1 ||
+    draft.productOrFeature2 !== saved.productOrFeature2 ||
+    draft.productOrFeature3 !== saved.productOrFeature3 ||
+    draft.preferredFormats !== saved.preferredFormats;
+  const isContactDirty =
+    serializeEditorRows(socialRows, "platform", "handle") !== socialSavedJson ||
+    serializeEditorRows(communityRows, "label", "url") !== communitySavedJson;
+  const anyDirty = isIdentityDirty || isBrandDirty || isAudienceDirty || isProductsDirty || isContactDirty;
 
   // ---- beforeunload guard -----------------------------------------
   useEffect(() => {
@@ -201,8 +445,13 @@ export default function Block() {
     try {
       if (logoPending) {
         setSavingSection("identity");
-        const uploaded = await upload.mutateAsync(logoPending);
-        logoForWrite = Array.isArray(uploaded) ? uploaded : [uploaded];
+        // uploadAsync resolves to an ARRAY of { id, file, status, url }.
+        const [result] = await uploadAsync(logoPending);
+        if (!result || result.status !== "completed" || !result.url) {
+          throw new Error("Upload didn't complete.");
+        }
+        // Attachment fields take an array of { filename, url }.
+        logoForWrite = [{ filename: result.file?.name || "logo", url: result.url }];
       } else if (logoCleared) {
         logoForWrite = null;
       }
@@ -316,6 +565,54 @@ export default function Block() {
       audienceObjectives: saved.audienceObjectives,
     }));
 
+  const saveProducts = () => {
+    performSave(
+      "products",
+      {
+        productOrFeature1: draft.productOrFeature1.trim(),
+        productOrFeature2: draft.productOrFeature2.trim(),
+        productOrFeature3: draft.productOrFeature3.trim(),
+        preferredFormats: draft.preferredFormats.trim(),
+      },
+      () => {
+        setSaved((cur) => ({
+          ...cur,
+          productOrFeature1: draft.productOrFeature1,
+          productOrFeature2: draft.productOrFeature2,
+          productOrFeature3: draft.productOrFeature3,
+          preferredFormats: draft.preferredFormats,
+        }));
+      },
+    );
+  };
+  const discardProducts = () => {
+    setDraft((cur) => ({
+      ...cur,
+      productOrFeature1: saved.productOrFeature1,
+      productOrFeature2: saved.productOrFeature2,
+      productOrFeature3: saved.productOrFeature3,
+      preferredFormats: saved.preferredFormats,
+    }));
+  };
+
+  const saveContact = () => {
+    performSave(
+      "contact",
+      {
+        socialHandles: serializeEditorRows(socialRows, "platform", "handle"),
+        communityLinks: serializeEditorRows(communityRows, "label", "url"),
+      },
+      () => {
+        setSocialSavedJson(serializeEditorRows(socialRows, "platform", "handle"));
+        setCommunitySavedJson(serializeEditorRows(communityRows, "label", "url"));
+      },
+    );
+  };
+  const discardContact = () => {
+    setSocialRows(toEditorRows(parseJsonList(socialSavedJson), SOCIAL_PLATFORMS, "platform", "handle"));
+    setCommunityRows(toEditorRows(parseJsonList(communitySavedJson), COMMUNITY_PLATFORMS, "label", "url"));
+  };
+
   // ---- Render guards -----------------------------------------------
   if (status === "pending") return <BlockShell><Loading /></BlockShell>;
   if (status === "error") return <BlockShell><Loading error /></BlockShell>;
@@ -400,37 +697,27 @@ export default function Block() {
         onSave={saveBrand}
         onDiscard={discardBrand}
       >
-        <FieldRow label="Brand bio">
-          <Textarea
-            value={draft.brandBio}
-            onChange={(e) => setField("brandBio", e.target.value)}
-            rows={3}
-          />
-        </FieldRow>
-
-        <FieldRow label="Brand voice">
-          <Textarea
-            value={draft.brandVoice}
-            onChange={(e) => setField("brandVoice", e.target.value)}
-            rows={3}
-          />
-        </FieldRow>
-
-        <FieldRow label="Brand CTA">
-          <Textarea
-            value={draft.brandCta}
-            onChange={(e) => setField("brandCta", e.target.value)}
-            rows={2}
-          />
-        </FieldRow>
-
-        <FieldRow label="Niche">
-          <Textarea
-            value={draft.niche}
-            onChange={(e) => setField("niche", e.target.value)}
-            rows={2}
-          />
-        </FieldRow>
+        <div className="ws-acc-group">
+          {[
+            { key: "brandBio",   label: "Brand bio",     rows: 4 },
+            { key: "brandVoice", label: "Content Style", rows: 4 },
+            { key: "brandCta",   label: "Brand CTA",     rows: 3 },
+            { key: "niche",      label: "Niche",         rows: 3 },
+          ].map((fld) => (
+            <AccordionField
+              key={fld.key}
+              label={fld.label}
+              value={draft[fld.key]}
+              rows={fld.rows}
+              open={openField === fld.key}
+              editing={editingField === fld.key}
+              onToggle={() => toggleField(fld.key)}
+              onEdit={() => editField(fld.key)}
+              onBlurEdit={() => setEditingField(null)}
+              onChange={(v) => setField(fld.key, v)}
+            />
+          ))}
+        </div>
       </SectionCard>
 
       {/* ── Section 3 · Audience ───────────────────────────────────── */}
@@ -443,27 +730,77 @@ export default function Block() {
         onSave={saveAudience}
         onDiscard={discardAudience}
       >
-        <FieldRow label="Target audience">
-          <Textarea
-            value={draft.targetAudience}
-            onChange={(e) => setField("targetAudience", e.target.value)}
-            rows={3}
+        <div className="ws-acc-group">
+          {[
+            { key: "targetAudience",     label: "Target audience",       rows: 4 },
+            { key: "audiencePainPoints", label: "Audience pain points",  rows: 4 },
+            { key: "audienceObjectives", label: "Audience objectives",   rows: 4 },
+          ].map((fld) => (
+            <AccordionField
+              key={fld.key}
+              label={fld.label}
+              value={draft[fld.key]}
+              rows={fld.rows}
+              open={openField === fld.key}
+              editing={editingField === fld.key}
+              onToggle={() => toggleField(fld.key)}
+              onEdit={() => editField(fld.key)}
+              onBlurEdit={() => setEditingField(null)}
+              onChange={(v) => setField(fld.key, v)}
+            />
+          ))}
+        </div>
+      </SectionCard>
+
+      {/* ── Section 4 · Products & features ────────────────────────── */}
+      <SectionCard
+        title="Products & features"
+        subtitle="What creators should feature, in the words they can use on camera."
+        dirty={isProductsDirty}
+        saving={savingSection === "products"}
+        justSaved={recentlySavedSection === "products"}
+        onSave={saveProducts}
+        onDiscard={discardProducts}
+      >
+        <ProductsManager accountId={recordId} />
+        <FieldRow label="Preferred formats">
+          <Input
+            value={draft.preferredFormats}
+            onChange={(e) => setField("preferredFormats", e.target.value)}
+            placeholder="ASMR, Demo, Founder"
+          />
+          <p className="text-xs" style={{ color: "#879CF7", fontWeight: 400, marginTop: 6 }}>
+            The video formats you want creators to make, separated by commas.
+          </p>
+        </FieldRow>
+      </SectionCard>
+
+      {/* ── Section 5 · Contact & community ────────────────────────── */}
+      <SectionCard
+        title="Contact & community"
+        subtitle="Where creators can find, tag, and point their audience to your brand."
+        dirty={isContactDirty}
+        saving={savingSection === "contact"}
+        justSaved={recentlySavedSection === "contact"}
+        onSave={saveContact}
+        onDiscard={discardContact}
+      >
+        <FieldRow label="Social handles">
+          <PlatformRowsEditor
+            rows={socialRows}
+            onChange={setSocialRows}
+            platforms={SOCIAL_PLATFORMS}
+            valuePlaceholder="@yourbrand"
+            addLabel="+ Add handle"
           />
         </FieldRow>
-
-        <FieldRow label="Audience pain points">
-          <Textarea
-            value={draft.audiencePainPoints}
-            onChange={(e) => setField("audiencePainPoints", e.target.value)}
-            rows={3}
-          />
-        </FieldRow>
-
-        <FieldRow label="Audience objectives">
-          <Textarea
-            value={draft.audienceObjectives}
-            onChange={(e) => setField("audienceObjectives", e.target.value)}
-            rows={3}
+        <FieldRow label="Community links">
+          <PlatformRowsEditor
+            rows={communityRows}
+            onChange={setCommunityRows}
+            platforms={COMMUNITY_PLATFORMS}
+            valuePlaceholder="https://…"
+            addLabel="+ Add link"
           />
         </FieldRow>
       </SectionCard>
@@ -489,6 +826,337 @@ function BlockShell({ children }) {
       <div className="settings-workspace container mx-auto px-4 w-full" style={{ maxWidth: 1140 }}>
         <div className="space-y-4">{children}</div>
       </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// Products & features — one card per row in the products table
+// =====================================================================
+// Each product saves itself, so this sits inside the section card but
+// outside its Save/Discard footer, which now only governs Preferred
+// formats. The three product_or_feature_* fields still exist on the
+// account as the legacy fallback and are simply no longer edited here.
+function ProductsManager({ accountId }) {
+  const { data, status, refetch } = useRecords({
+    select: productFields,
+    from: ds.products,
+    count: 100,
+    enabled: !!accountId,
+    where: q.array("accounts").is(accountId || ""),
+    orderBy: q.asc("name"),
+  });
+  const items = (data?.pages || []).flatMap((p) => p.items || []);
+
+  const createProduct = useRecordCreate({ fields: productFields, from: ds.products });
+  const updateProduct = useRecordUpdate({ fields: productFields, from: ds.products });
+  const deleteProduct = useRecordDelete({ from: ds.products });
+  const { uploadAsync, isUploading } = useUpload();
+
+  const [openId, setOpenId] = useState("");
+  const [drafts, setDrafts] = useState({});
+  const [files, setFiles] = useState({});
+  const [busyId, setBusyId] = useState("");
+
+  // The draft always starts from the full record. Merging a patch onto an
+  // empty object is what broke editing: after a save cleared the draft
+  // while the row was still open, the next keystroke produced a draft
+  // holding ONLY that field and every other input blanked out.
+  const baseDraft = (item) => {
+    const f = item.fields || {};
+    return {
+      name: extractText(f.name),
+      price: extractText(f.price),
+      url: extractText(f.url),
+      description: extractText(f.description),
+      type: extractText(f.type) === "Feature" ? "Feature" : "Product",
+    };
+  };
+  const draftFor = (item) => drafts[item.id] || baseDraft(item);
+  const setDraft = (item, patch) =>
+    setDrafts((cur) => ({ ...cur, [item.id]: { ...(cur[item.id] || baseDraft(item)), ...patch } }));
+
+  const toggle = (item) => {
+    const next = openId === item.id ? "" : item.id;
+    if (next && !drafts[item.id]) setDrafts((c) => ({ ...c, [item.id]: baseDraft(item) }));
+    setOpenId(next);
+  };
+
+  const saveProduct = async (item) => {
+    if (!updateProduct.enabled) {
+      toast.error("You do not have permission to edit products");
+      return;
+    }
+    const d = draftFor(item);
+    if (!d.name.trim()) { toast.error("Give the product a name"); return; }
+    setBusyId(item.id);
+    try {
+      const fields = {
+        name: d.name.trim(),
+        price: d.price.trim(),
+        url: d.url.trim(),
+        description: d.description,
+        type: d.type === "Feature" ? PRODUCT_TYPE_FEATURE : PRODUCT_TYPE_PRODUCT,
+      };
+      const pending = files[item.id];
+      if (pending) {
+        // uploadAsync resolves to an ARRAY of { id, file, status, url }.
+        const [result] = await uploadAsync(pending);
+        if (!result || result.status !== "completed" || !result.url) {
+          throw new Error("Image upload didn't complete.");
+        }
+        // Attachment fields take an array of { filename, url }.
+        fields.image = [{ filename: result.file?.name || "product", url: result.url }];
+      }
+      await updateProduct.mutateAsync({ recordId: item.id, fields });
+      setFiles((c) => { const n = { ...c }; delete n[item.id]; return n; });
+      // Keep the draft. Clearing it while the row is open is what made the
+      // next keystroke wipe the other fields.
+      await refetch();
+      toast.success("Product saved");
+    } catch (e) {
+      toast.error("Couldn't save product", { description: e?.message || "Try again." });
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const removeProduct = async (item) => {
+    if (!deleteProduct.enabled) {
+      toast.error("You do not have permission to delete products");
+      return;
+    }
+    if (typeof window !== "undefined" &&
+        !window.confirm(`Delete "${extractText(item.fields?.name) || "this product"}"? This cannot be undone.`)) return;
+    setBusyId(item.id);
+    try {
+      // useRecordDelete takes the id DIRECTLY, not an object.
+      await deleteProduct.mutateAsync(item.id);
+      if (openId === item.id) setOpenId("");
+      await refetch();
+      toast.success("Product deleted");
+    } catch (e) {
+      toast.error("Couldn't delete product", { description: e?.message || "Try again." });
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const addProduct = async () => {
+    if (!createProduct.enabled) {
+      toast.error("You do not have permission to add products");
+      return;
+    }
+    if (!accountId) return;
+    setBusyId("new");
+    try {
+      const created = await createProduct.mutateAsync({
+        name: "Untitled product",
+        accounts: [{ id: accountId }],
+        type: PRODUCT_TYPE_PRODUCT,
+        status: PRODUCT_STATUS_ACTIVE,
+        description: "",
+      });
+      await refetch();
+      const newId = created?.id || created?.recordId || "";
+      if (newId) {
+        setDrafts((c) => ({ ...c, [newId]: { name: "", price: "", url: "", description: "", type: "Product" } }));
+        setOpenId(newId);
+      }
+    } catch (e) {
+      toast.error("Couldn't add product", { description: e?.message || "Try again." });
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  if (!accountId) return null;
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      {status === "pending" && (
+        <p className="text-xs" style={{ color: "#879CF7" }}>Loading products…</p>
+      )}
+      {status === "error" && (
+        <p className="text-xs" style={{ color: "#C2410C" }}>Couldn't load products.</p>
+      )}
+      {status === "success" && items.length === 0 && (
+        <p className="text-xs" style={{ color: "#879CF7", marginBottom: 10 }}>
+          No products yet. Add the products or features you want creators to talk about.
+        </p>
+      )}
+
+      <div className="ws-acc-group">
+        {items.map((item) => {
+          const f = item.fields || {};
+          const d = draftFor(item);
+          const open = openId === item.id;
+          const busy = busyId === item.id;
+          const img = files[item.id]
+            ? null
+            : productImageOf(f);
+          return (
+            <div key={item.id} style={{ borderBottom: "1px solid rgba(217, 224, 255, 0.55)" }}>
+              <button
+                type="button"
+                onClick={() => toggle(item)}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 12,
+                  padding: "10px 2px", background: "none", border: "none",
+                  cursor: "pointer", textAlign: "left",
+                }}
+              >
+                <span style={{
+                  width: 38, height: 38, borderRadius: 8, flexShrink: 0, overflow: "hidden",
+                  background: "rgba(135, 156, 247, 0.10)", display: "flex",
+                  alignItems: "center", justifyContent: "center",
+                }}>
+                  {img
+                    ? <img src={img} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    : <span style={{ fontSize: 10, color: "#879CF7" }}>No image</span>}
+                </span>
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#000F4D", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {d.name || "Untitled"}
+                  </span>
+                  <span style={{ display: "block", fontSize: 11, color: "#879CF7" }}>
+                    {d.type}{d.price ? " · " + d.price : ""}
+                  </span>
+                </span>
+                <ChevronDown
+                  className="h-4 w-4"
+                  style={{ color: "#879CF7", flexShrink: 0, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
+                />
+              </button>
+
+              {open && (
+                <div style={{ padding: "4px 2px 16px" }} className="space-y-3">
+                  <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                    <div style={{
+                      width: 84, height: 84, borderRadius: 10, flexShrink: 0, overflow: "hidden",
+                      background: "rgba(135, 156, 247, 0.10)", display: "flex",
+                      alignItems: "center", justifyContent: "center",
+                    }}>
+                      {files[item.id]
+                        ? <span style={{ fontSize: 10, color: "#879CF7", padding: 6, textAlign: "center" }}>Ready to upload</span>
+                        : img
+                          ? <img src={img} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          : <span style={{ fontSize: 10, color: "#879CF7" }}>No image</span>}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <label className="text-xs" style={{ color: "#334283", fontWeight: 500, display: "block", marginBottom: 4 }}>
+                        Product image
+                      </label>
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files && e.target.files[0];
+                          setFiles((c) => ({ ...c, [item.id]: file || null }));
+                        }}
+                      />
+                      <p className="text-xs" style={{ color: "#879CF7", marginTop: 6 }}>
+                        An uploaded image is used ahead of the one found when your page was read.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div>
+                      <label className="text-xs" style={{ color: "#334283", fontWeight: 500, display: "block", marginBottom: 4 }}>Name</label>
+                      <Input
+                        value={d.name}
+                        onChange={(e) => setDraft(item, { name: e.target.value })}
+                        placeholder="Product name"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs" style={{ color: "#334283", fontWeight: 500, display: "block", marginBottom: 4 }}>Price</label>
+                      <Input
+                        value={d.price}
+                        onChange={(e) => setDraft(item, { price: e.target.value })}
+                        placeholder="e.g. $12.00"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs" style={{ color: "#334283", fontWeight: 500, display: "block", marginBottom: 4 }}>Type</label>
+                    <div style={{ display: "inline-flex", gap: 6 }}>
+                      {["Product", "Feature"].map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setDraft(item, { type: t })}
+                          style={{
+                            padding: "5px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600,
+                            cursor: "pointer",
+                            border: "1px solid " + (d.type === t ? "#879CF7" : "rgba(217, 224, 255, 0.9)"),
+                            background: d.type === t ? "rgba(135, 156, 247, 0.12)" : "#FFFFFF",
+                            color: d.type === t ? "#334283" : "#879CF7",
+                          }}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs" style={{ color: "#334283", fontWeight: 500, display: "block", marginBottom: 4 }}>Page link</label>
+                    <Input value={d.url} onChange={(e) => setDraft(item, { url: e.target.value })} placeholder="https://" />
+                  </div>
+
+                  <div>
+                    <label className="text-xs" style={{ color: "#334283", fontWeight: 500, display: "block", marginBottom: 4 }}>What creators should know</label>
+                    <Textarea
+                      value={d.description}
+                      rows={10}
+                      onChange={(e) => setDraft(item, { description: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    {deleteProduct.enabled ? (
+                      <button
+                        type="button"
+                        onClick={() => removeProduct(item)}
+                        disabled={busy}
+                        className="workspace-discard-btn"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Delete
+                      </button>
+                    ) : <span />}
+                    {updateProduct.enabled && (
+                      <button
+                        type="button"
+                        onClick={() => saveProduct(item)}
+                        disabled={busy || isUploading}
+                        className="workspace-save-btn"
+                      >
+                        {busy || isUploading ? "Saving…" : "Save product"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {createProduct.enabled && (
+        <button
+          type="button"
+          onClick={addProduct}
+          disabled={busyId === "new"}
+          className="workspace-discard-btn"
+          style={{ marginTop: 12, display: "inline-flex", alignItems: "center", gap: 6 }}
+        >
+          <Plus className="h-3.5 w-3.5" /> {busyId === "new" ? "Adding…" : "Add product"}
+        </button>
+      )}
     </div>
   );
 }
@@ -568,6 +1236,86 @@ function FieldRow({ label, children }) {
         {label}
       </label>
       {children}
+    </div>
+  );
+}
+
+// Collapsed teaser row → tap to expand (read view) → pencil to edit
+// inline. Same pattern as the onboarding customize blueprint review.
+// `structured` = a product_or_feature blob: the row label becomes the
+// product name and the read view renders eyebrow section headings.
+function AccordionField({ label, value, rows, structured, open, editing, onToggle, onEdit, onBlurEdit, onChange }) {
+  const parsed = structured ? parseProductBlob(value) : null;
+  const rowLabel = parsed?.name || label;
+  const teaser = parsed
+    ? teaserOf(parsed.sections.map((s) => s.body).join("\n"))
+    : teaserOf(value);
+  return (
+    <div className="ws-acc">
+      <div
+        className="flex items-center gap-2"
+        onClick={onToggle}
+        style={{ cursor: "pointer", userSelect: "none" }}
+      >
+        <div className="flex-1" style={{ minWidth: 0 }}>
+          {parsed && (
+            <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(135, 156, 247, 0.75)" }}>
+              {label}
+            </div>
+          )}
+          <label className="text-xs" style={{ color: "#001364", fontWeight: 600, cursor: "pointer" }}>
+            {rowLabel}
+          </label>
+          {!open && (
+            <div
+              className="text-xs"
+              style={{
+                color: teaser ? "#6B7A99" : "rgba(0, 19, 100, 0.35)",
+                fontWeight: 300, marginTop: 1,
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              }}
+            >
+              {teaser || "Empty"}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onEdit(); }}
+          className="p-1 rounded flex-shrink-0"
+          style={{ background: "transparent", border: "none", cursor: "pointer" }}
+          aria-label={`Edit ${label}`}
+        >
+          <Edit2 className="w-3.5 h-3.5" style={{ color: "#879CF7" }} />
+        </button>
+        <ChevronDown
+          className="w-4 h-4 flex-shrink-0"
+          style={{ color: "#879CF7", transition: "transform 0.2s ease", transform: open ? "rotate(180deg)" : "none" }}
+        />
+      </div>
+      {open && (
+        <div style={{ marginTop: 8 }}>
+          {editing ? (
+            <Textarea
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              onBlur={onBlurEdit}
+              rows={rows}
+              autoFocus
+              className="text-sm"
+              style={{ borderColor: "#879CF7" }}
+            />
+          ) : parsed ? (
+            <ProductRead parsed={parsed} />
+          ) : (
+            <div className="text-sm leading-relaxed" style={{ color: "#000F4D", fontWeight: 300 }}>
+              {formatTextWithBullets(value) || (
+                <span style={{ color: "rgba(0, 19, 100, 0.4)" }}>Empty</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -659,6 +1407,11 @@ function Style() {
           0%, 100% { opacity: 0.5; transform: scale(0.85); }
           50%      { opacity: 1;   transform: scale(1.15); }
         }
+
+        /* ── Accordion field rows (customize-style) ───────────── */
+        .ws-acc { padding: 10px 0; }
+        .ws-acc:first-child { padding-top: 0; }
+        .ws-acc + .ws-acc { border-top: 1px solid rgba(217, 224, 255, 0.4); }
 
         .workspace-save-btn {
           background: #879CF7;
@@ -761,5 +1514,61 @@ function Style() {
         }
       `}
     </style>
+  );
+}
+
+// =====================================================================
+// Contact & Community rows editor — platform select (+ Other free
+// label) alongside the handle/url input.
+// =====================================================================
+function PlatformRowsEditor({ rows, onChange, platforms, valuePlaceholder, addLabel }) {
+  const setRow = (i, patch) => onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const removeRow = (i) => onChange(rows.filter((_, idx) => idx !== i));
+  const addRow = () => onChange([...rows, { platform: platforms[0], custom: "", value: "" }]);
+
+  return (
+    <div className="space-y-2">
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <select
+            value={r.platform}
+            onChange={(e) => setRow(i, { platform: e.target.value })}
+            className="text-sm rounded-lg px-2 py-2 bg-white"
+            style={{ border: "1px solid rgba(217, 224, 255, 0.7)", color: "#001364", minWidth: 130 }}
+          >
+            {platforms.map((p) => <option key={p} value={p}>{p}</option>)}
+            <option value="Other">Other…</option>
+          </select>
+          {r.platform === "Other" && (
+            <Input
+              value={r.custom}
+              onChange={(e) => setRow(i, { custom: e.target.value })}
+              placeholder="Label"
+              style={{ maxWidth: 130 }}
+            />
+          )}
+          <Input
+            value={r.value}
+            onChange={(e) => setRow(i, { value: e.target.value })}
+            placeholder={valuePlaceholder}
+          />
+          <button
+            type="button"
+            onClick={() => removeRow(i)}
+            aria-label="Remove"
+            style={{ background: "transparent", border: "none", cursor: "pointer", color: "#879CF7", padding: 4, flexShrink: 0 }}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={addRow}
+        style={{ background: "transparent", border: "none", cursor: "pointer", color: "#879CF7", fontSize: 12, fontWeight: 600, padding: 0 }}
+      >
+        {addLabel}
+      </button>
+    </div>
   );
 }

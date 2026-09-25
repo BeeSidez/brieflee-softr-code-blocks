@@ -1,0 +1,372 @@
+<!-- ====================================================================
+     Custom Code block: floating CTA chips (marketing pages)
+     ====================================================================
+     Supersedes book-a-demo-chip.html (which was the single-chip version).
+
+     Two chips, one per side of the viewport. BOTH open in a Softr
+     modal — nobody gets pulled off the page they were reading:
+
+       BOTTOM LEFT   "Book a demo"   -> /book-call    CENTRED modal (lg)
+       BOTTOM RIGHT  chat bubble     -> /book-a-demo  RIGHT SIDE PANEL
+
+     The bubble carries NO visible label — a chat bubble is already
+     understood on sight. "Chat with the team" stays as the aria-label
+     so screen readers still get it.
+
+     The bubble gets the side panel because a chat widget sliding in
+     from the edge is the thing it is pretending to be. The call chip
+     keeps the centred dialog: booking is a deliberate act and deserves
+     the middle of the screen. NOTE these are two DIFFERENT Softr modal
+     systems — openSwModal is centred always and has no placement
+     argument; the side panel is the page dialog.
+
+     LOGGED-OUT ONLY. Set this block's Visibility to "Non-logged in
+     users" in Softr Studio — that is the real gate. The script below is
+     a second line of defence: it only ever HIDES the chips once it can
+     see a logged-in user, so it can never blank the block for a
+     visitor who should see it.
+
+     Both destinations are verified: /book-call opens centred as
+     `.sw-modal.is-open`, and /book-a-demo opens as an 832px page dialog
+     anchored to the right edge, full height, with the URL carrying
+     ?modal=/book-a-demo&modalPlacement=end. Neither navigates the page.
+     If either ever starts full-page navigating instead, its Page Type in
+     Softr Studio has stopped being "Modal page".
+
+     SPA-safe: the DOM lives inside this block's own scope, so Softr
+     cleans it up on navigation. No SOFTR_PAGE.beforeUnload needed.
+
+     For the chips on EVERY marketing page rather than just this one,
+     move this code into Settings -> Custom Code -> Footer.
+==================================================================== -->
+
+<div class="bl-cta-chips" id="bl-cta-chips" data-bl-state="pending">
+  <!-- Bottom left: book a call -->
+  <a
+    href="/book-call"
+    class="bl-demo-chip"
+    id="bl-demo-chip"
+    aria-label="Book a demo with Brieflee"
+  >
+    <span class="bl-demo-chip-avatar-wrap">
+      <img
+        src="https://res.cloudinary.com/dchroynzv/image/upload/v1778675610/_Profile_Picture_nwejiq.png"
+        alt=""
+        class="bl-demo-chip-avatar"
+        draggable="false"
+      />
+      <span class="bl-demo-chip-status" aria-hidden="true"></span>
+    </span>
+    <span class="bl-demo-chip-text">
+      <span class="bl-demo-chip-title">Book a demo</span>
+      <span class="bl-demo-chip-sub">Brieflee walkthrough</span>
+    </span>
+  </a>
+
+  <!-- Bottom right: chat bubble. No visible label — the shape says it.
+       aria-label carries the wording for screen readers. Opens
+       /book-a-demo as a right side panel. -->
+  <a
+    href="/book-a-demo"
+    class="bl-chat-chip"
+    id="bl-chat-chip"
+    aria-label="Chat with the team"
+  >
+    <span class="bl-chat-chip-bubble">
+      <span class="bl-chat-chip-ping" aria-hidden="true"></span>
+      <svg
+        class="bl-chat-chip-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+      </svg>
+    </span>
+  </a>
+</div>
+
+<style>
+  /* The wrapper itself is inert — each chip anchors to its own corner. */
+  .bl-cta-chips {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+  /* Hidden until we know the visitor is logged out (see script). */
+  .bl-cta-chips[data-bl-state='hidden'] {
+    display: none;
+  }
+
+  /* ---------- bottom left: book a call ---------- */
+  .bl-demo-chip {
+    position: fixed;
+    left: 20px;
+    bottom: 20px;
+    z-index: 9999;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 18px 10px 10px;
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow:
+      0 16px 36px -10px rgba(0, 19, 100, 0.22),
+      0 6px 14px -4px rgba(0, 19, 100, 0.12),
+      0 0 0 1px rgba(0, 19, 100, 0.06);
+    text-decoration: none !important;
+    color: #001364;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    cursor: pointer;
+    max-width: calc(100vw - 100px);
+  }
+  .bl-demo-chip:hover {
+    transform: translateY(-3px);
+    box-shadow:
+      0 24px 48px -12px rgba(0, 19, 100, 0.28),
+      0 8px 18px -4px rgba(0, 19, 100, 0.16),
+      0 0 0 1px rgba(0, 19, 100, 0.10);
+  }
+  .bl-demo-chip:focus-visible {
+    outline: 3px solid #879CF7;
+    outline-offset: 2px;
+  }
+  .bl-demo-chip-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+  }
+  .bl-demo-chip-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    object-fit: cover;
+    display: block;
+    background: #e9ecf6;
+  }
+  .bl-demo-chip-status {
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: #22c55e;
+    box-shadow: 0 0 0 2px #ffffff;
+  }
+  .bl-demo-chip-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    line-height: 1.25;
+    min-width: 0;
+  }
+  .bl-demo-chip-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #001364;
+    letter-spacing: -0.005em;
+  }
+  .bl-demo-chip-sub {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: #001364;
+    opacity: 0.62;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ---------- bottom right: chat bubble ---------- */
+  .bl-chat-chip {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 9999;
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none !important;
+    cursor: pointer;
+  }
+  .bl-chat-chip-bubble {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 999px;
+    background: #001364;
+    color: #ffffff;
+    box-shadow:
+      0 16px 32px -10px rgba(0, 19, 100, 0.40),
+      0 6px 14px -4px rgba(0, 19, 100, 0.20);
+    transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  }
+  .bl-chat-chip:hover .bl-chat-chip-bubble {
+    background: #879CF7;
+    transform: translateY(-3px) scale(1.04);
+    box-shadow:
+      0 22px 42px -12px rgba(0, 19, 100, 0.44),
+      0 8px 18px -4px rgba(0, 19, 100, 0.24);
+  }
+  .bl-chat-chip:focus-visible .bl-chat-chip-bubble {
+    outline: 3px solid #879CF7;
+    outline-offset: 3px;
+  }
+  .bl-chat-chip-icon {
+    width: 25px;
+    height: 25px;
+    display: block;
+  }
+  /* Soft attention ring so the bubble reads as live, not decorative. */
+  .bl-chat-chip-ping {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    border: 2px solid #879CF7;
+    opacity: 0;
+    animation: bl-chat-ping 2.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+    pointer-events: none;
+  }
+  @keyframes bl-chat-ping {
+    0%   { transform: scale(1);    opacity: 0.55; }
+    70%  { transform: scale(1.45); opacity: 0; }
+    100% { transform: scale(1.45); opacity: 0; }
+  }
+  .bl-chat-chip:hover .bl-chat-chip-ping {
+    animation-play-state: paused;
+    opacity: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bl-chat-chip-ping { animation: none; }
+    .bl-demo-chip,
+    .bl-chat-chip-bubble { transition: none; }
+  }
+
+  /* ---------- narrow screens ---------- */
+  /* Both chips share the bottom edge, so the call chip drops its
+     subtitle before the two can ever meet in the middle. */
+  @media (max-width: 560px) {
+    .bl-demo-chip {
+      left: 12px;
+      bottom: 12px;
+      padding: 8px 14px 8px 8px;
+      gap: 10px;
+      max-width: calc(100vw - 92px);
+    }
+    .bl-demo-chip-avatar-wrap,
+    .bl-demo-chip-avatar {
+      width: 36px;
+      height: 36px;
+    }
+    .bl-demo-chip-title { font-size: 13px; }
+    .bl-demo-chip-sub { display: none; }
+    .bl-chat-chip {
+      right: 12px;
+      bottom: 12px;
+    }
+    .bl-chat-chip-bubble {
+      width: 50px;
+      height: 50px;
+    }
+    .bl-chat-chip-icon {
+      width: 22px;
+      height: 22px;
+    }
+  }
+</style>
+
+<script type="module">
+  // ---------------------------------------------------------------
+  // Softr has TWO modal systems and only the newer one can be placed.
+  // openSwModal is the old MicroModal dialog: centred always, no
+  // placement argument exists. The side panel is the page dialog,
+  // driven by ?modal=<path>&modalSize=M&modalPlacement=end.
+  //
+  // Either way each anchor keeps a real href, so if neither system is
+  // reachable the link still gets you to the same page.
+  // ---------------------------------------------------------------
+  const openCentre = (id, path) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('click', (e) => {
+      if (typeof window.openSwModal === 'function') {
+        e.preventDefault();
+        window.openSwModal(path, 'lg');
+      }
+    });
+  };
+
+  // Degrades in three steps: renderer global (slides in, no reload,
+  // Back closes it) -> set the three URL params by hand, which is what
+  // a native side-modal link does -> centred dialog.
+  const openSidePanel = (id, path) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('click', (e) => {
+      const renderer = window.SoftrPageRenderer;
+      if (renderer && typeof renderer.setOpenPageModal === 'function') {
+        e.preventDefault();
+        renderer.setOpenPageModal({ src: path, size: 'M', placement: 'end' });
+        return;
+      }
+      try {
+        const next = new URL(window.location.href);
+        next.searchParams.set('modal', path);
+        next.searchParams.set('modalSize', 'M');
+        next.searchParams.set('modalPlacement', 'end');
+        e.preventDefault();
+        window.location.href = next.toString();
+        return;
+      } catch (err) {
+        console.error('Side panel URL failed:', err);
+      }
+      if (typeof window.openSwModal === 'function') {
+        e.preventDefault();
+        window.openSwModal(path, 'lg');
+      }
+    });
+  };
+
+  openCentre('bl-demo-chip', '/book-call');
+  openSidePanel('bl-chat-chip', '/book-a-demo');
+
+  // ---------------------------------------------------------------
+  // Logged-out gate. The block's Visibility setting is the real gate;
+  // this only hides the chips if a logged-in user turns up, so a
+  // logged-out visitor can never be left staring at nothing.
+  //
+  // Softr fills window.logged_in_user asynchronously, so we look a few
+  // times over the first couple of seconds rather than reading once on
+  // load and trusting an empty object.
+  // ---------------------------------------------------------------
+  const chips = document.getElementById('bl-cta-chips');
+  if (chips) {
+    chips.setAttribute('data-bl-state', 'visible');
+
+    // Softr's canonical keys on this object are softr_user_email and
+    // record_id (checked live: `email` and `id` are in there too, a long
+    // way down among ~180 mapped fields, but the softr_* names are the
+    // ones Softr itself owns).
+    const isLoggedIn = () => {
+      const u = window.logged_in_user;
+      if (!u || typeof u !== 'object') return false;
+      return Boolean(u.softr_user_email || u.record_id || u.email || u.id);
+    };
+
+    let checks = 0;
+    const poll = setInterval(() => {
+      checks += 1;
+      if (isLoggedIn()) {
+        chips.setAttribute('data-bl-state', 'hidden');
+        clearInterval(poll);
+      } else if (checks >= 10) {
+        clearInterval(poll);
+      }
+    }, 250);
+  }
+</script>

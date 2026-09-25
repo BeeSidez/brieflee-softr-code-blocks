@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<span style="display: inline-flex; gap: 2px;">
+  <sc-for list="{{ slots }}" as="on" hint-placeholder-count="5">
+    <sc-if value="{{ on }}" hint-placeholder-val="{{ true }}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="#F5A623"><path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.12 5.11a.56.56 0 0 0 .48.34l5.52.45c.5.04.7.66.32.99l-4.2 3.6a.56.56 0 0 0-.18.56l1.28 5.38a.56.56 0 0 1-.84.61l-4.72-2.88a.56.56 0 0 0-.59 0l-4.72 2.88a.56.56 0 0 1-.84-.61l1.28-5.38a.56.56 0 0 0-.18-.56l-4.2-3.6a.56.56 0 0 1 .32-.99l5.52-.45a.56.56 0 0 0 .48-.34Z"></path></svg>
+    </sc-if>
+    <sc-if value="{{ off }}" hint-placeholder-val="{{ false }}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="#E1E5F2"><path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.12 5.11a.56.56 0 0 0 .48.34l5.52.45c.5.04.7.66.32.99l-4.2 3.6a.56.56 0 0 0-.18.56l1.28 5.38a.56.56 0 0 1-.84.61l-4.72-2.88a.56.56 0 0 0-.59 0l-4.72 2.88a.56.56 0 0 1-.84-.61l1.28-5.38a.56.56 0 0 0-.18-.56l-4.2-3.6a.56.56 0 0 1 .32-.99l5.52-.45a.56.56 0 0 0 .48-.34Z"></path></svg>
+    </sc-if>
+  </sc-for>
+</span>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;90px&quot;,&quot;height&quot;:&quot;16px&quot;},&quot;n&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:5,&quot;min&quot;:0,&quot;max&quot;:5,&quot;tsType&quot;:&quot;number&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const n = Math.max(0, Math.min(5, Number(this.props.n) || 0));
+    const slots = [0,1,2,3,4].map(i => i < n);
+    return { slots, off: false };
+  }
+}
+</script>
+</body>
+</html>

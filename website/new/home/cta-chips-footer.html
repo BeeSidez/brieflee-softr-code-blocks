@@ -1,0 +1,274 @@
+<!-- NOT THE LIVE IMPLEMENTATION. The chips ship as a vibe block, one per page:
+     see cta-chips-block.tsx. That version opens the demo modal centred and the
+     chat as a right side panel, which the custom-code route does not do, and it
+     leaves the app pages free for their own separate chips. Keep this file only
+     as the custom-code reference. Do not paste it into Settings.
+     =========================================================================== -->
+
+<!-- ===========================================================================
+     Brieflee floating CTA chips
+     PASTE ONCE into: Settings > Custom Code > FOOTER  (whole site)
+
+       Bottom left    "Book a demo"  -> /book-call     centred modal
+       Bottom right   chat bubble    -> /book-a-demo   right side panel
+
+     WHICH PAGES IT SHOWS ON
+     Edit the PAGES list below. That is the only thing you ever need to touch
+     to add or remove a page. Everything else stays as it is.
+       - add a page      add its path to the list, e.g. '/case-studies'
+       - remove a page   delete the line, or put // in front of it
+       - a whole branch  use a * at the end, e.g. '/blog/*'
+       - every page      set PAGES = null
+
+     PER-PAGE INSTEAD OF SITE-WIDE
+     The same snippet works pasted into ONE page's Custom Code footer
+     (Page settings > Custom code > Footer). In that case set PAGES = null
+     and the page it is pasted on is the only page it can appear on.
+
+     WHY ONE PASTE AND NOT A COPY PER PAGE
+     The Softr MCP cannot read or write custom code, page-level or site-wide.
+     So every copy of this snippet is a place only Bev can edit: one copy means
+     one edit when the wording, the link or the styling changes, twenty copies
+     means twenty. A single shared vibe block would be the ideal, but Softr's
+     shared blocks are headers and footers only (checked 2026-08-28, reusable
+     arbitrary blocks are still an open feature request), so that is not on the
+     table. A vibe block per page is pushable by MCP but costs a block slot on
+     every page and twenty pushes per change.
+
+     Reference version with the full commentary: website/new/home/cta-chips.html
+     =========================================================================== -->
+
+<script>
+  window.BL_CTA_CHIPS_CONFIG = {
+
+    // ---- The pages the chips appear on --------------------------------------
+    PAGES: [
+      // Core marketing
+      '/',
+      '/pricing',
+      '/demo',
+      '/faq',
+      '/help',
+      '/partners',
+      '/affiliates',
+      '/blogs',
+      '/blog',
+      '/article',
+      '/brieflee-vs-frame-io',
+      '/ai-video-ad-briefs-',
+
+      // Use-case pages
+      '/e-commerce',
+      '/mobile-apps',
+      '/marketing-agencies',
+      '/b2b-saas',
+      '/content-creators',
+      '/personal-brand',
+      '/coaches-courses',
+      '/real-estate-agencies',
+
+      // Campaign pages. These carry their own big CTA, so the chips are off by
+      // default. Delete the // to turn either one on.
+      // '/offer',
+      // '/claim',
+
+      // Lead magnets and free tools. Off by default so the floating chip does
+      // not compete with the tool's own email capture. Delete the // to turn on.
+      // '/free-tool-ai-brief-generator',
+      // '/free-tool-hook-generator',
+      // '/free-tool-video-breakdown',
+      // '/free-tool-tiktok-video-analyser',
+      // '/free-tool-instagram-reel-analyser',
+      // '/free-tool-youtube-shorts-analyser',
+      // '/free-tool-facebook-ad-video-checker',
+      // '/ugc-video-examples',
+      // '/ugc-creator-checklist',
+      // '/ai-ugc-storyboard-generator',
+      // '/video-checker',
+      // '/tiktok-checker',
+      // '/instagram-reel-checker',
+      // '/youtube-shorts-checker',
+      // '/facebook-reel-checker',
+      // '/facebook-creative-calculator',
+      // '/tiktok-engagement-rate-calculator',
+      // '/instagram-engagement-rate-calculator',
+      // '/youtube-engagement-rate-calculator',
+    ],
+
+    // ---- Everything below is a switch, not a list ---------------------------
+    // Hide the chips once someone is signed in. A signed-in visitor on the
+    // homepage is already a customer, so the demo CTA is noise for them.
+    HIDE_WHEN_SIGNED_IN: true,
+
+    // Where each chip goes.
+    DEMO_URL: '/book-call',
+    CHAT_URL: '/book-a-demo',
+  };
+</script>
+
+<div class="bl-cta-chips" id="bl-cta-chips" data-bl-state="pending">
+  <a href="/book-call" class="bl-demo-chip" id="bl-demo-chip" aria-label="Book a demo with Brieflee">
+    <span class="bl-demo-chip-avatar-wrap">
+      <img src="https://res.cloudinary.com/dchroynzv/image/upload/v1778675610/_Profile_Picture_nwejiq.png" alt="" class="bl-demo-chip-avatar" draggable="false" />
+      <span class="bl-demo-chip-status" aria-hidden="true"></span>
+    </span>
+    <span class="bl-demo-chip-text">
+      <span class="bl-demo-chip-title">Book a demo</span>
+      <span class="bl-demo-chip-sub">Brieflee walkthrough</span>
+    </span>
+  </a>
+  <a href="/book-a-demo" class="bl-chat-chip" id="bl-chat-chip" aria-label="Chat with the team">
+    <span class="bl-chat-chip-bubble">
+      <span class="bl-chat-chip-ping" aria-hidden="true"></span>
+      <svg class="bl-chat-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+    </span>
+  </a>
+</div>
+
+<style>
+  .bl-cta-chips { font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif; }
+  /* Starts hidden and is switched on once the path is checked, so the chips
+     never flash on a page they do not belong on. */
+  .bl-cta-chips[data-bl-state='pending'],
+  .bl-cta-chips[data-bl-state='hidden'] { display: none; }
+
+  .bl-demo-chip { position: fixed; left: 20px; bottom: 20px; z-index: 9999; display: inline-flex; align-items: center; gap: 12px; padding: 10px 18px 10px 10px; background: #fff; border-radius: 14px; box-shadow: 0 16px 36px -10px rgba(0,19,100,.22), 0 6px 14px -4px rgba(0,19,100,.12), 0 0 0 1px rgba(0,19,100,.06); text-decoration: none !important; color: #001364; transition: transform .2s ease, box-shadow .2s ease; cursor: pointer; max-width: calc(100vw - 100px); }
+  .bl-demo-chip:hover { transform: translateY(-3px); box-shadow: 0 24px 48px -12px rgba(0,19,100,.28), 0 8px 18px -4px rgba(0,19,100,.16), 0 0 0 1px rgba(0,19,100,.1); }
+  .bl-demo-chip:focus-visible { outline: 3px solid #879CF7; outline-offset: 2px; }
+  .bl-demo-chip-avatar-wrap { position: relative; flex-shrink: 0; width: 40px; height: 40px; }
+  .bl-demo-chip-avatar { width: 40px; height: 40px; border-radius: 999px; object-fit: cover; display: block; background: #e9ecf6; }
+  .bl-demo-chip-status { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 999px; background: #22c55e; box-shadow: 0 0 0 2px #fff; }
+  .bl-demo-chip-text { display: flex; flex-direction: column; gap: 1px; line-height: 1.25; min-width: 0; }
+  .bl-demo-chip-title { font-size: 14px; font-weight: 700; color: #001364; letter-spacing: -.005em; }
+  .bl-demo-chip-sub { font-size: 12.5px; font-weight: 500; color: #001364; opacity: .62; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .bl-chat-chip { position: fixed; right: 20px; bottom: 20px; z-index: 9999; display: inline-flex; align-items: center; text-decoration: none !important; cursor: pointer; }
+  .bl-chat-chip-bubble { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 999px; background: #001364; color: #fff; box-shadow: 0 16px 32px -10px rgba(0,19,100,.4), 0 6px 14px -4px rgba(0,19,100,.2); transition: transform .2s ease, background .2s ease, box-shadow .2s ease; }
+  .bl-chat-chip:hover .bl-chat-chip-bubble { background: #879CF7; transform: translateY(-3px) scale(1.04); box-shadow: 0 22px 42px -12px rgba(0,19,100,.44), 0 8px 18px -4px rgba(0,19,100,.24); }
+  .bl-chat-chip:focus-visible .bl-chat-chip-bubble { outline: 3px solid #879CF7; outline-offset: 3px; }
+  .bl-chat-chip-icon { width: 25px; height: 25px; display: block; }
+  .bl-chat-chip-ping { position: absolute; inset: 0; border-radius: 999px; border: 2px solid #879CF7; opacity: 0; animation: blChatPing 2.8s cubic-bezier(0,0,.2,1) infinite; pointer-events: none; }
+  @keyframes blChatPing { 0% { transform: scale(1); opacity: .55; } 70%, 100% { transform: scale(1.45); opacity: 0; } }
+  .bl-chat-chip:hover .bl-chat-chip-ping { animation-play-state: paused; opacity: 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bl-chat-chip-ping { animation: none; }
+    .bl-demo-chip, .bl-chat-chip-bubble { transition: none; }
+  }
+  @media (max-width: 560px) {
+    .bl-demo-chip { left: 12px; bottom: 12px; padding: 8px 14px 8px 8px; gap: 10px; max-width: calc(100vw - 92px); }
+    .bl-demo-chip-avatar-wrap, .bl-demo-chip-avatar { width: 36px; height: 36px; }
+    .bl-demo-chip-title { font-size: 13px; }
+    .bl-demo-chip-sub { display: none; }
+    .bl-chat-chip { right: 12px; bottom: 12px; }
+    .bl-chat-chip-bubble { width: 50px; height: 50px; }
+    .bl-chat-chip-icon { width: 22px; height: 22px; }
+  }
+</style>
+
+<script>
+  (function () {
+    var cfg = window.BL_CTA_CHIPS_CONFIG || {};
+    var chips = document.getElementById('bl-cta-chips');
+    if (!chips) return;
+
+    // ---- Path matching ------------------------------------------------------
+    // '/pricing' matches /pricing and /pricing/ and /pricing?x=1
+    // '/blog/*'  matches /blog/anything
+    function normalise(p) {
+      p = String(p || '/').split('?')[0].split('#')[0];
+      if (p.length > 1 && p.charAt(p.length - 1) === '/') p = p.slice(0, -1);
+      return p.toLowerCase() || '/';
+    }
+    function onAllowedPage() {
+      var list = cfg.PAGES;
+      if (list === null || list === undefined) return true;   // every page
+      if (!list.length) return false;                         // no pages
+      var here = normalise(window.location.pathname);
+      for (var i = 0; i < list.length; i++) {
+        var rule = normalise(list[i]);
+        if (rule.slice(-2) === '/*') {
+          if (here === rule.slice(0, -2) || here.indexOf(rule.slice(0, -1)) === 0) return true;
+        } else if (here === rule) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // ---- Signed-in check ----------------------------------------------------
+    // Softr fills logged_in_user asynchronously, so this is read repeatedly
+    // rather than once. It only ever hides.
+    function signedIn() {
+      var u = window.logged_in_user;
+      return !!(u && typeof u === 'object' && (u.softr_user_email || u.record_id || u.email || u.id));
+    }
+
+    var signedInSeen = false;
+    function apply() {
+      var show = onAllowedPage() && !(cfg.HIDE_WHEN_SIGNED_IN !== false && signedInSeen);
+      chips.setAttribute('data-bl-state', show ? 'visible' : 'hidden');
+    }
+
+    apply();
+
+    if (cfg.HIDE_WHEN_SIGNED_IN !== false) {
+      var tries = 0;
+      var poll = setInterval(function () {
+        tries++;
+        if (signedIn()) { signedInSeen = true; apply(); clearInterval(poll); }
+        else if (tries >= 20) clearInterval(poll);   // 5s, then stop looking
+      }, 250);
+    }
+
+    // ---- Re-check on navigation (Softr SPA mode) ----------------------------
+    // In SPA mode the footer script runs once and the path changes underneath
+    // it, so the page check has to run again on every route change.
+    var lastPath = window.location.pathname;
+    function onRouteChange() {
+      if (window.location.pathname === lastPath) return;
+      lastPath = window.location.pathname;
+      apply();
+    }
+    ['pushState', 'replaceState'].forEach(function (m) {
+      var orig = history[m];
+      if (typeof orig !== 'function') return;
+      history[m] = function () { var r = orig.apply(this, arguments); onRouteChange(); return r; };
+    });
+    window.addEventListener('popstate', onRouteChange);
+    setInterval(onRouteChange, 400);
+
+    // ---- Chip behaviour -----------------------------------------------------
+    var demoUrl = cfg.DEMO_URL || '/book-call';
+    var chatUrl = cfg.CHAT_URL || '/book-a-demo';
+
+    var call = document.getElementById('bl-demo-chip');
+    if (call) {
+      call.setAttribute('href', demoUrl);
+      // openSwModal is centred always, there is no placement argument.
+      call.addEventListener('click', function (e) {
+        if (typeof window.openSwModal === 'function') { e.preventDefault(); window.openSwModal(demoUrl, 'lg'); }
+      });
+    }
+
+    var chat = document.getElementById('bl-chat-chip');
+    if (chat) {
+      chat.setAttribute('href', chatUrl);
+      // Right side panel: renderer global -> URL params -> centred.
+      chat.addEventListener('click', function (e) {
+        var r = window.SoftrPageRenderer;
+        if (r && typeof r.setOpenPageModal === 'function') {
+          e.preventDefault(); r.setOpenPageModal({ src: chatUrl, size: 'M', placement: 'end' }); return;
+        }
+        try {
+          var next = new URL(window.location.href);
+          next.searchParams.set('modal', chatUrl);
+          next.searchParams.set('modalSize', 'M');
+          next.searchParams.set('modalPlacement', 'end');
+          e.preventDefault(); window.location.href = next.toString(); return;
+        } catch (err) { console.error('Side panel URL failed:', err); }
+        if (typeof window.openSwModal === 'function') { e.preventDefault(); window.openSwModal(chatUrl, 'lg'); }
+      });
+    }
+  })();
+</script>

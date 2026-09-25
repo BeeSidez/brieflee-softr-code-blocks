@@ -1,0 +1,12 @@
+# Secrets. Never commit these.
+.env
+.env.*
+!.env.example
+
+# Bench output (can contain scraped brand content)
+ops/out/
+
+# OS and editor noise
+.DS_Store
+**/.DS_Store
+node_modules/

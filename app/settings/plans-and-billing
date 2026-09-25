@@ -17,6 +17,17 @@
 // rather than trying to fetch by URL workspace id (the URL passes an
 // account id, not a usage id).
 //
+// How each card counts, all from the one usage row:
+//   Video reviews   total_videos (videos this billing cycle) against
+//                   max_videos (plan + add-on packs + bonus).
+//   Seats           everyone with a login in the org, owner included:
+//                   the owner and team links, each person counted once.
+//                   Creator is 1 seat, and that seat is the owner.
+//   Brand profiles  workspaces linked to the usage row against
+//                   max_workspaces.
+// The subhead date is cycle_end, the day the video count resets. On a
+// yearly plan that comes round monthly, ahead of the yearly renewal.
+//
 // SOFTR CONFIG REQUIRED:
 //   Source tab: bind to USAGE. The Source filter should restrict to
 //   the logged-in user (e.g. `user includes exactly current user id`)
@@ -26,7 +37,11 @@ import { useRecords, q } from "@/lib/datasource";
 import { Video, Users, Layers } from "lucide-react";
 
 const CHANGE_PLAN_PATH = "/plan";
-const BILLING_PATH = "/billing";
+// In-app billing page: invoices, payment history, payment method.
+const MANAGE_BILLING_PATH = "/billing";
+// Stripe Customer Portal login, used for CANCELLATION only. External
+// site: always opens in a new tab, never a modal.
+const STRIPE_PORTAL_URL = "https://billing.stripe.com/p/login/5kQeVe3eTcHmfIp9OFcAo00";
 const MODAL_SIZE = "xl"; // 'sm' | 'md' | 'lg' | 'xl'
 
 // ─── Brand palette ────────────────────────────────────────────
@@ -42,27 +57,41 @@ const BL_MUTED = "#6B7A99";
 // to the usage equivalents (LOOKUP / FORMULA fields on usage that resolve
 // through its linked accounts / subscription / billing / pricing rows).
 //
-// Note: usage has no direct `subscription_status` field. The StatusBadge
-// falls back to its "Trial" preset when status is empty. Reintroduce a
-// status lookup on the usage table if you want the badge to flip between
-// Active / Trial / Past due / Canceled.
+// `paymentStatus` (LOOKUP from billing) is the source of truth for
+// whether the user is on a paid plan. Anything else puts the block into
+// the FREE PLAN state: stat cards collapse to 0 / 0, heading becomes
+// "Free plan", primary CTA becomes "Upgrade plan".
+//
+// Billing is annual with a 30-day 100% money-back guarantee. There is no
+// trial, so no copy here counts one down. The legacy "trial" values are
+// still accepted as paying statuses and still render their own badge,
+// because a handful of older billing rows carry them.
 const select = q.select({
   // Primary field of the usage table — useRecord requires it.
   id:                         "coEny",
-  subscriptionTier:           "Uhc4j", // subscription_tier (LOOKUP)
-  subscriptionPeriodEnd:      "kzlDm", // renewal_date (FORMULA)
+  paymentStatus:              "myX6T", // payment_status (LOOKUP via billing)
+  subscriptionTier:           "SjWPG", // tier (LOOKUP via plan_billing)
+  trialEnd:                   "FXA2x", // trial_end (LOOKUP via users)
+  cycleEnd:                   "uxb26", // cycle_end (LOOKUP, the day the video count resets)
   subscriptionProductName:    "eA3R2", // plan (FORMULA)
   subscriptionInterval:       "11KIV", // interval (LOOKUP via billing/pricing)
-  subscriptionMaxVideos:      "rXOcE", // max_videos (LOOKUP)
+  subscriptionMaxVideos:      "q2HDt", // max_videos (FORMULA, plan + add-ons + bonus)
   subscriptionMaxWorkspaces:  "Kejms", // max_workspaces (FORMULA)
   subscriptionMaxMembers:     "UnMPU", // max_members (FORMULA)
   videosRemaining:            "1Ghgt", // videos_remaining (FORMULA)
   workspacesRemaining:        "TMIgG", // workspaces_remaining (FORMULA)
   membersRemaining:           "yYgqq", // members_remaining (FORMULA)
-  totalVideos:                "LEsiQ", // total_videos (LOOKUP)
-  totalWorkspaces:            "XeuO9", // total_workspaces (LOOKUP)
-  totalUsers:                 "6J1sE", // total_members (LOOKUP)
+  totalVideos:                "LEsiQ", // total_videos (ROLLUP, this billing cycle only)
+  totalWorkspaces:            "XeuO9", // total_workspaces (ROLLUP over the accounts link)
+  totalUsers:                 "6J1sE", // total_team (ROLLUP over the team link)
+  ownerIds:                   "dm3wY", // owner (LINKED_RECORD to users)
+  teamIds:                    "I4oRI", // team (LINKED_RECORD to users)
 });
+
+// Anything in this set keeps the user on the paid/trial layout.
+// Anything else (null, "incomplete", "past_due", "canceled", "unpaid",
+// "free", etc.) flips the block into FREE PLAN state.
+const PAYING_STATUSES = new Set(["paid", "trial", "trialing", "active"]);
 
 export default function Block() {
   // List the user's usage rows (Softr Source filter restricts to the
@@ -84,16 +113,35 @@ export default function Block() {
   const tier            = unwrap(f.subscriptionTier);
   const productName     = unwrap(f.subscriptionProductName) || tier;
   const interval        = unwrap(f.subscriptionInterval);
-  const statusLabel     = unwrap(f.subscriptionStatus);
-  const periodEnd       = unwrap(f.subscriptionPeriodEnd);
-  const hasSubscription = !!(productName || tier || statusLabel);
+  const paymentStatus   = unwrap(f.paymentStatus).toLowerCase();
+  // The reset date. cycle_end is the real one; trial_end only exists on
+  // older rows and is kept purely as a fallback when cycle_end is blank.
+  const trialEnd        = unwrap(f.trialEnd);
+  const cycleEnd        = unwrap(f.cycleEnd);
+  // "Creator Yearly" already names the interval, so "(Yearly)" only
+  // shows when the plan name leaves it out.
+  const showInterval = !!interval &&
+    !String(productName || "").toLowerCase().includes(interval.toLowerCase());
+  // Seats: the owner plus every team member, each person counted once,
+  // so the owner always fills a seat even when the team link leaves
+  // them out.
+  const seatIds   = new Set([...linkIds(f.ownerIds), ...linkIds(f.teamIds)]);
+  const seatsUsed = Math.max(seatIds.size, num(f.totalUsers) || 0);
 
-  const videosUsed = num(f.totalVideos);
-  const videosMax  = num(f.subscriptionMaxVideos);
-  const teamUsed   = num(f.totalUsers);
-  const teamMax    = num(f.subscriptionMaxMembers);
-  const wsUsed     = num(f.totalWorkspaces);
-  const wsMax      = num(f.subscriptionMaxWorkspaces);
+  // Single source of truth: are they on a paying plan?
+  // Anything else collapses to the Free Plan layout.
+  const isOnPaidPlan = PAYING_STATUSES.has(paymentStatus);
+
+  // StatusBadge prefers the literal payment_status so it can show
+  // "Trial" vs "Active" vs "Past due" accurately.
+  const statusLabel = paymentStatus;
+
+  const videosUsed = isOnPaidPlan ? num(f.totalVideos)     : 0;
+  const videosMax  = isOnPaidPlan ? num(f.subscriptionMaxVideos)     : 0;
+  const teamUsed   = isOnPaidPlan ? seatsUsed      : 0;
+  const teamMax    = isOnPaidPlan ? num(f.subscriptionMaxMembers)    : 0;
+  const wsUsed     = isOnPaidPlan ? num(f.totalWorkspaces) : 0;
+  const wsMax      = isOnPaidPlan ? num(f.subscriptionMaxWorkspaces) : 0;
 
   const openModalPath = (path) => {
     if (typeof window === "undefined") return;
@@ -105,7 +153,10 @@ export default function Block() {
   };
 
   const handleChangePlan = () => openModalPath(CHANGE_PLAN_PATH);
-  const handleManageBilling = () => openModalPath(BILLING_PATH);
+  const handleManageBilling = () => {
+    if (typeof window === "undefined") return;
+    window.location.href = MANAGE_BILLING_PATH;
+  };
 
   return (
     <Shell>
@@ -126,23 +177,28 @@ export default function Block() {
           Plans and Billing
         </div>
         <h2 className="pb-heading-title">
-          {hasSubscription ? (
+          {isOnPaidPlan ? (
             <>
               You are currently on:{" "}
-              <span className="pb-heading-tier">{productName}</span>{" "}
-              {interval && <span className="pb-heading-interval">({interval})</span>}{" "}
+              <span className="pb-heading-tier">{productName || tier}</span>{" "}
+              {showInterval && <span className="pb-heading-interval">({interval})</span>}{" "}
               plan
             </>
           ) : (
-            <>You're not on a plan yet</>
+            <>Free plan</>
           )}
-          {hasSubscription && <StatusBadge status={statusLabel} />}
+          {isOnPaidPlan && <StatusBadge status={statusLabel} />}
         </h2>
-        {periodEnd && (
+        {isOnPaidPlan ? (
+          (cycleEnd || trialEnd) && (
+            <p className="pb-heading-sub">
+              Video reviews reset on {formatDate(cycleEnd || trialEnd)}
+            </p>
+          )
+        ) : (
           <p className="pb-heading-sub">
-            {String(statusLabel).toLowerCase().includes("trial")
-              ? `Trial ends ${formatDate(periodEnd)}`
-              : `Credits renew on ${formatDate(periodEnd)}`}
+            Pick a plan to start checking creator videos against your own brief.
+            Billed annually, with 30 days at 100% back.
           </p>
         )}
       </header>
@@ -151,27 +207,27 @@ export default function Block() {
       <div className="pb-grid">
         <StatCard
           icon={Video}
-          label="Videos used"
+          label="Video reviews"
           used={videosUsed}
           max={videosMax}
-          hasPlan={hasSubscription}
+          isOnPaidPlan={isOnPaidPlan}
         />
         <StatCard
           icon={Users}
-          label="Team members"
+          label="Seats"
           used={teamUsed}
           max={teamMax}
-          hasPlan={hasSubscription}
+          isOnPaidPlan={isOnPaidPlan}
         />
         <StatCard
           icon={Layers}
-          label="Workspaces"
+          label="Brand profiles"
           used={wsUsed}
           max={wsMax}
-          hasPlan={hasSubscription}
+          isOnPaidPlan={isOnPaidPlan}
         />
         <ActionsCard
-          hasSubscription={hasSubscription}
+          isOnPaidPlan={isOnPaidPlan}
           onChangePlan={handleChangePlan}
           onManageBilling={handleManageBilling}
         />
@@ -200,11 +256,11 @@ function Shell({ children }) {
   );
 }
 
-function StatCard({ icon: Icon, label, used, max, hasPlan }) {
-  const safeMax = Number.isFinite(max) && max > 0 ? max : null;
+function StatCard({ icon: Icon, label, used, max, isOnPaidPlan }) {
+  const safeMax = Number.isFinite(max) ? Math.max(0, max) : 0;
   const safeUsed = Number.isFinite(used) ? Math.max(0, used) : 0;
-  const pct = safeMax ? Math.min(100, Math.round((safeUsed / safeMax) * 100)) : 0;
-  const over = safeMax !== null && safeUsed > safeMax;
+  const pct = safeMax > 0 ? Math.min(100, Math.round((safeUsed / safeMax) * 100)) : 0;
+  const over = isOnPaidPlan && safeMax > 0 && safeUsed > safeMax;
 
   return (
     <div className="pb-card">
@@ -216,7 +272,7 @@ function StatCard({ icon: Icon, label, used, max, hasPlan }) {
         <div
           className="pb-progress-fill"
           style={{
-            width: `${hasPlan && safeMax ? pct : 0}%`,
+            width: `${isOnPaidPlan && safeMax > 0 ? pct : 0}%`,
             background: over
               ? "linear-gradient(90deg, #DC2626, #B91C1C)"
               : "linear-gradient(90deg, #879CF7, #294FF6)",
@@ -224,15 +280,18 @@ function StatCard({ icon: Icon, label, used, max, hasPlan }) {
         />
       </div>
       <div className="pb-card-numbers">
-        {hasPlan && safeMax !== null
-          ? `${formatCount(safeUsed)} / ${formatCount(safeMax)}`
-          : "Not on a plan"}
+        {`${formatCount(safeUsed)} / ${formatCount(safeMax)}`}
       </div>
     </div>
   );
 }
 
-function ActionsCard({ hasSubscription, onChangePlan, onManageBilling }) {
+function ActionsCard({ isOnPaidPlan, onChangePlan, onManageBilling }) {
+  // Both buttons always render so the actions card sits at a consistent
+  // height alongside the three stat cards. Primary CTA label flips to
+  // "Upgrade plan" on the free state. Manage billing goes to the in-app
+  // /billing page; only Cancel subscription opens the Stripe Customer
+  // Portal (new tab), so the sign-in note sits with it.
   return (
     <div className="pb-actions">
       <button
@@ -240,17 +299,27 @@ function ActionsCard({ hasSubscription, onChangePlan, onManageBilling }) {
         onClick={onChangePlan}
         className="pb-btn-primary"
       >
-        {hasSubscription ? "Change plan" : "Choose a plan"}
+        {isOnPaidPlan ? "Change plan" : "Upgrade plan"}
       </button>
-      {hasSubscription && (
-        <button
-          type="button"
-          onClick={onManageBilling}
-          className="pb-btn-secondary"
-        >
-          Manage billing
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={onManageBilling}
+        className="pb-btn-secondary"
+      >
+        Manage billing
+      </button>
+      <a
+        href={STRIPE_PORTAL_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="pb-cancel-link"
+      >
+        Cancel subscription
+      </a>
+      <p className="pb-billing-note">
+        Within 30 days of paying? Ask us for a full refund instead.
+        Cancelling opens Stripe, so use the email you paid with to sign in.
+      </p>
     </div>
   );
 }
@@ -264,7 +333,9 @@ function StatusBadge({ status }) {
     canceled:  { fg: "#DC2626", bg: "rgba(220, 38, 38, 0.10)",  border: "rgba(220, 38, 38, 0.35)", label: "Canceled" },
     cancelled: { fg: "#DC2626", bg: "rgba(220, 38, 38, 0.10)",  border: "rgba(220, 38, 38, 0.35)", label: "Canceled" },
   };
-  const v = map[String(status || "").toLowerCase()] || map.trial;
+  // An unrecognised status on a row that got this far is a paying one,
+  // so fall back to Active rather than to Trial, which is no longer sold.
+  const v = map[String(status || "").toLowerCase()] || map.active;
   return (
     <span className="pb-status-badge" style={{ color: v.fg, background: v.bg, border: `1px solid ${v.border}` }}>
       <span className="pb-status-dot" style={{ background: v.fg }} />
@@ -306,6 +377,14 @@ function num(raw) {
   if (typeof raw === "number") return raw;
   if (typeof raw === "string") return parseFloat(raw);
   return null;
+}
+function linkIds(raw) {
+  if (raw == null || raw === "") return [];
+  const arr = Array.isArray(raw) ? raw : [raw];
+  return arr
+    .map((x) => (x && typeof x === "object" ? x.id : x))
+    .filter(Boolean)
+    .map(String);
 }
 function formatCount(n) {
   if (!Number.isFinite(n)) return "—";
@@ -467,6 +546,26 @@ function Style() {
           background: rgba(135, 156, 247, 0.10);
           color: #294FF6;
           border-color: rgba(41, 79, 246, 0.55);
+        }
+
+        .pb-billing-note {
+          font-size: 12px;
+          color: ${BL_MUTED};
+          line-height: 1.4;
+          margin: 0;
+          text-align: center;
+        }
+        .pb-cancel-link {
+          font-size: 12px;
+          font-weight: 600;
+          color: ${BL_MUTED};
+          text-align: center;
+          text-decoration: underline;
+          text-underline-offset: 2px;
+          transition: color 0.2s ease;
+        }
+        .pb-cancel-link:hover {
+          color: #DC2626;
         }
       `}
     </style>

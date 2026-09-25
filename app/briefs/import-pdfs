@@ -1,0 +1,736 @@
+// =====================================================================
+// /app/briefs/import-pdfs — Bulk PDF import · block a9e5f248 on /pdf.
+//
+// Replaces the March-era Conditional Form + PDF-table flow (which the
+// app no longer reads). One surface, two modes:
+//
+//   CREATE  — drop up to 20 PDFs and each becomes a brief in the
+//             chosen project: uploaded, read by OpenRouter's free
+//             cloudflare-ai parser, sections mapped VERBATIM (same
+//             section model as the create chat), name detected, PDF
+//             written to the brief's own `attachment` (dgOkq). Files
+//             over the 4MB reading cap still import, attach-only.
+//   ATTACH  — drop PDFs for briefs that already exist (the CSV-first
+//             crowd): each file is auto-matched to a brief in the
+//             project by filename, with a per-file override select,
+//             and APPENDS to that brief's `attachment`.
+//
+// Queue runs 2 files at a time. Unreadable PDFs never block an import:
+// the brief is still created/attached and sections wait in the builder.
+//
+// MULTI-SOURCE: every hook passes `from`. Connection ids below are
+// this block's own (wired via MCP 2026-08-27).
+//
+// OPENROUTER: "Brief Builder| Open Router | BL" wired by Bev in the
+// Studio Source tab 2026-08-27 (MCP cannot wire REST sources), so the
+// AI mapping is LIVE. Reading is free (cloudflare-ai parser); only
+// the section sorting costs, and that runs on the cheap model first.
+// =====================================================================
+
+import { useState, useRef, useEffect, useMemo } from "react";
+import { datasource, useRecords, useRecordCreate, useRecordUpdate, useProxyFetch, useUpload, q } from "@/lib/datasource";
+import { useCurrentUser } from "@/lib/user";
+import { toast } from "sonner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+// ─── Datasources (ids from this block's Source tab) ───────────────
+const ds = datasource.define({
+  briefs:     "briefs",
+  accounts:   "accounts",
+  projects:   "projects",
+  openrouter: "5d360545-4038-4bdc-b287-838d45d4e5d3",
+});
+
+// ─── Endpoints + models ───────────────────────────────────────────
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const MAP_MODEL          = "deepseek/deepseek-v4-flash"; // extraction = cheap model first
+const MAP_FALLBACK_MODEL = "deepseek/deepseek-v4-pro";
+const MODEL_TIMEOUT_MS = 115000; // Softr proxy 504s at ~120s
+const PDF_MAX_BYTES        = 10 * 1024 * 1024;
+const PDF_BASE64_MAX_BYTES = 4 * 1024 * 1024; // reading cap; bigger files import attach-only
+const MAX_FILES = 20;
+const CONCURRENCY = 2;
+
+const STATUS_DRAFT_ID     = "775ba6ba-5fda-4d17-bd02-53be5e9ea2ca";
+const GENERATED_MANUAL_ID = "598d6f2e-9830-4790-9d3b-c04005deb5f3";
+const GENERATED_AI_ID     = "beb6ff69-51d6-417b-abfa-c8dbac6ec760";
+const STARTER_SECTIONS = "brand,offer,productFeature,deliverables,hook,guidelines,examples,submissions";
+
+const CREATOR_TYPES = [
+  { id: "5a290e3b-2905-41b6-9bbb-1b98964dcbf0", label: "UGC" },
+  { id: "7adfce93-0c2f-4cec-af91-c7a4c99d64d3", label: "Influencer" },
+  { id: "34ce4bad-c106-438e-8adb-d0a862a99abb", label: "Affiliate" },
+  { id: "a06a4342-d693-4013-a4ef-26fede8289f7", label: "Customer" },
+  { id: "cf25288c-918f-444a-afbe-bc8c7b4aab82", label: "Employee Ambassador" },
+  { id: "437357f6-a391-4acd-afb2-2c6698ff87fd", label: "Founder" },
+];
+const CHANNELS = [
+  { id: "ba9af748-7695-46b2-b5e3-f9c58b5b8288", label: "Organic" },
+  { id: "2c767823-7430-4f24-9fdb-69485d1ff1b3", label: "Paid" },
+];
+
+// Section keys, split so no single call runs past the proxy limit.
+const KEYS_PROSE = [
+  "brand", "offer", "audience_customer", "product_feature_description", "submission_notes",
+];
+const KEYS_LISTS = [
+  "caption_hooks", "visual_action_hooks", "voiceover_hooks",
+  "talking_points", "dos", "donts",
+];
+const PROSE_NOTE = "Each value is one or two <p> blocks.";
+const LISTS_NOTE =
+  "caption_hooks, visual_action_hooks and voiceover_hooks are each a <ul> of three to five.\n" +
+  "A brief usually lumps these under one heading such as 'content hooks'. Sort them by what\n" +
+  "each one actually is: a line the viewer READS is a caption hook, something the creator DOES\n" +
+  "on camera is a visual action hook, a line the creator SAYS out loud is a voiceover hook.\n" +
+  "Keep the document's own wording for the ones it gives you, with any shooting note attached.\n" +
+  "FILL ALL THREE even when the document only supplies one kind. Where it gives you none of a\n" +
+  "kind, write them from the product, the occasion and the audience. A thin brief should come\n" +
+  "out of this stronger than it went in; that is the point of the three lists.\n" +
+  "dos and donts are each a <ul>. talking_points is a <ul>.";
+
+// ─── Field selects ────────────────────────────────────────────────
+const accountSelect = q.select({
+  name:  "aAKkT",
+  users: "LNSSK",
+});
+
+const projectSelect = q.select({
+  name:      "bvDEj",
+  accounts:  "IBYGK",
+  createdAt: "SCgzt",
+});
+
+const briefListSelect = q.select({
+  name:       "z3lpx",
+  projects:   "yrYvH",
+  attachment: "dgOkq",
+});
+
+const createFields = q.select({
+  name:          "z3lpx",
+  users:         "EdhwS",
+  projects:      "yrYvH",
+  attachment:    "dgOkq",
+  description:   "FCBU5",
+  status:        "71Oud",
+  generated:     "n4tCi",
+  section_order: "cp3Rg",
+  creator_type:  "N1vCS",
+  channel:       "nbZAV",
+  brand:               "FJq4K",
+  offer:               "4g59H",
+  audience_customer:   "uuHYp",
+  product_feature_description: "CSvl8",
+  caption_hooks:       "8EyqU",
+  visual_action_hooks: "4dnWx",
+  voiceover_hooks:     "3QPLK",
+  talking_points:      "YEfyw",
+  dos:                 "CSbqb",
+  donts:               "I5wOP",
+  submission_notes:    "gx4hJ",
+});
+
+const attachFields = q.select({
+  attachment: "dgOkq",
+});
+
+// ─── Helpers ──────────────────────────────────────────────────────
+function linkIds(raw) {
+  const arr = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+  return arr.map((x) => (x && typeof x === "object" ? x.id : x)).filter(Boolean);
+}
+function asArray(raw) {
+  return Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+}
+function cleanHtml(v) {
+  if (typeof v !== "string") return "";
+  return v
+    .replace(/```html?/gi, "")
+    .replace(/```/g, "")
+    .replace(/<(script|style|iframe)[^>]*>[\s\S]*?<\/\1>/gi, "")
+    .replace(/\s*[—–]\s*/g, ", ")
+    .replace(/\s*&(?:mdash|ndash|#8212|#8211);\s*/gi, ", ")
+    .trim();
+}
+// Filename → a human brief name: strip extension, underscores and
+// dashes to spaces, collapse whitespace.
+function nameFromFilename(fn) {
+  return String(fn || "")
+    .replace(/\.pdf$/i, "")
+    .replace(/[_\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80) || "Untitled brief";
+}
+// Normalised token set for filename → brief-name matching.
+function normTokens(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/\.pdf$/i, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(" ")
+    .filter(Boolean);
+}
+function matchScore(filename, briefName) {
+  const a = normTokens(filename);
+  const b = normTokens(briefName);
+  if (!a.length || !b.length) return 0;
+  const aj = a.join(" "), bj = b.join(" ");
+  // Longer matched names outrank shorter ones at the same tier, so a
+  // file called "glow coffee scrub brief extra" prefers the brief
+  // "glow coffee scrub brief" over one just called "glow" (found the
+  // hard way against a brief named "Test").
+  const bonus = Math.min(0.9, b.length / 10);
+  if (aj === bj) return 4;
+  if (aj.includes(bj) || bj.includes(aj)) return 2 + bonus;
+  const setB = {};
+  b.forEach((t) => { setB[t] = true; });
+  const overlap = a.filter((t) => setB[t]).length;
+  return overlap / Math.max(a.length, b.length) >= 0.5 ? 1 + bonus : 0;
+}
+const withTimeout = (promise, ms, label) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out`)), ms)),
+  ]);
+const readAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ""));
+    r.onerror = () => reject(new Error("Could not read the file"));
+    r.readAsDataURL(file);
+  });
+
+// ─── Palette ──────────────────────────────────────────────────────
+const NAVY = "#001364";
+const PERI = "#7A93FF";
+const CHIP_BORDER = "1px solid rgba(217, 224, 255, 0.7)";
+const MUTED = "#6B7A99";
+
+function StatusChip({ status }) {
+  const map = {
+    queued:  { label: "Queued",   bg: "#F0F3FF", fg: MUTED },
+    working: { label: "Working…", bg: "#EAF0FF", fg: "#3D5AC8" },
+    done:    { label: "Done",     bg: "#E4F5EC", fg: "#20956F" },
+    partial: { label: "Attached only", bg: "#FFF4E2", fg: "#B4690E" },
+    failed:  { label: "Failed",   bg: "#FDE8EC", fg: "#C22F4D" },
+  };
+  const s = map[status] || map.queued;
+  return (
+    <span className="text-[11px] px-2 py-1 rounded-full whitespace-nowrap" style={{ background: s.bg, color: s.fg, fontWeight: 600 }}>
+      {s.label}
+    </span>
+  );
+}
+
+// ─── Block ────────────────────────────────────────────────────────
+export default function Block() {
+  const user = useCurrentUser();
+
+  // Read once, inline: URL parsing anywhere else stops the analyzer
+  // registering the create action.
+  const [urlProjectId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      return new URL(window.location.href).searchParams.get("recordId") || "";
+    } catch (e) {
+      return "";
+    }
+  });
+
+  const accountsQ = useRecords({
+    select: accountSelect,
+    from: ds.accounts,
+    count: 20,
+    enabled: !!(user && user.id),
+    where: q.array("users").is((user && user.id) || ""),
+  });
+  const accounts = useMemo(() => {
+    const items = accountsQ.data ? accountsQ.data.pages.flatMap((p) => (p && p.items) || []) : [];
+    if (!user || !user.id) return items;
+    return items.filter((it) => linkIds(it.fields && it.fields.users).includes(user.id));
+  }, [accountsQ.data, user]);
+
+  const [workspaceId, setWorkspaceId] = useState("");
+  useEffect(() => {
+    if (!workspaceId && accounts.length === 1) setWorkspaceId(accounts[0].id);
+  }, [accounts, workspaceId]);
+
+  const projectsQ = useRecords({
+    select: projectSelect,
+    from: ds.projects,
+    count: 100,
+    enabled: !!workspaceId,
+    where: q.array("accounts").is(workspaceId || ""),
+    orderBy: q.desc("createdAt"),
+  });
+  const projects = useMemo(
+    () => (projectsQ.data ? projectsQ.data.pages.flatMap((p) => (p && p.items) || []) : []),
+    [projectsQ.data]
+  );
+
+  const [projectId, setProjectId] = useState("");
+  useEffect(() => {
+    if (!projectId && urlProjectId && projects.some((p) => p.id === urlProjectId)) {
+      setProjectId(urlProjectId);
+    }
+  }, [projects, projectId, urlProjectId]);
+
+  const [mode, setMode] = useState("create"); // create | attach
+
+  const briefsQ = useRecords({
+    select: briefListSelect,
+    from: ds.briefs,
+    count: 100,
+    enabled: mode === "attach" && !!projectId,
+    where: q.array("projects").is(projectId || ""),
+  });
+  const briefs = useMemo(
+    () => (briefsQ.data ? briefsQ.data.pages.flatMap((p) => (p && p.items) || []) : []),
+    [briefsQ.data]
+  );
+  const briefsRef = useRef([]);
+  useEffect(() => { briefsRef.current = briefs; }, [briefs]);
+
+  const createRecord = useRecordCreate({ fields: createFields, from: ds.briefs });
+  const updateRecord = useRecordUpdate({ fields: attachFields, from: ds.briefs });
+  const upload = useUpload();
+
+  const aiFetch = useProxyFetch(ds.openrouter);
+
+  // ── File rows ──────────────────────────────────────────────────
+  // { key, file, filename, size, name, nameEdited, briefMatchId,
+  //   status, note, createdId }
+  const [rows, setRows] = useState([]);
+  const rowsRef = useRef([]);
+  useEffect(() => { rowsRef.current = rows; }, [rows]);
+  const [running, setRunning] = useState(false);
+  const fileRef = useRef(null);
+
+  const patchRow = (key, patch) =>
+    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+
+  const addFiles = (fileList) => {
+    const incoming = Array.from(fileList || []);
+    if (!incoming.length) return;
+    setRows((rs) => {
+      const room = MAX_FILES - rs.length;
+      const usable = [];
+      incoming.forEach((f) => {
+        if (usable.length >= room) return;
+        const isPdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name || "");
+        if (!isPdf) { toast.error(`${f.name} is not a PDF.`); return; }
+        if (f.size > PDF_MAX_BYTES) { toast.error(`${f.name} is over 10MB.`); return; }
+        usable.push(f);
+      });
+      if (incoming.length > room) toast.error(`Up to ${MAX_FILES} PDFs at a time.`);
+      const stamp = rs.length;
+      const fresh = usable.map((f, i) => {
+        const match = briefsRef.current
+          .map((b) => ({ id: b.id, score: matchScore(f.name, String((b.fields && b.fields.name) || "")) }))
+          .sort((x, y) => y.score - x.score)[0];
+        return {
+          key: "f" + (stamp + i) + "-" + String(f.name || "").slice(0, 24),
+          file: f,
+          filename: f.name,
+          size: f.size,
+          name: nameFromFilename(f.name),
+          nameEdited: false,
+          briefMatchId: match && match.score > 0 ? match.id : "",
+          status: "queued",
+          note: "",
+          createdId: "",
+        };
+      });
+      return [...rs, ...fresh];
+    });
+  };
+
+  const removeRow = (key) => setRows((rs) => rs.filter((r) => r.key !== key));
+  const clearDone = () => setRows((rs) => rs.filter((r) => r.status !== "done" && r.status !== "partial"));
+
+  // ── AI mapping (same section model as the create chat) ─────────
+  const mapPdf = async (dataUrl, filename) => {
+    if (!aiFetch) return null;
+    const sys =
+      "You turn brand briefing documents into structured creator briefs. Pull content VERBATIM from the document wherever possible; tidy lightly, never invent. Return ONLY a JSON object, no prose, no code fences. " +
+      "Every section value is clean HTML using <p>, <ul><li> or <b>. No headings. NEVER use em dashes. " +
+      "A key the document does not cover MUST be an empty string. Never pad a key by repeating the document's " +
+      "title, its headings, or lines that belong to another key: an empty section is correct and expected.";
+    const callPdf = async (model, keys, note) => {
+      const res = await withTimeout(
+        aiFetch(OPENROUTER_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            plugins: [{ id: "file-parser", pdf: { engine: "cloudflare-ai" } }],
+            messages: [
+              { role: "system", content: sys },
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      "The attached document is an existing creator brief or campaign document.\n" +
+                      `Map its content into a JSON object with exactly these keys: ${keys.join(", ")}.\n` +
+                      note,
+                  },
+                  { type: "file", file: { filename: filename || "brief.pdf", file_data: dataUrl } },
+                ],
+              },
+            ],
+            temperature: 0.3,
+            max_tokens: 8000,
+          }),
+        }),
+        MODEL_TIMEOUT_MS,
+        "Reading"
+      );
+      if (!res.ok) throw new Error(`OpenRouter returned HTTP ${res.status}`);
+      const json = await res.json();
+      const raw = ((json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || "")
+        .trim()
+        .replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim();
+      let obj = {};
+      try {
+        obj = JSON.parse(raw);
+      } catch (e) {
+        const a = raw.indexOf("{"), b = raw.lastIndexOf("}");
+        if (a >= 0 && b > a) obj = JSON.parse(raw.slice(a, b + 1));
+        else throw new Error("The AI response could not be read");
+      }
+      return obj;
+    };
+    const mapSet = async (keys, note) => {
+      try {
+        return await callPdf(MAP_MODEL, keys, note);
+      } catch (e1) {
+        console.warn("PDF read failed on the fast model, retrying on the bigger one:", e1 && e1.message);
+        try {
+          return await callPdf(MAP_FALLBACK_MODEL, keys, note);
+        } catch (e2) {
+          console.error("PDF read failed on both models:", e2 && e2.message);
+          return {};
+        }
+      }
+    };
+    const metaNote =
+      PROSE_NOTE +
+      '\nAlso include "suggested_name" (a short 3 to 6 word title for this brief, plain text), ' +
+      '"creator_type" (exactly one of: UGC, Influencer, Affiliate, Customer, Employee Ambassador, Founder; or "") ' +
+      'and "channel" (Organic or Paid; or "").';
+    const [proseObj, listsObj] = await Promise.all([
+      mapSet(KEYS_PROSE, metaNote),
+      mapSet(KEYS_LISTS, LISTS_NOTE),
+    ]);
+    const sections = {};
+    KEYS_PROSE.forEach((k) => { const v = cleanHtml(proseObj[k]); if (v) sections[k] = v; });
+    KEYS_LISTS.forEach((k) => { const v = cleanHtml(listsObj[k]); if (v) sections[k] = v; });
+    if (Object.keys(sections).length < 2) return null;
+    const plain = (v) => String(v == null ? "" : v).replace(/<[^>]*>/g, "").trim();
+    const ct = CREATOR_TYPES.find((o) => o.label.toLowerCase() === plain(proseObj.creator_type).toLowerCase());
+    const ch = CHANNELS.find((o) => o.label.toLowerCase() === plain(proseObj.channel).toLowerCase());
+    return {
+      sections,
+      suggestedName: plain(proseObj.suggested_name).slice(0, 80),
+      creatorTypeId: ct ? ct.id : "",
+      channelId: ch ? ch.id : "",
+    };
+  };
+
+  // ── Process one file ───────────────────────────────────────────
+  const processOne = async (key) => {
+    const row = rowsRef.current.find((r) => r.key === key);
+    if (!row || row.status === "done" || row.status === "partial") return "skip";
+    patchRow(key, { status: "working", note: "" });
+    try {
+      const results = await upload.uploadAsync(row.file);
+      const first = Array.isArray(results) ? results[0] : results;
+      if (!first || (first.status && first.status !== "completed") || !first.url) {
+        throw new Error((first && first.error && first.error.message) || "Upload failed");
+      }
+      const hostedUrl = first.url;
+      const filename = (first.file && first.file.name) || row.filename;
+
+      if (mode === "attach") {
+        const live = rowsRef.current.find((r) => r.key === key) || row;
+        const briefId = live.briefMatchId;
+        if (!briefId) throw new Error("No brief chosen for this file");
+        if (!updateRecord.enabled) throw new Error("You don't have permission to update briefs");
+        const brief = briefsRef.current.find((b) => b.id === briefId);
+        const existing = asArray(brief && brief.fields && brief.fields.attachment)
+          .map((a) => ({ filename: a && a.filename, url: a && a.url }))
+          .filter((a) => a.url);
+        await updateRecord.mutateAsync({
+          recordId: briefId,
+          fields: { attachment: [...existing, { filename, url: hostedUrl }] },
+        });
+        patchRow(key, { status: "done", createdId: briefId });
+        return "ok";
+      }
+
+      // CREATE mode
+      if (!createRecord.enabled) throw new Error("You don't have permission to create briefs");
+      let mapped = null;
+      if (aiFetch && row.size <= PDF_BASE64_MAX_BYTES) {
+        try {
+          const dataUrl = await readAsDataUrl(row.file);
+          mapped = await mapPdf(dataUrl, filename);
+        } catch (e) {
+          console.warn("PDF mapping failed:", e && e.message);
+        }
+      }
+      const live = rowsRef.current.find((r) => r.key === key) || row;
+      const finalName =
+        live.nameEdited ? live.name
+        : (mapped && mapped.suggestedName) || live.name || nameFromFilename(filename);
+
+      const fields = {
+        name: finalName,
+        users: [{ id: user && user.id }],
+        projects: projectId ? [{ id: projectId }] : null,
+        attachment: [{ filename, url: hostedUrl }],
+        description: "",
+        status: STATUS_DRAFT_ID,
+        generated: mapped ? GENERATED_AI_ID : GENERATED_MANUAL_ID,
+        section_order: STARTER_SECTIONS,
+      };
+      if (mapped) {
+        Object.keys(mapped.sections).forEach((k) => { fields[k] = mapped.sections[k]; });
+        if (mapped.creatorTypeId) fields.creator_type = mapped.creatorTypeId;
+        if (mapped.channelId) fields.channel = mapped.channelId;
+      }
+      const created = await createRecord.mutateAsync(fields);
+      const newId = (created && (created.id || created.recordId)) || "";
+      if (!newId) throw new Error("Create returned no record id");
+      patchRow(key, {
+        status: mapped ? "done" : "partial",
+        name: finalName,
+        createdId: newId,
+        note: mapped ? "" : "PDF attached; write the sections in the builder.",
+      });
+      return "ok";
+    } catch (e) {
+      console.error("[import-pdfs] file failed:", row.filename, e);
+      patchRow(key, { status: "failed", note: (e && e.message) || "Try again." });
+      return "fail";
+    }
+  };
+
+  const startImport = async () => {
+    if (!user || !user.id) { toast.error("You need to be signed in."); return; }
+    if (mode === "create" && !projectId) { toast.error("Pick a project first."); return; }
+    if (mode === "attach") {
+      const missing = rowsRef.current.filter((r) => r.status !== "done" && !r.briefMatchId);
+      if (missing.length) { toast.error("Choose a brief for every file first."); return; }
+    }
+    const keys = rowsRef.current.filter((r) => r.status !== "done" && r.status !== "partial").map((r) => r.key);
+    if (!keys.length) return;
+    setRunning(true);
+    let i = 0;
+    const results = [];
+    const workers = [];
+    for (let w = 0; w < CONCURRENCY; w++) {
+      workers.push((async () => {
+        while (i < keys.length) {
+          const k = keys[i];
+          i = i + 1;
+          results.push(await processOne(k));
+        }
+      })());
+    }
+    await Promise.all(workers);
+    setRunning(false);
+    const ok = results.filter((s) => s === "ok").length;
+    const bad = results.filter((s) => s === "fail").length;
+    if (ok) toast.success(mode === "attach" ? `${ok} PDF${ok === 1 ? "" : "s"} attached` : `${ok} brief${ok === 1 ? "" : "s"} created`);
+    if (bad) toast.error(`${bad} file${bad === 1 ? "" : "s"} failed`, { description: "Fix and press Import again to retry." });
+  };
+
+  const openBrief = (id) => {
+    try {
+      window.open(`/briefs/details/?recordId=${encodeURIComponent(id)}`, "_blank");
+    } catch (e) { /* popup blocked */ }
+  };
+
+  const pending = rows.filter((r) => r.status !== "done" && r.status !== "partial").length;
+  const workspaceName = (accounts.find((a) => a.id === workspaceId) || { fields: {} }).fields.name;
+
+  // ── Render ─────────────────────────────────────────────────────
+  return (
+    <div className="ipdf" style={{ maxWidth: 680, margin: "0 auto", padding: "34px 24px 36px" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+        .ipdf, .ipdf * { font-family: 'League Spartan', sans-serif; }
+        .ipdf input { outline: none; }
+        @keyframes ipdfSpin { to { transform: rotate(360deg); } }
+        .ipdf-spin { display:inline-block; width:12px; height:12px; border-radius:9999px; border:2px solid rgba(122,147,255,.3); border-top-color:#7A93FF; animation: ipdfSpin 0.9s linear infinite; }
+      `}</style>
+
+      <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 700, color: NAVY }}>Import PDFs</h3>
+      <p style={{ margin: "0 0 16px", fontSize: 13, color: MUTED, lineHeight: 1.5 }}>
+        Drop your brief documents and each one becomes a brief, or attach them to briefs you already have.
+      </p>
+
+      {/* Workspace (only when the user has several) */}
+      {accounts.length > 1 && (
+        <div className="mb-3">
+          <div className="text-[11px] mb-1.5" style={{ color: NAVY, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Workspace</div>
+          <Select value={workspaceId} onValueChange={(v) => { setWorkspaceId(v); setProjectId(""); }}>
+            <SelectTrigger className="w-full bg-white"><SelectValue placeholder="Choose a workspace" /></SelectTrigger>
+            <SelectContent>
+              {accounts.map((a) => (
+                <SelectItem key={a.id} value={a.id}>{String((a.fields && a.fields.name) || "Workspace")}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Project */}
+      <div className="mb-3">
+        <div className="text-[11px] mb-1.5" style={{ color: NAVY, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Project</div>
+        <Select value={projectId} onValueChange={setProjectId}>
+          <SelectTrigger className="w-full bg-white"><SelectValue placeholder={workspaceId ? "Choose a project" : "Choose a workspace first"} /></SelectTrigger>
+          <SelectContent>
+            {projects.map((p) => (
+              <SelectItem key={p.id} value={p.id}>{String((p.fields && p.fields.name) || "Project")}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {workspaceName ? (
+          <p className="text-[11px] mt-1" style={{ color: MUTED }}>Importing into {String(workspaceName)}.</p>
+        ) : null}
+      </div>
+
+      {/* Mode */}
+      <div className="flex gap-2 mb-3">
+        <button
+          type="button"
+          onClick={() => setMode("create")}
+          className="flex-1 rounded-xl px-3 py-2.5 text-left shadow-sm transition-all duration-200"
+          style={{ background: mode === "create" ? PERI : "#fff", color: mode === "create" ? "#fff" : NAVY, border: mode === "create" ? `1px solid ${PERI}` : CHIP_BORDER }}
+        >
+          <span className="block text-[12.5px]" style={{ fontWeight: 700 }}>Create briefs from PDFs</span>
+          <span className="block text-[10.5px] mt-0.5" style={{ opacity: mode === "create" ? 0.85 : 0.7 }}>One brief per file, PDF attached</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("attach")}
+          className="flex-1 rounded-xl px-3 py-2.5 text-left shadow-sm transition-all duration-200"
+          style={{ background: mode === "attach" ? PERI : "#fff", color: mode === "attach" ? "#fff" : NAVY, border: mode === "attach" ? `1px solid ${PERI}` : CHIP_BORDER }}
+        >
+          <span className="block text-[12.5px]" style={{ fontWeight: 700 }}>Attach to existing briefs</span>
+          <span className="block text-[10.5px] mt-0.5" style={{ opacity: mode === "attach" ? 0.85 : 0.7 }}>Matched by filename, you confirm</span>
+        </button>
+      </div>
+
+      {!aiFetch && mode === "create" && (
+        <p className="text-[11px] mb-3 px-3 py-2 rounded-lg" style={{ background: "#FFF4E2", color: "#B4690E" }}>
+          AI reading is not switched on for this block yet, so briefs are created with the PDF attached and the name from the file. Sections get written in the builder.
+        </p>
+      )}
+
+      {/* Drop area */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const fl = e.target.files;
+          addFiles(fl);
+          e.target.value = "";
+        }}
+      />
+      <button
+        type="button"
+        disabled={running}
+        onClick={() => { if (fileRef.current) fileRef.current.click(); }}
+        className="w-full rounded-xl px-4 py-6 text-center bg-white shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50"
+        style={{ border: "1.5px dashed rgba(122, 147, 255, 0.6)", color: NAVY }}
+      >
+        <span className="block text-[13px]" style={{ fontWeight: 700 }}>Choose PDFs</span>
+        <span className="block text-[11px] mt-1" style={{ color: MUTED }}>Up to {MAX_FILES} files, 10MB each.</span>
+      </button>
+
+      {/* Rows */}
+      {rows.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {rows.map((r) => (
+            <div key={r.key} className="rounded-xl bg-white shadow-sm px-3.5 py-3" style={{ border: CHIP_BORDER }}>
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12.5px] truncate" style={{ color: NAVY, fontWeight: 600 }}>{r.filename}</div>
+                  <div className="text-[10.5px]" style={{ color: MUTED }}>{Math.max(1, Math.round(r.size / 1024))} KB{r.note ? ` · ${r.note}` : ""}</div>
+                </div>
+                {r.status === "working" && <span className="ipdf-spin" />}
+                <StatusChip status={r.status} />
+                {(r.status === "done" || r.status === "partial") && r.createdId ? (
+                  <button type="button" onClick={() => openBrief(r.createdId)} className="text-[11px] px-2.5 py-1.5 rounded-lg shadow-sm" style={{ border: CHIP_BORDER, color: NAVY, background: "#fff", fontWeight: 600 }}>
+                    Open
+                  </button>
+                ) : null}
+                {r.status !== "working" && r.status !== "done" ? (
+                  <button type="button" onClick={() => removeRow(r.key)} className="text-[11px] px-2 py-1.5 rounded-lg" style={{ color: MUTED }}>
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+
+              {mode === "create" && r.status !== "done" && r.status !== "partial" && (
+                <input
+                  value={r.name}
+                  disabled={running}
+                  onChange={(e) => patchRow(r.key, { name: e.target.value, nameEdited: true })}
+                  placeholder="Brief name"
+                  className="mt-2 w-full rounded-lg px-3 py-2 text-[12.5px] bg-white"
+                  style={{ border: CHIP_BORDER, color: NAVY }}
+                />
+              )}
+
+              {mode === "attach" && r.status !== "done" && (
+                <div className="mt-2">
+                  <Select value={r.briefMatchId} onValueChange={(v) => patchRow(r.key, { briefMatchId: v })}>
+                    <SelectTrigger className="w-full bg-white text-[12.5px]"><SelectValue placeholder={projectId ? "Choose the brief this belongs to" : "Pick a project first"} /></SelectTrigger>
+                    <SelectContent>
+                      {briefs.map((b) => (
+                        <SelectItem key={b.id} value={b.id}>{String((b.fields && b.fields.name) || "Brief")}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Actions */}
+      {rows.length > 0 && (
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <button type="button" onClick={clearDone} disabled={running} className="text-[11.5px] px-3 py-2 rounded-lg disabled:opacity-50" style={{ color: MUTED }}>
+            Clear finished
+          </button>
+          <button
+            type="button"
+            onClick={startImport}
+            disabled={running || pending === 0}
+            className="px-5 py-2.5 rounded-xl text-[13px] shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50"
+            style={{ background: "#879CF7", color: "#fff", fontWeight: 600 }}
+          >
+            {running
+              ? "Importing…"
+              : mode === "attach"
+                ? `Attach ${pending} PDF${pending === 1 ? "" : "s"}`
+                : `Import ${pending} brief${pending === 1 ? "" : "s"}`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,103 @@
+// Tooltips scraped verbatim from Bev's live brief detail page
+// (briefleebeta.preview.softr.app, brief rVkodLPnvsbdAD, 2026-05-29).
+// Typo "visability" → "visibility" corrected per Bev's instruction
+// (database field labels untouched; this is the user-facing copy).
+//
+// QA Checklist terminology pivot: front-end now uses "Review Agents". Each
+// option is an AI agent that reviews one specific thing on every submission.
+// Database field name (qa_checklist) is unchanged — only the UI copy.
+// Agent icon: Brieflee 3D suited character (see AGENTS_ICON_URL below).
+
+const TOOLTIPS = {
+  // Details section
+  platform:                       "Where will this content be posted? Select all that apply",
+  aspect_ratio:                   "What orientation should the video be? Select all that apply",
+  content_delivery:               "What format do you need?",          // labelled "File Delivery"
+  content_type:                   "What type of content do you want? Select all that apply", // labelled "Content style"
+  submission_open_date:           "When can creators submit content?", // labelled "Submission Open"
+  submission_close_date:          "When are submissions closed?",      // labelled "Submission Close"
+
+  // Quality Assurance section — thresholds the Review Agents check against
+  product_screen_time_threshold:  "Minimum percentage of video that must show the product clearly", // "Product visibility"
+  hook_speed_threshold:           "How quickly must the video grab attention and show the product?", // "Audio Hook timing"
+  visual_hook_threshold:          "How quickly must the video visually grab attention and show the product?", // "Visual Hook"
+  cta_placement_threshold:        "When should the CTA appear in the video?", // "Call-to-action timing"
+  face_time_threshold:            "Minimum percentage of video showing the creator's face", // "Creator visibility"
+  text_legibility_threshold:      "How readable must any text overlays be?", // "Text on screen"
+  audio_clarity_threshold:        "How clear must the audio be?",      // "Audio quality"
+  engagement_pacing_threshold:    "How often should the video change scenes or angles?", // "Scene changes"
+  brand_mention_count_threshold:  "How many times must the brand name be mentioned?", // "Brand mentions"
+
+  // Brief section
+  description:                    "Explain what you want creators to produce. Include key messaging, tone, and any specific requirements",
+
+  // Review Agents field-level tooltip (the whole multi-select)
+  qa_checklist:                   "Pick which Review Agents you want watching this brief. Each agent reviews one specific thing on every submission.",
+};
+
+// User-facing field labels. Use these in the UI, not the snake_case alias.
+const FIELD_LABELS = {
+  platform:                       "Platform(s)",
+  aspect_ratio:                   "Aspect Ratio",
+  content_delivery:               "File Delivery",
+  content_type:                   "Content style",
+  submission_open_date:           "Submission Open",
+  submission_close_date:          "Submission Close",
+  product_screen_time_threshold:  "Product visibility",
+  hook_speed_threshold:           "Audio Hook timing",
+  visual_hook_threshold:          "Visual Hook",
+  cta_placement_threshold:        "Call-to-action timing",
+  face_time_threshold:            "Creator visibility", // typo fixed (was "visability")
+  text_legibility_threshold:      "Text on screen",
+  audio_clarity_threshold:        "Audio quality",
+  engagement_pacing_threshold:    "Scene changes",
+  brand_mention_count_threshold:  "Brand mentions",
+  description:                    "Description",
+  qa_checklist:                   "Review Agents", // front-end rename from "QA Checklist"
+};
+
+// =====================================================================
+// REVIEW AGENTS — per-agent metadata
+// Each agent is one entry in the qa_checklist multi-select. The DB
+// stores the original labels (e.g. "Brand alignment") — we render them
+// with the agent icon + a "checks for…" tooltip in third-grade English.
+// =====================================================================
+const AGENTS_ICON_URL =
+  "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png";
+
+// Keyed by the verbatim qa_checklist option label (the DB primary).
+// Tooltip describes what the agent watches for, plain language.
+const AGENT_TOOLTIPS = {
+  "Brand alignment":        "Watches that the video matches the brand's voice, look, and feel.",
+  "Hook quality":           "Watches the first 3 seconds to make sure it grabs attention without sounding like an ad.",
+  "Watchable on mute":      "Watches that the video still makes sense when the sound is off.",
+  "Scene pacing":           "Watches that the video changes scenes often enough to keep viewers from scrolling.",
+  "Audio delivery":         "Listens to the spoken script to make sure it's clear, natural, and on-brand.",
+  "Visual hook":            "Watches the first 3 seconds for a visual moment strong enough to stop the scroll.",
+  "Lighting & camera":      "Watches that the video is bright enough and the camera is steady and in focus.",
+  "Closed captions":        "Reads the captions to make sure they're accurate and easy to follow.",
+  "Energy & authenticity":  "Watches that the creator feels engaging and real, not scripted or flat.",
+  "Text legibility":        "Reads any on-screen text to make sure it's big enough and easy to see.",
+  "Setting & background":   "Watches that the background is tidy, on-brand, and not distracting.",
+  "Product visibility":     "Watches that the product shows clearly enough times across the video.",
+  "Pronunciation":          "Listens for the brand and product names to make sure they're said the right way.",
+  "Copyright check":        "Checks the music, fonts, and clips for anything that could break copyright rules.",
+  "Music & sound balance":  "Listens that the music doesn't drown out the voice.",
+  "Wardrobe & appearance":  "Watches that the creator's outfit fits the brand and looks intentional.",
+  "Product usage":          "Watches that the product is shown being used the way it's meant to be.",
+  "Brand name mentioned":   "Listens for the brand name to be said the agreed number of times.",
+  "Audio clarity":          "Listens that the audio is clean — no background noise, echo, or hum.",
+};
+
+// =====================================================================
+// Section headers + subtitles
+// Quality Assurance subtitle updated to introduce the Agents concept.
+// =====================================================================
+const SECTION_INTRO = {
+  overview:        ["Overview",          "Your brief at a glance. Edit the name, status, and review mode here."],
+  details:         ["Details",           "Set the basics for this brief: platform, format, and delivery requirements."],
+  qualityAssurance:["Quality Assurance", "Pick the Review Agents that watch every submission for this brief, and set the standards they review against. Anything that misses the mark gets flagged."],
+  brief:           ["Brief",             "Add your creative direction, description, brief PDF, and inspiration videos."],
+  inspiration:     ["Inspiration",       "Add videos from your Brieflee library to use as reference for creators."],
+  linkExamples:    ["Inspiration",       "Link Examples Paste TikTok or Instagram links to use as inspiration."],
+};

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 11px; border-radius: 999px; background: {{ bg }}; color: {{ fg }}; font-size: 11px; font-weight: 600;">
+  <span style="width: 6px; height: 6px; border-radius: 50%; background: {{ dot }};"></span>{{ label }}
+</span>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;80px&quot;,&quot;height&quot;:&quot;22px&quot;},&quot;status&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Active&quot;,&quot;Invited&quot;],&quot;default&quot;:&quot;Active&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const s = (this.props.status || "Invited");
+    const active = String(s).toLowerCase() === "active";
+    return {
+      label: s,
+      bg: active ? "rgba(45,170,99,0.12)" : "rgba(245,166,35,0.14)",
+      fg: active ? "#218a4f" : "#B0770F",
+      dot: active ? "#2DAA63" : "#F5A623",
+    };
+  }
+}
+</script>
+</body>
+</html>

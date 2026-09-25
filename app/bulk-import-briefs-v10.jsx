@@ -1,11 +1,90 @@
-import { useState, useRef, useEffect } from "react";
+// =====================================================================
+// Bulk brief importer (/bulk-briefs)
+//
+// CSV → one brief per row. Creator Name and Creator Email are NOT
+// brief fields: `creator_name` (oIsFn) and `creator_email` (Rogsr) are
+// LOOKUPs through the briefs→members link, so writing them is silently
+// dropped (verified against the Tables API: the create succeeds and
+// both come back empty). The columns stay in the CSV and now do what
+// they always looked like they did — each row's creators are resolved
+// to members rows and linked onto the brief through `members` (fL2kC).
+//
+// Semicolons pair multiple creators: "Ann;Bob" with "ann@x.com;bob@x.com".
+// Email is the key (a name with no email is skipped and reported). An
+// existing member in the same account is reused, never duplicated; a
+// new one lands Pending / Submit only, so nobody is emailed by an
+// import — invites stay a deliberate press, same as everywhere else.
+//
+// Sources: briefs (create) + projects (name → account) + members.
+// =====================================================================
+
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { useRecordCreate, useLinkedRecords, q } from "@/lib/datasource";
+import { datasource, useRecords, useRecordCreate, q } from "@/lib/datasource";
 import { useCurrentUser } from "@/lib/user";
 import { ArrowRight, FileText, ChevronRight, AlertCircle, Check, X, DownloadCloud } from "lucide-react";
+
+const ds = datasource.define({
+  briefs: "c7c886c4-d6ac-4fc2-a95f-c8dc742805b0",
+  projects: "projects",
+  members: "members",
+});
+
+// projects (hne0kugPrigIMs) — a row's project by name, and the account
+// behind it, which is the workspace its creators belong to.
+const projectSelect = q.select({
+  projectName: "bvDEj",
+  projectAccounts: "IBYGK",
+});
+
+// members (J8TKhfRL2rxNvA) — read to reuse, write to create.
+const memberSelect = q.select({
+  memberEmail: "v0MOD",
+  memberAccounts: "O72qI",
+});
+const memberCreateFields = q.select({
+  mc_name: "qtE5x",
+  mc_email: "v0MOD",
+  mc_status: "ZjtKB",
+  mc_access: "8B5e8",
+  mc_accounts: "O72qI",
+  mc_users: "C0WMG",
+});
+const MEMBER_PENDING = { id: "a646b9b5-5523-4236-beb1-3a06c616a2fe", label: "Pending" };
+const MEMBER_SUBMIT_ONLY = { id: "57c9deef-6375-4df1-839e-3ecdfe483d29", label: "Submit only" };
+
+function textOf(raw) {
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw)) return raw.map(textOf).filter(Boolean).join(", ");
+  if (typeof raw === "object") return raw.label || raw.value || raw.name || "";
+  return String(raw);
+}
+function firstLinkedId(raw) {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  if (!v) return "";
+  return typeof v === "object" ? (v.id || "") : String(v);
+}
+// "Ann;Bob" + "ann@x.com;bob@x.com" → two creators, paired by position.
+// Email is the key, so a name with no email against it is dropped and
+// counted so the import can say so rather than losing it quietly.
+function parseCreators(nameVal, emailVal) {
+  const names = String(nameVal || "").split(";").map((s) => s.trim());
+  const emails = String(emailVal || "").split(";").map((s) => s.trim());
+  const creators = [];
+  let dropped = 0;
+  const count = Math.max(names.length, emails.length);
+  for (let i = 0; i < count; i++) {
+    const email = (emails[i] || "").toLowerCase();
+    const name = names[i] || "";
+    if (!email) { if (name) dropped += 1; continue; }
+    creators.push({ name, email });
+  }
+  return { creators, dropped };
+}
 
 // QA option IDs for the BRIEFS table
 const QA_OPTIONS = [
@@ -110,8 +189,6 @@ const createFields = q.select({
   projects: "yrYvH",
   description: "FCBU5",
   qa_checklist: "OFoS6",
-  creator_name: "oIsFn",
-  creator_email: "Rogsr",
   submission_open_date: "tdVjp",
   submission_close_date: "M4hMa",
   example_video_1: "5QlsA",
@@ -132,10 +209,10 @@ const createFields = q.select({
   ai_mode: "wm1jM",
   content_delivery: "U9Cyn",
   users: "EdhwS",
-  accounts: "EhzVx",
+  // The creators on this brief. `accounts` is deliberately absent: on
+  // briefs it is a LOOKUP through projects, so it resolves itself.
+  members: "fL2kC",
 });
-
-const linkedProjectSelect = q.select({ projectName: "yrYvH" });
 
 function parseCSV(text) {
   const lines = text.trim().split(/\r?\n/);
@@ -279,10 +356,93 @@ function ReviewStep({ rows, mappings, onBack }) {
 
   const user = useCurrentUser();
 
-  const createRecord = useRecordCreate({ fields: createFields });
+  const createRecord = useRecordCreate({ from: ds.briefs, fields: createFields });
+  const createMember = useRecordCreate({ from: ds.members, fields: memberCreateFields });
 
-  const { data: linkedProjectData } = useLinkedRecords({ select: createFields, field: "projects", count: 100 });
-  const linkedProjects = linkedProjectData?.pages.flatMap((p) => p.items) ?? [];
+  // Real project records rather than link options, because matching a
+  // row's project by name also has to yield its account.
+  const projectsQ = useRecords({ from: ds.projects, select: projectSelect, count: 100 });
+  const linkedProjects = useMemo(() => {
+    const pages = projectsQ.data?.pages;
+    return Array.isArray(pages) ? pages.flatMap((p) => p?.items ?? []) : [];
+  }, [projectsQ.data]);
+
+  // Existing members, so a creator who already has a row is reused.
+  // Pulled a page at a time up to 1000; past that an unseen creator
+  // simply gets a new row, which is the safe direction to fail.
+  const membersQ = useRecords({ from: ds.members, select: memberSelect, count: 100 });
+  useEffect(() => {
+    const loaded = membersQ.data?.pages?.length || 0;
+    if (membersQ.hasNextPage && !membersQ.isFetchingNextPage && loaded < 10) {
+      membersQ.fetchNextPage();
+    }
+  }, [membersQ.hasNextPage, membersQ.isFetchingNextPage, membersQ.data]);
+  const knownMembers = useMemo(() => {
+    const pages = membersQ.data?.pages;
+    return Array.isArray(pages) ? pages.flatMap((p) => p?.items ?? []) : [];
+  }, [membersQ.data]);
+
+  // The row's project record, matched on name.
+  const projectForRow = (row) => {
+    let val = "";
+    Object.entries(mappings).forEach(([csvCol, aliasName]) => {
+      if (aliasName === "projects") val = row[csvCol] || "";
+    });
+    const needle = String(val).trim().toLowerCase();
+    if (!needle) return null;
+    return linkedProjects.find(
+      (p) => textOf(p?.fields?.projectName).trim().toLowerCase() === needle
+    ) || null;
+  };
+
+  const creatorsForRow = (row) => {
+    let nameVal = "";
+    let emailVal = "";
+    Object.entries(mappings).forEach(([csvCol, aliasName]) => {
+      if (aliasName === "creator_name") nameVal = row[csvCol] || "";
+      if (aliasName === "creator_email") emailVal = row[csvCol] || "";
+    });
+    return parseCreators(nameVal, emailVal);
+  };
+
+  // Members created during THIS run, so the same creator across twenty
+  // rows makes one member row rather than twenty. knownMembers is a
+  // snapshot from mount and cannot see them.
+  const madeThisRun = useRef(new Map());
+
+  // Reuse a member with this email in the same account, else make one.
+  // Pending + Submit only: added to the brief, not invited. Sending is
+  // still a deliberate press on the brief's Invites tab.
+  const resolveMemberIds = async (creators, accountId) => {
+    const ids = [];
+    for (const creator of creators) {
+      const runKey = creator.email + "|" + (accountId || "");
+      const alreadyMade = madeThisRun.current.get(runKey);
+      if (alreadyMade) { ids.push(alreadyMade); continue; }
+      const existing = knownMembers.find((m) => {
+        const email = textOf(m?.fields?.memberEmail).trim().toLowerCase();
+        if (email !== creator.email) return false;
+        if (!accountId) return true;
+        const linked = Array.isArray(m?.fields?.memberAccounts) ? m.fields.memberAccounts : [];
+        return linked.some((a) => (a && a.id ? a.id : a) === accountId);
+      });
+      if (existing) { ids.push(existing.id); continue; }
+      if (!createMember.enabled) continue;
+      const made = await createMember.mutateAsync({
+        mc_name: creator.name || creator.email,
+        mc_email: creator.email,
+        mc_status: MEMBER_PENDING,
+        mc_access: MEMBER_SUBMIT_ONLY,
+        mc_accounts: accountId ? [{ id: accountId }] : [],
+        mc_users: user?.id || null,
+      });
+      if (made && made.id) {
+        madeThisRun.current.set(runKey, made.id);
+        ids.push(made.id);
+      }
+    }
+    return ids;
+  };
 
   const buildFieldsFromRow = (row) => {
     const fields = {};
@@ -299,10 +459,12 @@ function ReviewStep({ rows, mappings, onBack }) {
       const val = row[csvCol];
       if (!val) return;
 
-      if (aliasName === "projects") {
-        // Linked record - match by title, send as array with id object
-        const match = linkedProjects.find((o) => o.title.toLowerCase() === val.toLowerCase());
-        console.log("=== v10 Project:", val, "=>", match ? match.id : "NO MATCH");
+      if (aliasName === "creator_name" || aliasName === "creator_email") {
+        // Handled by resolveMemberIds — these are LOOKUPs on briefs and
+        // cannot be written directly.
+        return;
+      } else if (aliasName === "projects") {
+        const match = projectForRow(row);
         if (match) fields.projects = [{ id: match.id }];
       } else if (MULTI_SELECT_LOOKUPS[aliasName]) {
         // Multi-select field — convert semicolon labels to UUID array
@@ -335,25 +497,54 @@ function ReviewStep({ rows, mappings, onBack }) {
   const acceptedRows = rows.filter((_, i) => rowStates[i] === "pending");
   const rejectedCount = rowStates.filter((s) => s === "rejected").length;
 
+  // One row: resolve its project (and so its account), turn the creator
+  // columns into member ids, then create the brief with those members
+  // linked. Returns how many creators were dropped for having no email
+  // so the caller can say so out loud.
+  const createBriefForRow = async (row) => {
+    const fields = buildFieldsFromRow(row);
+    const project = projectForRow(row);
+    const accountId = firstLinkedId(project && project.fields && project.fields.projectAccounts);
+    const parsed = creatorsForRow(row);
+    if (parsed.creators.length) {
+      const memberIds = await resolveMemberIds(parsed.creators, accountId);
+      if (memberIds.length) fields.members = memberIds.map((id) => ({ id }));
+    }
+    await createRecord.mutateAsync(fields);
+    return parsed.dropped;
+  };
+
+  const droppedNote = (dropped) => (
+    dropped
+      ? { description: dropped + " creator name" + (dropped > 1 ? "s" : "") + " skipped, no email against " + (dropped > 1 ? "them" : "it") }
+      : undefined
+  );
+
   const importRow = async (row, i) => {
     if (!createRecord.enabled) { toast.error("Import not available."); return; }
     if (!user?.id) { toast.error("User not detected. Please log in."); return; }
-    const fields = buildFieldsFromRow(row);
-    try { await createRecord.mutateAsync(fields); setImportedIds((prev) => new Set([...prev, i])); toast.success("Row " + (i + 1) + " imported!"); }
+    try {
+      const dropped = await createBriefForRow(row);
+      setImportedIds((prev) => new Set([...prev, i]));
+      toast.success("Row " + (i + 1) + " imported!", droppedNote(dropped));
+    }
     catch (e) { toast.error("Row " + (i + 1) + " failed", { description: e.message || "Unknown error" }); }
   };
 
   const importAll = async () => {
     if (!user?.id) { toast.error("User not detected. Please log in."); return; }
-    setImporting(true); let success = 0; let fail = 0;
+    setImporting(true); let success = 0; let fail = 0; let dropped = 0;
     for (let i = 0; i < rows.length; i++) {
       if (rowStates[i] === "rejected" || importedIds.has(i)) continue;
-      const fields = buildFieldsFromRow(rows[i]);
-      try { await createRecord.mutateAsync(fields); setImportedIds((prev) => new Set([...prev, i])); success++; }
+      try {
+        dropped += await createBriefForRow(rows[i]);
+        setImportedIds((prev) => new Set([...prev, i]));
+        success++;
+      }
       catch (e) { fail++; toast.error("Row " + (i + 1) + " failed", { description: e.message || "Unknown error" }); }
     }
     setImporting(false);
-    if (success > 0) toast.success(success + " brief" + (success > 1 ? "s" : "") + " imported!");
+    if (success > 0) toast.success(success + " brief" + (success > 1 ? "s" : "") + " imported!", droppedNote(dropped));
     if (fail > 0) toast.error(fail + " row" + (fail > 1 ? "s" : "") + " failed.");
   };
 

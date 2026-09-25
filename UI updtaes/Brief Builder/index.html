@@ -1,0 +1,64 @@
+<!doctype html>
+<!-- @dsCard group="UI Kit — App" name="Brief Builder" subtitle="Writing surface with Sections / Modules rail, autosave & the visual-format library" viewport="1360x840" -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Brieflee — Brief Builder</title>
+  <link rel="icon" href="../assets/logos/app-icon.png">
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <style>
+    html, body { margin: 0; height: 100%; background: var(--bl-page); }
+    #root { height: 100%; }
+    ::selection { background: rgba(135,156,247,.3); }
+
+    /* editable placeholder */
+    [data-ph]:empty:before { content: attr(data-ph); color: var(--bl-fg-quiet); }
+    [data-role="title"]:empty:before { content: "Untitled Brief"; color: var(--bl-fg-quiet); }
+
+    /* rich content inside blocks */
+    .bb p { margin: 0 0 10px; }
+    .bb ul, .bb ol { margin: 0 0 10px; padding-left: 22px; }
+    .bb li { margin: 3px 0; line-height: 1.6; }
+    .bb ul[data-task] { list-style: none; padding-left: 4px; }
+    .bb ul[data-task] li:before { content: "\2610  "; color: var(--bl-blue); }
+    .bb blockquote { margin: 0 0 10px; padding: 4px 0 4px 16px; border-left: 3px solid var(--bl-blue-5);
+      color: var(--bl-fg); font-style: italic; }
+    .bb pre { background: #f5f7ff; border: 1px solid var(--bl-border); border-radius: 8px; padding: 12px 14px;
+      margin: 0 0 10px; overflow: auto; }
+    .bb code { font-family: var(--bl-font-mono); font-size: 13px; color: var(--bl-navy-2); }
+    .bb hr { border: none; border-top: 1px solid var(--bl-border); margin: 8px 0 16px; }
+    .bb table { width: 100%; border-collapse: collapse; margin: 0 0 10px; font-size: 14px; }
+    .bb th, .bb td { border: 1px solid var(--bl-border); padding: 8px 10px; text-align: left; }
+    .bb th { background: #f5f7ff; font-weight: 700; color: var(--bl-fg); }
+    .bb .cols3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 0 0 10px; }
+    .bb .cols3 > div { background: #f7f9ff; border: 1px solid var(--bl-border); border-radius: 10px; padding: 12px; font-size: 13.5px; }
+    .bb .embedbox { background: #f5f7ff; border: 1.5px dashed var(--bl-border); border-radius: 10px;
+      padding: 22px; text-align: center; color: var(--bl-fg-muted); font-size: 13.5px; }
+    .bb b { color: var(--bl-fg); }
+    /* placeholder-mode section body: obviously a fill-in, not final copy */
+    .bb-ph { border-left: 2px dashed var(--bl-blue-5); padding-left: 12px; opacity: .9; }
+    .bb-ph b { color: var(--bl-fg-quiet); font-weight: 600; }
+
+    @keyframes bbspin { to { transform: rotate(360deg); } }
+    .bl-spin { animation: bbspin .7s linear infinite; }
+
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: #d6defc; border-radius: 999px; border: 2px solid var(--bl-page); }
+    ::-webkit-scrollbar-track { background: transparent; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="data.js"></script>
+  <script src="bible.js"></script>
+  <script type="text/babel" src="icons.jsx"></script>
+  <script type="text/babel" src="doc.jsx"></script>
+  <script type="text/babel" src="rail.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="builder.jsx"></script>
+</body>
+</html>

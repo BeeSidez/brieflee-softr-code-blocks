@@ -1,0 +1,201 @@
+// Workspace switcher — SINGLE-select (dash chat / videos pages).
+//
+// Unlike the multi-select switcher (used for projects filtering), this one
+// picks exactly ONE workspace. It:
+//   • defaults to the user's first workspace (never "All workspaces"),
+//   • remembers the pick in localStorage so a refresh or a fresh visit keeps
+//     it until it's changed,
+//   • writes ?workspace=<id> to the URL so the chat / videos block reads it.
+//
+// On pick it hard-navigates (so the sibling block re-mounts and reads the new
+// ?workspace=). On mount it back-fills the URL from the remembered pick.
+//
+// SOFTR CONFIG REQUIRED:
+//   Source tab → bind to ACCOUNTS, filter accounts.users includes logged-in user.
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRecords, q } from "@/lib/datasource";
+
+const STORAGE_KEY = "bl-active-workspace";
+
+const select = q.select({
+  name:    "aAKkT",
+  logo:    "q1B5K",
+  logoUrl: "nPI65",
+});
+
+const NAVY_DEEP  = "#001364";
+const PERIWINKLE = "#879CF7";
+const MUTED      = "#6B7A99";
+const BORDER     = "rgba(217, 224, 255, 0.55)";
+
+function readUrlWorkspace() {
+  if (typeof window === "undefined") return "";
+  const raw = new URL(window.location.href).searchParams.get("workspace") || "";
+  return raw.split(",").map((s) => s.trim()).filter(Boolean)[0] || "";
+}
+function readStored() {
+  try { return localStorage.getItem(STORAGE_KEY) || ""; } catch { return ""; }
+}
+function writeStored(id) {
+  try { localStorage.setItem(STORAGE_KEY, id); } catch { /* ignore */ }
+}
+
+export default function Block() {
+  const { data, status } = useRecords({ select, count: 100 });
+  const accounts =
+    data?.pages?.flatMap((p) => p?.items ?? []) ??
+    (Array.isArray(data) ? data : []);
+
+  const [selected, setSelected] = useState(() => readUrlWorkspace() || readStored());
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const backfilledRef = useRef(false);
+
+  const accountIds = useMemo(() => accounts.map((a) => a.id).filter(Boolean), [accounts]);
+
+  // Resolve the active workspace once accounts load: keep the current pick if
+  // it's genuinely one of the user's, otherwise fall back to the first. Persist
+  // it and back-fill the URL so the sibling block reads the same value.
+  useEffect(() => {
+    if (backfilledRef.current || accountIds.length === 0) return;
+    const current = (selected && accountIds.includes(selected)) ? selected : accountIds[0];
+    if (!current) return;
+    backfilledRef.current = true;
+    setSelected(current);
+    writeStored(current);
+    if (typeof window !== "undefined" && readUrlWorkspace() !== current) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("workspace", current);
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [accountIds, selected]);
+
+  // Close on outside click.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => { if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const pick = (id) => {
+    if (id === selected) { setOpen(false); return; }
+    writeStored(id);
+    if (typeof window === "undefined") { setSelected(id); setOpen(false); return; }
+    // Hard-nav so the sibling block re-mounts and reads the new ?workspace=.
+    const url = new URL(window.location.href);
+    url.searchParams.set("workspace", id);
+    window.location.href = url.toString();
+  };
+
+  if (status === "pending" || status === "error") return null;
+  if (accounts.length === 0) return null;
+
+  const activeAccount = accounts.find((a) => a.id === selected) || accounts[0];
+  const activeName = extractName(activeAccount) || "Workspace";
+  const activeLogo = extractLogoUrl(activeAccount);
+
+  return (
+    <div
+      ref={rootRef}
+      style={{
+        display: "flex", alignItems: "center", justifyContent: "flex-end",
+        gap: "10px", padding: "16px 24px", width: "100%",
+        fontFamily: "'League Spartan', sans-serif",
+      }}
+    >
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;500;600&display=swap');`}</style>
+
+      <span style={{ fontSize: 11, fontWeight: 600, color: PERIWINKLE, textTransform: "uppercase", letterSpacing: "0.05em" }}>Workspace</span>
+
+      <div style={{ position: "relative", display: "inline-flex" }}>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          style={{
+            minWidth: 220, display: "inline-flex", alignItems: "center", justifyContent: "space-between",
+            gap: 8, height: 38, padding: "0 12px", background: "#FFFFFF", color: NAVY_DEEP,
+            border: `1px solid ${BORDER}`, borderRadius: 10, fontSize: 13, fontWeight: 500,
+            fontFamily: "inherit", cursor: "pointer", textAlign: "left",
+          }}
+        >
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
+            {activeLogo && <img src={activeLogo} alt="" style={{ width: 20, height: 20, borderRadius: 5, objectFit: "contain", flexShrink: 0 }} />}
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeName}</span>
+          </span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transition: "transform 0.2s", transform: `rotate(${open ? 180 : 0}deg)` }}><polyline points="6 9 12 15 18 9" /></svg>
+        </button>
+
+        {open && accounts.length > 1 && (
+          <div
+            style={{
+              position: "absolute", top: "calc(100% + 6px)", right: 0, minWidth: 260,
+              background: "#FFFFFF", border: `1px solid ${BORDER}`, borderRadius: 12,
+              boxShadow: "0 16px 36px -16px rgba(0, 15, 77, 0.30)", padding: 6, zIndex: 50,
+              maxHeight: 300, overflowY: "auto",
+            }}
+          >
+            {accounts.map((acc) => {
+              const id = acc.id;
+              const isActive = id === selected;
+              const name = extractName(acc) || "Untitled workspace";
+              const logo = extractLogoUrl(acc);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => pick(id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 10px",
+                    background: isActive ? "rgba(135, 156, 247, 0.10)" : "transparent",
+                    color: NAVY_DEEP, border: "none", borderRadius: 8, fontSize: 13, fontWeight: 500,
+                    fontFamily: "inherit", textAlign: "left", cursor: "pointer",
+                  }}
+                >
+                  {logo
+                    ? <img src={logo} alt="" style={{ width: 20, height: 20, borderRadius: 5, objectFit: "contain", flexShrink: 0 }} />
+                    : <span style={{ width: 20, height: 20, flexShrink: 0 }} />}
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+                  {isActive && (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={PERIWINKLE} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────
+function extractName(account) {
+  return unwrap(account?.fields?.name) || "";
+}
+function extractLogoUrl(account) {
+  const formula = unwrap(account?.fields?.logoUrl);
+  if (formula && /^https?:\/\//i.test(formula)) return formula;
+  const raw = account?.fields?.logo;
+  if (!raw) return null;
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw)) {
+    const first = raw[0];
+    if (!first) return null;
+    return typeof first === "string" ? first : (first.url || first.thumbnailUrl || null);
+  }
+  if (typeof raw === "object") return raw.url || raw.thumbnailUrl || null;
+  return null;
+}
+function unwrap(raw) {
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw.trim();
+  if (Array.isArray(raw)) {
+    const f = raw[0];
+    if (typeof f === "string") return f.trim();
+    return String(f?.label ?? f?.name ?? "").trim();
+  }
+  if (typeof raw === "object") return String(raw.label ?? raw.name ?? "").trim();
+  return String(raw).trim();
+}

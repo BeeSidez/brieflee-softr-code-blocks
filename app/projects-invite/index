@@ -1,0 +1,524 @@
+// =====================================================================
+// /projects-invite — Add People modal (Vibe Code block)
+// =====================================================================
+// Opens via window.openSwModal("/projects-invite?recordId=<project_id>")
+// from the per-project card menu in /app/projects. Replaces the native
+// Softr form that previously lived on this page — the styling didn't
+// match the rest of the app and the layout butted up against the
+// modal edges.
+//
+// What the block does:
+//   • Reads the URL recordId (= project id) via useCurrentRecordId
+//   • Fetches the project (name + briefs + submissions) via useRecord
+//   • Fetches the logged-in user's accounts via useRecord
+//   • Renders a clean form: Full name / Email / Message / Access
+//   • On submit, creates a row in the `members` table with every
+//     linked-record context field pre-populated (projects / briefs /
+//     submissions / accounts / users = inviter). status = "Invited",
+//     invited_at = today.
+//   • Closes the surrounding Softr modal on success.
+//
+// SOFTR UI SETUP:
+//   1. Page: /projects-invite
+//   2. Source binding → Database: brieflee beta · Table: members
+//      (so useRecordCreate writes there)
+//   3. Action: enable Add Record
+//   4. Visibility: logged-in user groups (Active / Paid / etc.)
+//   5. The previous hidden "project details" block above the form is
+//      no longer needed — this block reads project context directly
+//      via useRecord. Remove that block to keep the page clean.
+//
+// Cross-table read note: useRecord/useRecords infer the target table
+// from the field IDs in the select clause (field IDs are unique
+// across the database). The block is source-bound to members for
+// the create, but the project + user reads target their own tables
+// via their respective field-id selects.
+// =====================================================================
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  useRecord,
+  useCurrentRecordId,
+  useRecordCreate,
+  q,
+} from "@/lib/datasource";
+import { useCurrentUser } from "@/lib/user";
+import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+
+// ─── Brand palette ────────────────────────────────────────────
+const NAVY_DEEP   = "#001364";
+const PERIWINKLE  = "#879CF7";
+const PERIWINKLE_HOVER = "#294FF6";
+const MUTED       = "#6B7A99";
+const BORDER      = "rgba(217, 224, 255, 0.55)";
+
+// ─── Field maps ───────────────────────────────────────────────
+// projects table (hne0kugPrigIMs)
+const projectSelect = q.select({
+  name:        "bvDEj",
+  briefs:      "ZtwQH", // LINKED_RECORD → briefs
+  submissions: "3jj0B", // LINKED_RECORD → submissions (often empty —
+                        // submissions link via briefs, not the project
+                        // directly; we copy whatever's there for parity
+                        // with the previous Softr form behaviour)
+});
+
+// users table (brpbVf8sL2xqxV)
+const userSelect = q.select({
+  accounts:  "Nz6VX", // LINKED_RECORD → accounts
+  firstName: "ZOm63",
+});
+
+// members table (J8TKhfRL2rxNvA) — write payload aliases
+const memberCreateFields = q.select({
+  fullName:          "qtE5x",
+  firstName:         "dn1Jo",
+  lastName:          "Xf0Vl",
+  email:             "v0MOD",
+  invitationMessage: "s4Kev",
+  accessLevel:       "8B5e8", // SELECT
+  status:            "ZjtKB", // SELECT — set to "Invited" on create
+  invitedAt:         "IeYjB", // DATE
+  invitedBy:         "C0WMG", // LINKED_RECORD → users (the inviter)
+  projects:          "nZt6e", // LINKED_RECORD → projects
+  briefs:            "ECMYD", // LINKED_RECORD → briefs
+  accounts:          "O72qI", // LINKED_RECORD → accounts
+  submissions:       "WmfhK", // LINKED_RECORD → submissions
+});
+
+// Access SELECT options (pinned so we don't need a fetch)
+const ACCESS_OPTIONS = [
+  {
+    id: "57c9deef-6375-4df1-839e-3ecdfe483d29",
+    label: "Submit only",
+    hint: "Can upload videos for review. Can't see other submissions or briefs.",
+  },
+  {
+    id: "4f64aba6-5b8c-4b17-a6b3-beae6004a1af",
+    label: "Full access",
+    hint: "Can do everything you can do in this project.",
+  },
+];
+
+const STATUS_INVITED_ID = "ba4533e6-c617-43e1-8835-1e6f5007758f";
+
+// ─── Helpers ──────────────────────────────────────────────────
+function unwrap(raw) {
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw.trim();
+  if (Array.isArray(raw)) return raw.map(unwrap).filter(Boolean).join(", ");
+  if (typeof raw === "object") return raw.label || raw.value || raw.name || "";
+  return String(raw);
+}
+
+// Close the surrounding Softr modal from inside the iframe. Tries the
+// direct API first, then falls back to postMessage variants — Softr
+// has shipped different protocols across versions, so we cover all
+// the common shapes rather than betting on one.
+function closeSoftrModal() {
+  if (typeof window === "undefined") return;
+  try {
+    const p = window.parent;
+    if (p && typeof p.closeSwModal === "function") {
+      p.closeSwModal();
+      return;
+    }
+    if (p) {
+      p.postMessage({ type: "softr-modal-close" }, "*");
+      p.postMessage({ type: "closeModal" }, "*");
+    }
+  } catch (e) {
+    console.error("closeSoftrModal failed:", e);
+  }
+}
+
+// =====================================================================
+// MAIN BLOCK
+// =====================================================================
+export default function Block() {
+  const user = useCurrentUser();
+  const projectId = useCurrentRecordId();
+
+  // Project context (name + linked briefs/submissions for the hidden
+  // field population on the create payload).
+  const project = useRecord({
+    recordId: projectId,
+    select: projectSelect,
+    enabled: !!projectId,
+  });
+
+  // User context (accounts the inviter belongs to).
+  const userRecord = useRecord({
+    recordId: user?.id,
+    select: userSelect,
+    enabled: !!user?.id,
+  });
+
+  // Derived display values.
+  const projectName = unwrap(project?.data?.fields?.name) || "this project";
+  const inviterFirstName =
+    user?.firstName ||
+    user?.first_name ||
+    unwrap(userRecord?.data?.fields?.firstName) ||
+    (user?.fullName || user?.name || "").split(" ")[0] ||
+    "";
+
+  const defaultMessage = useMemo(() => {
+    const opener = inviterFirstName ? `Hi, ${inviterFirstName} here.` : "Hi!";
+    return `${opener} I'd love to have you collaborate on ${projectName}. Have a look at the brief and let me know if you have any questions.`;
+  }, [inviterFirstName, projectName]);
+
+  // ─── Form state ───────────────────────────────────────
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState("");
+  const [accessLevel, setAccessLevel] = useState(ACCESS_OPTIONS[0].id);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Pre-fill the message once the project name has loaded, so the
+  // user can see "...collaborate on Sunkissed Lip Oil — Launch UGC"
+  // instead of "...collaborate on this project".
+  const [messageHydrated, setMessageHydrated] = useState(false);
+  useEffect(() => {
+    if (messageHydrated) return;
+    if (projectName === "this project") return;
+    setMessage(defaultMessage);
+    setMessageHydrated(true);
+  }, [defaultMessage, projectName, messageHydrated]);
+
+  const createRecord = useRecordCreate({ fields: memberCreateFields });
+
+  // ─── Validation ───────────────────────────────────────
+  const validate = () => {
+    if (!fullName.trim()) return "Add a full name";
+    if (!email.trim()) return "Add an email";
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) return "That email looks off";
+    if (!projectId) return "Project context missing — close and reopen";
+    if (!user?.id) return "Please log in to invite people";
+    return null;
+  };
+
+  const isFormValid = !!fullName.trim() && !!email.trim();
+
+  // ─── Submit ───────────────────────────────────────────
+  const handleSubmit = async () => {
+    const err = validate();
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    if (!createRecord.enabled) {
+      toast.error("Can't add members right now");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const parts = fullName.trim().split(/\s+/);
+      const firstName = parts[0] || "";
+      const lastName = parts.slice(1).join(" ");
+
+      const projectFields = project?.data?.fields || {};
+      const userFields = userRecord?.data?.fields || {};
+      const userAccounts = Array.isArray(userFields.accounts) ? userFields.accounts : [];
+      const projectBriefs = Array.isArray(projectFields.briefs) ? projectFields.briefs : [];
+      const projectSubmissions = Array.isArray(projectFields.submissions) ? projectFields.submissions : [];
+
+      await createRecord.mutateAsync({
+        fullName:          fullName.trim(),
+        firstName,
+        lastName,
+        email:             email.trim().toLowerCase(),
+        invitationMessage: message.trim(),
+        accessLevel: {
+          id:    accessLevel,
+          label: ACCESS_OPTIONS.find((o) => o.id === accessLevel)?.label || "Submit only",
+        },
+        status:      { id: STATUS_INVITED_ID, label: "Invited" },
+        invitedAt:   new Date().toISOString().split("T")[0], // YYYY-MM-DD
+        invitedBy:   [{ id: user.id }],
+        projects:    [{ id: projectId }],
+        briefs:      projectBriefs.map((b) => ({ id: b.id })),
+        accounts:    userAccounts.map((a) => ({ id: a.id })),
+        submissions: projectSubmissions.map((s) => ({ id: s.id })),
+      });
+
+      toast.success(`Invite sent to ${fullName.trim()}`);
+      closeSoftrModal();
+    } catch (e) {
+      console.error("Invite failed:", e);
+      toast.error("Couldn't send invite", {
+        description: e?.message || "Try again.",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCancel = () => closeSoftrModal();
+
+  // ─── Render ───────────────────────────────────────────
+  // The block is rendered inside Softr's modal iframe — Softr provides
+  // the outer modal panel (white card, X close, drop shadow). We just
+  // render the form contents flush, no nested card wrapper. The
+  // padding here is the breathing room from the iframe edges.
+  return (
+    <>
+      <Style />
+      <div className="bl-invite">
+        <div className="bl-invite-content">
+          <header className="bl-invite-header">
+            <h2 className="bl-invite-title">
+              Add people to {projectName}
+            </h2>
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="bl-invite-close"
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+          </header>
+
+          <div className="bl-invite-body">
+            <div className="bl-invite-field">
+              <label className="bl-invite-label" htmlFor="iv-name">
+                Full name <span style={{ color: "#d92626" }}>*</span>
+              </label>
+              <Input
+                id="iv-name"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Their name"
+                disabled={submitting}
+                autoFocus
+              />
+            </div>
+
+            <div className="bl-invite-field">
+              <label className="bl-invite-label" htmlFor="iv-email">
+                Email <span style={{ color: "#d92626" }}>*</span>
+              </label>
+              <Input
+                id="iv-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@example.com"
+                disabled={submitting}
+              />
+            </div>
+
+            <div className="bl-invite-field">
+              <label className="bl-invite-label" htmlFor="iv-message">
+                Message{" "}
+                <span className="bl-invite-optional">(optional)</span>
+              </label>
+              <Textarea
+                id="iv-message"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Add a personal note"
+                rows={3}
+                disabled={submitting}
+              />
+            </div>
+
+            <div className="bl-invite-field">
+              <label className="bl-invite-label" htmlFor="iv-access">
+                Access
+              </label>
+              <select
+                id="iv-access"
+                value={accessLevel}
+                onChange={(e) => setAccessLevel(e.target.value)}
+                className="bl-invite-select"
+                disabled={submitting}
+              >
+                {ACCESS_OPTIONS.map((o) => (
+                  <option key={o.id} value={o.id}>{o.label}</option>
+                ))}
+              </select>
+              <span className="bl-invite-hint">
+                {ACCESS_OPTIONS.find((o) => o.id === accessLevel)?.hint}
+              </span>
+            </div>
+          </div>
+
+          <footer className="bl-invite-footer">
+            <button
+              type="button"
+              onClick={handleCancel}
+              disabled={submitting}
+              className="bl-invite-cancel"
+            >
+              Cancel
+            </button>
+            <Button
+              onClick={handleSubmit}
+              disabled={submitting || !isFormValid}
+              style={{ backgroundColor: PERIWINKLE, color: "#fff" }}
+            >
+              {submitting ? "Sending…" : "Send invite"}
+            </Button>
+          </footer>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// =====================================================================
+// Style
+// =====================================================================
+function Style() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+
+      .bl-invite,
+      .bl-invite * { font-family: 'League Spartan', sans-serif; box-sizing: border-box; }
+
+      /* The block lives INSIDE Softr's modal iframe. Softr provides the
+         outer white panel + drop shadow + X close, so we render the
+         form flush — no second card, no lavender background. Just
+         padding so the contents don't kiss the iframe edges. Tight
+         vertical rhythm so the whole form fits inside Softr's "sm"
+         modal height without forcing a scroll. */
+      .bl-invite {
+        background: #FFFFFF;
+        min-height: auto;
+        padding: 18px 24px 16px;
+      }
+
+      .bl-invite-content {
+        width: 100%;
+        max-width: none;
+      }
+
+      .bl-invite-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .bl-invite-title {
+        font-size: 18px;
+        font-weight: 500;
+        color: ${NAVY_DEEP};
+        margin: 0;
+        line-height: 1.25;
+        letter-spacing: -0.01em;
+      }
+      .bl-invite-close {
+        width: 28px;
+        height: 28px;
+        background: transparent;
+        color: ${MUTED};
+        border: none;
+        border-radius: 999px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        transition: background 0.15s, color 0.15s;
+        flex-shrink: 0;
+      }
+      .bl-invite-close:hover {
+        background: rgba(135, 156, 247, 0.10);
+        color: ${NAVY_DEEP};
+      }
+
+      .bl-invite-body { display: flex; flex-direction: column; gap: 10px; }
+      .bl-invite-field { display: flex; flex-direction: column; gap: 4px; }
+      .bl-invite-label {
+        font-size: 12px;
+        font-weight: 500;
+        color: ${NAVY_DEEP};
+        letter-spacing: 0.01em;
+      }
+      .bl-invite-optional {
+        color: ${MUTED};
+        font-weight: 400;
+      }
+      .bl-invite-hint {
+        font-size: 11px;
+        color: ${MUTED};
+        line-height: 1.45;
+      }
+
+      /* Force the shadcn Input + Textarea to render at 13px — the
+         Softr modal iframe doesn't inherit the parent app's font
+         sizing, so without this override the components fall back
+         to their default text-base (16px) and look chunky. */
+      .bl-invite input,
+      .bl-invite textarea {
+        font-size: 13px !important;
+        font-family: 'League Spartan', sans-serif !important;
+      }
+      .bl-invite input::placeholder,
+      .bl-invite textarea::placeholder {
+        font-size: 13px;
+        color: #9aa3bf;
+      }
+      .bl-invite input:not([type="checkbox"]):not([type="radio"]) {
+        height: 38px !important;
+      }
+      .bl-invite textarea {
+        min-height: 64px;
+        line-height: 1.4;
+      }
+
+      .bl-invite-select {
+        height: 38px;
+        padding: 0 32px 0 12px;
+        font-size: 13px;
+        background: #FFFFFF url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7A99' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>") no-repeat right 10px center / 14px;
+        border: 1px solid ${BORDER};
+        border-radius: 10px;
+        color: ${NAVY_DEEP};
+        outline: none;
+        appearance: none;
+        cursor: pointer;
+        transition: border-color 0.15s;
+      }
+      .bl-invite-select:focus { border-color: ${PERIWINKLE}; }
+      .bl-invite-select:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      .bl-invite-footer {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 8px;
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid ${BORDER};
+      }
+      .bl-invite-cancel {
+        background: transparent;
+        color: ${MUTED};
+        border: none;
+        font-size: 13px;
+        font-weight: 500;
+        padding: 8px 14px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: color 0.15s;
+      }
+      .bl-invite-cancel:hover:not(:disabled) { color: ${NAVY_DEEP}; }
+      .bl-invite-cancel:disabled { color: #C5CFE8; cursor: not-allowed; }
+
+      /* Responsive: tighter padding on small screens so the form
+         doesn't squeeze against the modal frame on mobile. */
+      @media (max-width: 520px) {
+        .bl-invite { padding: 18px 16px 16px; }
+      }
+    `}</style>
+  );
+}

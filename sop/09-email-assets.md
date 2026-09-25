@@ -67,10 +67,11 @@ https://res.cloudinary.com/dchroynzv/image/upload/f_auto,q_auto/<public_id>.<ext
 | `activation_url` | One-time activation link (per-user) | Generated per-user by `BL \| New Signup` workflow | bl-7day-d0-activate |
 | `cta_terms` | Terms & conditions | `https://www.brieflee.co/terms` | bl-7day-d0-activate footer + others |
 | `cta_privacy` | Privacy policy | `https://www.brieflee.co/privacy` | bl-7day-d0-activate footer + others |
-| `unsubscribe` | One-click unsubscribe | Auto-handled by EmailIt — don't set manually | All marketing emails (NOT transactional) |
+| `unsubscribe` | Opt-out page | `https://www.brieflee.co/unsubscribe` — **hardcoded**, self-hosted | All marketing emails (NOT transactional) |
 
 **Notes:**
-- Transactional emails (`bl-7day-d0-activate`, `bl-tx-payment-failed`) MUST NOT include an `unsubscribe` link — required for inbox placement.
+- **Unsubscribe is NOT auto-handled by EmailIt.** This row previously said it was. It is wrong and it caused a live outage: every marketing email shipped with `<a href="">Unsubscribe</a>` because EmailIt renders unknown Mustache variables as an empty string. Confirmed 2026-07-28 from the raw MIME of a delivered send. The URL is now hardcoded to a self-hosted page. See `sop/10-unsubscribe-workflow-spec.md`.
+- Transactional emails (`bl-7day-d0-activate`, `bl-tx-payment-failed`, `bl-tx-team-invite`) MUST NOT include an `unsubscribe` link — required for inbox placement. They are registered in `emails/email_constants.py -> TRANSACTIONAL_NO_UNSUBSCRIBE` so the pre-push validator skips the check.
 - For `cta_update_payment`, generate a per-user Stripe Customer Portal session in the workflow and pass as a variable. The static `/settings/billing` link is a fallback.
 - For `cta_upgrade`, append `?promo={{promo_code}}` so the upgrade page pre-fills `TRIALUPGRADE` / `LASTCHANCE` / `FINALDAY` per the trial countdown spec.
 

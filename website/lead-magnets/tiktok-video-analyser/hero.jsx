@@ -210,7 +210,8 @@ export default function Block() {
 
   const typedWord = useTypingCycle(TYPING_WORDS);
   const createRecord = useRecordCreate({ fields: createFields });
-  const upload = useUpload();
+  // useUpload() returns { uploadAsync, isUploading } — NOT a mutation.
+  const { uploadAsync } = useUpload();
 
   const handleStart = () => {
     setError("");
@@ -261,7 +262,13 @@ export default function Block() {
     try {
       let videoAttachment = null;
       if (tab === "file" && file) {
-        videoAttachment = await upload.mutateAsync(file);
+        // uploadAsync resolves to an ARRAY of { id, file, status, url }.
+        const [result] = await uploadAsync(file);
+        if (!result || result.status !== "completed" || !result.url) {
+          throw new Error("Video upload didn't complete.");
+        }
+        // Attachment fields take an array of { filename, url }.
+        videoAttachment = [{ filename: result.file?.name || "video", url: result.url }];
       }
 
       const fields = {

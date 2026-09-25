@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #FAFBFF; -webkit-font-smoothing: antialiased; }
+  a { color: #879CF7; }
+  a:hover { color: #6E86F2; }
+  details.bltool > summary { list-style: none; }
+  details.bltool > summary::-webkit-details-marker { display: none; }
+  details.bltool[open] .blchev { transform: rotate(180deg); }
+  .mkr .mtip { opacity: 0; visibility: hidden; transition: opacity 0.15s; }
+  .mkr:hover .mtip { opacity: 1; visibility: visible; }
+  .mkr:hover { z-index: 20; }
+  @keyframes mkrpulse { 0% { box-shadow: 0 2px 6px rgba(0,19,100,0.22), 0 0 0 0 rgba(135,156,247,0.55); } 70% { box-shadow: 0 2px 6px rgba(0,19,100,0.22), 0 0 0 7px rgba(135,156,247,0); } 100% { box-shadow: 0 2px 6px rgba(0,19,100,0.22), 0 0 0 0 rgba(135,156,247,0); } }
+  .mkr.active { animation: mkrpulse 1.5s ease-out infinite; z-index: 16; }
+  .srrow { transition: background 0.15s; }
+  .srrow.active { background: rgba(135,156,247,0.12) !important; box-shadow: inset 3px 0 0 #879CF7; }
+  @keyframes tdot { 0%, 60%, 100% { opacity: 0.25; } 30% { opacity: 1; } }
+</style>
+</helmet>
+
+<div data-screen-label="Submission review" style="font-family: 'Inter', sans-serif; min-height: 100vh; background: #FFFFFF; color: #001364;">
+
+    <div style="display: flex; flex-wrap: wrap; align-items: stretch; min-height: 100vh;">
+
+      <!-- Center: action rail + video -->
+      <div style="flex: 1 1 380px; min-width: 300px; padding: 32px 36px 32px; background: #FAFBFF; display: flex; align-items: flex-start; justify-content: center; gap: 28px;">
+
+        <!-- Action rail -->
+        <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 8px; background: #FFFFFF; border: 1px solid rgba(217,224,255,0.8); border-radius: 16px; box-shadow: 0 10px 26px -18px rgba(0,19,100,0.3); position: sticky; top: 40px; margin-top: 110px;">
+          <button onClick="{{ toggleRail }}" title="{{ railTitle }}" style="display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 26px; border-radius: 9px; border: none; background: transparent; color: #9aa6c3; cursor: pointer;" style-hover="background: rgba(135,156,247,0.12); color: #879CF7;">
+            <sc-if value="{{ railOpen }}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" x2="19" y1="12" y2="12"></line></svg></sc-if>
+            <sc-if value="{{ railClosed }}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.4"></circle><circle cx="15" cy="6" r="1.4"></circle><circle cx="9" cy="12" r="1.4"></circle><circle cx="15" cy="12" r="1.4"></circle><circle cx="9" cy="18" r="1.4"></circle><circle cx="15" cy="18" r="1.4"></circle></svg></sc-if>
+          </button>
+          <sc-if value="{{ railOpen }}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+          <button title="Revise" style="display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 11px; border: none; background: transparent; color: #6B7A99; cursor: pointer;" style-hover="background: rgba(135,156,247,0.12); color: #879CF7;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path><path d="m15 5 4 4"></path></svg>
+          </button>
+          <button title="Approve" style="display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 11px; border: none; background: transparent; color: #6B7A99; cursor: pointer;" style-hover="background: rgba(45,170,99,0.12); color: #2DAA63;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          </button>
+          <button title="Reject" style="display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 11px; border: none; background: transparent; color: #6B7A99; cursor: pointer;" style-hover="background: rgba(224,82,82,0.12); color: #E05252;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+          </button>
+          <button title="Rate" style="display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 11px; border: none; background: transparent; color: #6B7A99; cursor: pointer;" style-hover="background: rgba(135,156,247,0.12); color: #879CF7;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.12 5.11a.56.56 0 0 0 .48.34l5.52.45c.5.04.7.66.32.99l-4.2 3.6a.56.56 0 0 0-.18.56l1.28 5.38a.56.56 0 0 1-.84.61l-4.72-2.88a.56.56 0 0 0-.59 0l-4.72 2.88a.56.56 0 0 1-.84-.61l1.28-5.38a.56.56 0 0 0-.18-.56l-4.2-3.6a.56.56 0 0 1 .32-.99l5.52-.45a.56.56 0 0 0 .48-.34Z"></path></svg>
+          </button>
+          <div style="height: 1px; margin: 4px 6px; background: rgba(217,224,255,0.8);"></div>
+          <button title="Download" style="display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 11px; border: none; background: transparent; color: #6B7A99; cursor: pointer;" style-hover="background: rgba(135,156,247,0.12); color: #879CF7;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line></svg>
+          </button>
+          <button title="Add people" style="display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 11px; border: none; background: transparent; color: #6B7A99; cursor: pointer;" style-hover="background: rgba(135,156,247,0.12); color: #879CF7;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 21a8 8 0 0 1 13.29-6"></path><circle cx="10" cy="8" r="5"></circle><path d="M19 16v6"></path><path d="M22 19h-6"></path></svg>
+          </button>
+          <button title="Comments" data-tab="comments" onClick="{{ setTab }}" style="display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 11px; border: none; background: transparent; color: #6B7A99; cursor: pointer;" style-hover="background: rgba(135,156,247,0.12); color: #879CF7;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+          </button>
+          </div>
+          </sc-if>
+        </div>
+
+        <!-- Video + marker strip -->
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <h2 style="margin: 0 0 4px; font-size: 19px; font-weight: 700; letter-spacing: -0.02em; color: #001364; text-align: center;">Comfrt Travel Hoodie</h2>
+          <div style="font-size: 11.5px; font-weight: 500; color: #9aa6c3; margin-bottom: 16px; text-align: center;">Content review · Comfrt · 0:39</div>
+
+          <div style="position: relative; width: 296px; max-width: 100%; aspect-ratio: 9 / 16; border-radius: 20px; overflow: hidden; background: #0B1024; border: 1px solid rgba(0,0,0,0.08); box-shadow: 0 10px 26px -16px rgba(0,19,100,0.26);">
+            <video id="vid1b" controls="" playsinline="" preload="metadata" poster="https://res.cloudinary.com/dspv9nm1n/video/upload/so_1/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" style="width: 100%; height: 100%; object-fit: cover; display: block;">
+              <source src="https://res.cloudinary.com/dspv9nm1n/video/upload/v1782292068/qorue56gnkxsjtqabviy.mp4" type="video/mp4">
+            </video>
+          </div>
+
+          <!-- Marker strip -->
+          <div style="width: 296px; max-width: 100%; margin-top: 20px;">
+            <div style="position: relative; height: 4px; border-radius: 999px; background: #E7EAF7;">
+              <sc-for list="{{ reviewMarkers }}" as="m" hint-placeholder-count="4">
+                <button class="mkr {{ m.activeCls }}" data-vid="vid1b" data-sec="{{ m.sec }}" onClick="{{ seek }}" style="position: absolute; left: {{ m.left }}; top: 50%; transform: translate(-50%, -50%); display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff; background: #fff; font-family: inherit; cursor: pointer; padding: 0; box-shadow: 0 2px 6px rgba(0,19,100,0.22);" style-hover="transform: translate(-50%, -50%) scale(1.15);">
+                  <img src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" alt="" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+                  <span class="mtip" style="position: absolute; bottom: 34px; left: 50%; transform: translateX(-50%); width: 190px; padding: 9px 11px; border-radius: 11px; background: #fff; border: 1px solid rgba(217,224,255,0.9); box-shadow: 0 10px 28px -10px rgba(0,19,100,0.3); pointer-events: none; text-align: left;">
+                    <span style="display: flex; align-items: center; gap: 6px; margin-bottom: 3px;">
+                      <span style="font-size: 11.5px; font-weight: 700; color: #001364;">{{ m.tipTitle }}</span>
+                      <span style="font-size: 10px; font-weight: 700; color: #879CF7; background: rgba(135,156,247,0.14); padding: 1px 6px; border-radius: 999px;">{{ m.time }}</span>
+                    </span>
+                    <span style="display: block; font-size: 11px; font-weight: 400; line-height: 1.45; color: #6B7A99;">{{ m.tipText }}</span>
+                  </span>
+                </button>
+              </sc-for>
+              <sc-for list="{{ commentMarkers }}" as="m" hint-placeholder-count="0">
+                <button class="mkr {{ m.activeCls }}" data-vid="vid1b" data-sec="{{ m.sec }}" onClick="{{ seek }}" style="position: absolute; left: {{ m.left }}; top: 50%; transform: translate(-50%, -50%); display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff; background: #879CF7; color: #fff; font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer; padding: 0; box-shadow: 0 2px 6px rgba(0,19,100,0.22);" style-hover="transform: translate(-50%, -50%) scale(1.15);">
+                  {{ m.letter }}
+                  <span class="mtip" style="position: absolute; bottom: 34px; left: 50%; transform: translateX(-50%); width: 190px; padding: 9px 11px; border-radius: 11px; background: #fff; border: 1px solid rgba(217,224,255,0.9); box-shadow: 0 10px 28px -10px rgba(0,19,100,0.3); pointer-events: none; text-align: left;">
+                    <span style="display: flex; align-items: center; gap: 6px; margin-bottom: 3px;">
+                      <span style="font-size: 11.5px; font-weight: 700; color: #001364;">{{ m.tipTitle }}</span>
+                      <span style="font-size: 10px; font-weight: 700; color: #879CF7; background: rgba(135,156,247,0.14); padding: 1px 6px; border-radius: 999px;">{{ m.time }}</span>
+                    </span>
+                    <span style="display: block; font-size: 11px; font-weight: 400; line-height: 1.45; color: #6B7A99;">{{ m.tipText }}</span>
+                  </span>
+                </button>
+              </sc-for>
+              <sc-for list="{{ scriptMarkers }}" as="m" hint-placeholder-count="0">
+                <button data-vid="vid1b" data-sec="{{ m.sec }}" onClick="{{ seek }}" title="{{ m.tip }}" style="position: absolute; left: {{ m.left }}; top: 50%; transform: translate(-50%, -50%); width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; background: #C7D0F5; cursor: pointer; padding: 0; box-shadow: 0 1px 4px rgba(0,19,100,0.2);" style-hover="transform: translate(-50%, -50%) scale(1.3); background: #879CF7;"></button>
+              </sc-for>
+            </div>
+
+            <!-- Emoji reactions on timeline -->
+            <div style="position: relative; height: 26px; margin-top: 10px;">
+              <sc-for list="{{ reactions }}" as="r" hint-placeholder-count="0">
+                <button data-vid="vid1b" data-sec="{{ r.sec }}" onClick="{{ seek }}" title="{{ r.time }}" style="position: absolute; left: {{ r.left }}; top: 0; transform: translateX(-50%); border: none; background: transparent; padding: 0; font-size: 21px; line-height: 1; cursor: pointer;" style-hover="transform: translateX(-50%) scale(1.3);">{{ r.e }}</button>
+              </sc-for>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 12.5px; font-weight: 600; color: #6B7A99;">
+              <span>0:00</span>
+              <span style="color: #9aa6c3; font-weight: 500;">{{ stripLabel }}</span>
+              <span>0:39</span>
+            </div>
+
+            <!-- Flag stepper -->
+            <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 14px;">
+              <button onClick="{{ prevFlag }}" title="Previous flag" style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; border: 1px solid rgba(217,224,255,0.9); background: #fff; color: #879CF7; cursor: pointer;" style-hover="background: rgba(135,156,247,0.1);">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"></polygon><rect x="5" y="4" width="2" height="16" rx="1"></rect></svg>
+              </button>
+              <button onClick="{{ nextFlag }}" title="Jump to next flag" style="display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 15px; border-radius: 999px; border: none; background: #879CF7; color: #fff; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer;" style-hover="background: #6E86F2;">
+                Next flag
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"></polygon><rect x="17" y="4" width="2" height="16" rx="1"></rect></svg>
+              </button>
+            </div>
+
+            <!-- React bar -->
+            <div style="display: flex; justify-content: center; margin-top: 14px;">
+              <div style="display: flex; align-items: center; gap: 4px; padding: 5px 12px; border: 1px solid rgba(217,224,255,0.9); border-radius: 999px; background: #fff; box-shadow: 0 4px 14px -10px rgba(0,19,100,0.3);">
+                <sc-for list="{{ emojiList }}" as="e" hint-placeholder-count="6">
+                  <button data-emoji="{{ e.e }}" onClick="{{ react }}" title="React at current time" style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; border: none; background: transparent; font-size: 23px; cursor: pointer; padding: 0;" style-hover="background: rgba(135,156,247,0.12); transform: scale(1.15);">{{ e.e }}</button>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Drag handle -->
+      <div onMouseDown="{{ startDrag }}" title="Drag to resize" style="flex: 0 0 auto; align-self: stretch; width: 11px; cursor: col-resize; display: flex; align-items: center; justify-content: center; background: transparent; position: relative; z-index: 30;" style-hover="background: rgba(135,156,247,0.07);">
+        <span style="width: 3px; height: 54px; border-radius: 999px; background: rgba(199,208,245,0.95);"></span>
+      </div>
+
+      <!-- Right: panel with tabs -->
+      <div id="rightPanel" style="flex: 0 1 436px; min-width: 300px; max-width: 100%; background: #FFFFFF; display: flex; flex-direction: column;">
+        <sc-if value="{{ panelOpen }}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;">
+
+        <!-- Tabs -->
+        <div style="display: flex; align-items: stretch; border-bottom: 1px solid rgba(217,224,255,0.7);">
+          <div style="display: flex; align-items: center; gap: 2px; padding: 10px 8px 0 14px; overflow-x: auto; flex: 1 1 auto; scrollbar-width: none;">
+          <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="7">
+            <button data-tab="{{ t.key }}" onClick="{{ setTab }}" style="flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 10px; border-top: none; border-left: none; border-right: none; background: transparent; font-family: inherit; font-size: 12.5px; white-space: nowrap; font-weight: {{ t.weight }}; color: {{ t.color }}; border-bottom: 2px solid {{ t.border }}; cursor: pointer;">
+              {{ t.label }}
+              <sc-if value="{{ t.showCount }}" hint-placeholder-val="{{ false }}">
+                <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: rgba(135,156,247,0.14); color: #879CF7; font-size: 10.5px; font-weight: 600;">{{ t.count }}</span>
+              </sc-if>
+            </button>
+          </sc-for>
+          </div>
+          <button onClick="{{ togglePanel }}" title="Collapse panel" style="flex: 0 0 auto; align-self: center; margin: 0 8px; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; border: none; background: transparent; color: #9aa6c3; cursor: pointer;" style-hover="background: rgba(135,156,247,0.12); color: #879CF7;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"></polyline><polyline points="6 17 11 12 6 7"></polyline></svg>
+          </button>
+        </div>
+
+        <!-- ============ TAB 1: AI review ============ -->
+        <sc-if value="{{ isReview }}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; flex-direction: column; flex: 1 1 auto;">
+
+        <!-- Score bar -->
+        <div style="padding: 22px 22px 20px; border-bottom: 1px solid rgba(217,224,255,0.6);">
+          <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;">
+            <div style="display: flex; align-items: baseline; gap: 4px;">
+              <span style="font-size: 40px; font-weight: 700; color: #001364; line-height: 0.9; letter-spacing: -0.02em;">93</span>
+              <span style="font-size: 14px; font-weight: 500; color: #9aa6c3;">/ 100</span>
+            </div>
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; border-radius: 999px; background: rgba(45,170,99,0.12); color: #2DAA63; font-size: 12px; font-weight: 600;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              Approved
+            </span>
+          </div>
+          <div style="margin: 14px 0 8px; height: 9px; border-radius: 999px; background: #E7EAF7; overflow: hidden;">
+            <div style="width: 93%; height: 100%; border-radius: 999px; background: #879CF7;"></div>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; font-weight: 400; color: #6B7A99;">
+            <span style="display: inline-flex; align-items: center; gap: 5px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>7 of 7 checks passed</span>
+            <span style="color: #9aa6c3;">Hook · Production · Compliance</span>
+          </div>
+        </div>
+
+        <!-- Grouped agents -->
+        <div style="padding: 12px 14px 6px; display: flex; flex-direction: column; gap: 8px;">
+
+          <!-- Group: Hook & attention -->
+          <details class="bltool" open="{{ true }}" style="border: 1px solid rgba(217,224,255,0.7); border-radius: 14px; overflow: hidden;">
+            <summary style="display: flex; align-items: center; gap: 11px; padding: 12px 14px; cursor: pointer; background: rgba(135,156,247,0.06);" style-hover="background: rgba(135,156,247,0.1);">
+              <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: #fff; color: #879CF7; border: 1px solid rgba(217,224,255,0.8); flex: 0 0 auto;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></span>
+              <span style="flex: 1 1 auto; font-size: 14px; font-weight: 600; color: #001364;">Hook &amp; attention</span>
+              <span style="font-size: 11px; font-weight: 600; color: #2DAA63; background: rgba(45,170,99,0.12); padding: 3px 9px; border-radius: 999px;">3 pass</span>
+              <svg class="blchev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa6c3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; transition: transform 0.18s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </summary>
+            <div style="padding: 6px;">
+              <div style="display: flex; gap: 12px; padding: 10px; border-radius: 11px;" style-hover="background: #F7F9FF;">
+                <img src="https://res.cloudinary.com/dspv9nm1n/video/upload/so_0/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" alt="" style="width: 50px; height: 68px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; border: 1px solid rgba(0,0,0,0.06);">
+                <div style="flex: 1 1 auto; min-width: 0;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                    <span style="font-size: 13.5px; font-weight: 600; color: #001364;">Hook speed</span>
+                    <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>90</span>
+                  </div>
+                  <p style="margin: 4px 0 7px; font-size: 12px; line-height: 1.5; color: #6B7A99; font-weight: 300;">Audio hook “Stop losing things when you’re travelling!” lands a pain point in the first second.</p>
+                  <button data-vid="vid1b" data-sec="0" onClick="{{ seek }}" style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: none; background: rgba(135,156,247,0.12); color: #879CF7; font-family: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer;" style-hover="background: rgba(135,156,247,0.22);"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"></polygon></svg>0:00</button>
+                </div>
+              </div>
+              <div style="display: flex; gap: 12px; padding: 10px; border-radius: 11px;" style-hover="background: #F7F9FF;">
+                <img src="https://res.cloudinary.com/dspv9nm1n/video/upload/so_1/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" alt="" style="width: 50px; height: 68px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; border: 1px solid rgba(0,0,0,0.06);">
+                <div style="flex: 1 1 auto; min-width: 0;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                    <span style="font-size: 13.5px; font-weight: 600; color: #001364;">Visual hook</span>
+                    <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>90</span>
+                  </div>
+                  <p style="margin: 4px 0 7px; font-size: 12px; line-height: 1.5; color: #6B7A99; font-weight: 300;">A hand pulls a passport from a hidden pocket, an unexpected demo of a unique feature.</p>
+                  <button data-vid="vid1b" data-sec="1" onClick="{{ seek }}" style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: none; background: rgba(135,156,247,0.12); color: #879CF7; font-family: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer;" style-hover="background: rgba(135,156,247,0.22);"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"></polygon></svg>0:01</button>
+                </div>
+              </div>
+              <div style="display: flex; gap: 12px; padding: 10px; border-radius: 11px;" style-hover="background: #F7F9FF;">
+                <img src="https://res.cloudinary.com/dspv9nm1n/video/upload/so_10/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" alt="" style="width: 50px; height: 68px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; border: 1px solid rgba(0,0,0,0.06);">
+                <div style="flex: 1 1 auto; min-width: 0;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                    <span style="font-size: 13.5px; font-weight: 600; color: #001364;">Scene pacing</span>
+                    <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>~2s</span>
+                  </div>
+                  <p style="margin: 4px 0 7px; font-size: 12px; line-height: 1.5; color: #6B7A99; font-weight: 300;">Rapid cuts averaging ~2 seconds per scene keep the viewer engaged across all features.</p>
+                  <button data-vid="vid1b" data-sec="10" onClick="{{ seek }}" style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: none; background: rgba(135,156,247,0.12); color: #879CF7; font-family: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer;" style-hover="background: rgba(135,156,247,0.22);"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"></polygon></svg>0:10</button>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <!-- Group: Production quality -->
+          <details class="bltool" style="border: 1px solid rgba(217,224,255,0.7); border-radius: 14px; overflow: hidden;">
+            <summary style="display: flex; align-items: center; gap: 11px; padding: 12px 14px; cursor: pointer; background: rgba(135,156,247,0.06);" style-hover="background: rgba(135,156,247,0.1);">
+              <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: #fff; color: #879CF7; border: 1px solid rgba(217,224,255,0.8); flex: 0 0 auto;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"></path><circle cx="12" cy="13" r="3"></circle></svg></span>
+              <span style="flex: 1 1 auto; font-size: 14px; font-weight: 600; color: #001364;">Production quality</span>
+              <span style="font-size: 11px; font-weight: 600; color: #2DAA63; background: rgba(45,170,99,0.12); padding: 3px 9px; border-radius: 999px;">2 pass</span>
+              <svg class="blchev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa6c3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; transition: transform 0.18s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </summary>
+            <div style="padding: 6px;">
+              <div style="display: flex; gap: 12px; padding: 10px; border-radius: 11px;" style-hover="background: #F7F9FF;">
+                <img src="https://res.cloudinary.com/dspv9nm1n/video/upload/so_17/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" alt="" style="width: 50px; height: 68px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; border: 1px solid rgba(0,0,0,0.06);">
+                <div style="flex: 1 1 auto; min-width: 0;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                    <span style="font-size: 13.5px; font-weight: 600; color: #001364;">Energy &amp; authenticity</span>
+                    <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>95</span>
+                  </div>
+                  <p style="margin: 4px 0 7px; font-size: 12px; line-height: 1.5; color: #6B7A99; font-weight: 300;">Clear, enthusiastic delivery with genuine smiles, nailing the “best friend” brand voice.</p>
+                  <button data-vid="vid1b" data-sec="17" onClick="{{ seek }}" style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: none; background: rgba(135,156,247,0.12); color: #879CF7; font-family: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer;" style-hover="background: rgba(135,156,247,0.22);"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"></polygon></svg>0:17</button>
+                </div>
+              </div>
+              <div style="display: flex; gap: 12px; padding: 10px; border-radius: 11px;" style-hover="background: #F7F9FF;">
+                <img src="https://res.cloudinary.com/dspv9nm1n/video/upload/so_18/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" alt="" style="width: 50px; height: 68px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; border: 1px solid rgba(0,0,0,0.06);">
+                <div style="flex: 1 1 auto; min-width: 0;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                    <span style="font-size: 13.5px; font-weight: 600; color: #001364;">Wardrobe &amp; look</span>
+                    <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>95</span>
+                  </div>
+                  <p style="margin: 4px 0 7px; font-size: 12px; line-height: 1.5; color: #6B7A99; font-weight: 300;">Full Comfrt set and natural look fit the cozy, real-life aesthetic without being over-polished.</p>
+                  <button data-vid="vid1b" data-sec="18" onClick="{{ seek }}" style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: none; background: rgba(135,156,247,0.12); color: #879CF7; font-family: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer;" style-hover="background: rgba(135,156,247,0.22);"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"></polygon></svg>0:18</button>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <!-- Group: Compliance & safety -->
+          <details class="bltool" style="border: 1px solid rgba(217,224,255,0.7); border-radius: 14px; overflow: hidden;">
+            <summary style="display: flex; align-items: center; gap: 11px; padding: 12px 14px; cursor: pointer; background: rgba(135,156,247,0.06);" style-hover="background: rgba(135,156,247,0.1);">
+              <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: #fff; color: #879CF7; border: 1px solid rgba(217,224,255,0.8); flex: 0 0 auto;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+              <span style="flex: 1 1 auto; font-size: 14px; font-weight: 600; color: #001364;">Compliance &amp; safety</span>
+              <span style="font-size: 11px; font-weight: 600; color: #2DAA63; background: rgba(45,170,99,0.12); padding: 3px 9px; border-radius: 999px;">2 pass</span>
+              <svg class="blchev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa6c3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; transition: transform 0.18s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </summary>
+            <div style="padding: 6px;">
+              <div style="display: flex; gap: 12px; padding: 10px; border-radius: 11px;" style-hover="background: #F7F9FF;">
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 50px; height: 68px; border-radius: 9px; background: rgba(45,170,99,0.1); color: #2DAA63; flex: 0 0 auto;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+                <div style="flex: 1 1 auto; min-width: 0;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                    <span style="font-size: 13.5px; font-weight: 600; color: #001364;">Copyright check</span>
+                    <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>Clear</span>
+                  </div>
+                  <p style="margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: #6B7A99; font-weight: 300;">No copyrighted music, logos (other than Comfrt), or IP identified in the video.</p>
+                </div>
+              </div>
+              <div style="display: flex; gap: 12px; padding: 10px; border-radius: 11px;" style-hover="background: #F7F9FF;">
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 50px; height: 68px; border-radius: 9px; background: rgba(45,170,99,0.1); color: #2DAA63; flex: 0 0 auto;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"></path></svg></span>
+                <div style="flex: 1 1 auto; min-width: 0;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                    <span style="font-size: 13.5px; font-weight: 600; color: #001364;">Content moderation</span>
+                    <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>Safe</span>
+                  </div>
+                  <p style="margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: #6B7A99; font-weight: 300;">No inappropriate content, language, or themes. Suitable for a general audience.</p>
+                </div>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        </div>
+        </sc-if>
+
+        <!-- ============ TAB: Ask Lee ============ -->
+        <sc-if value="{{ isAsk }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 14px 22px 12px; border-bottom: 1px solid rgba(217,224,255,0.6);">
+            <img src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" alt="Lee" style="width: 30px; height: 30px; border-radius: 50%; flex: 0 0 auto;">
+            <div style="flex: 1 1 auto; min-width: 0;">
+              <div style="font-size: 13px; font-weight: 600; color: #001364;">Ask Lee</div>
+              <div style="font-size: 11px; font-weight: 400; color: #9aa6c3;">Your AI review assistant</div>
+            </div>
+            <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; color: #2DAA63;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>Online</span>
+          </div>
+
+          <div id="askScroll" style="flex: 1 1 auto; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+            <sc-for list="{{ chatMessages }}" as="m" hint-placeholder-count="1">
+              <sc-if value="{{ m.isLee }}" hint-placeholder-val="{{ true }}">
+                <div style="display: flex; gap: 9px; align-items: flex-start; max-width: 90%;">
+                  <img src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" alt="Lee" style="width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto; margin-top: 2px;">
+                  <div style="padding: 10px 13px; border-radius: 4px 14px 14px 14px; background: #F2F4FE; font-size: 12.5px; line-height: 1.5; color: #3D4A6B;">{{ m.text }}</div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ m.isUser }}" hint-placeholder-val="{{ false }}">
+                <div style="align-self: flex-end; max-width: 90%; padding: 10px 13px; border-radius: 14px 4px 14px 14px; background: #879CF7; color: #fff; font-size: 12.5px; line-height: 1.5;">{{ m.text }}</div>
+              </sc-if>
+            </sc-for>
+            <sc-if value="{{ chatBusy }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; gap: 9px; align-items: center;">
+                <img src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" alt="Lee" style="width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto;">
+                <div style="display: flex; align-items: center; gap: 4px; padding: 12px 14px; border-radius: 4px 14px 14px 14px; background: #F2F4FE;">
+                  <span style="width: 6px; height: 6px; border-radius: 50%; background: #b6bdd4; animation: tdot 1.2s infinite;"></span>
+                  <span style="width: 6px; height: 6px; border-radius: 50%; background: #b6bdd4; animation: tdot 1.2s infinite 0.2s;"></span>
+                  <span style="width: 6px; height: 6px; border-radius: 50%; background: #b6bdd4; animation: tdot 1.2s infinite 0.4s;"></span>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="padding: 12px 16px 16px; border-top: 1px solid rgba(217,224,255,0.6);">
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 11px;">
+              <sc-for list="{{ askChips }}" as="c" hint-placeholder-count="3">
+                <button data-q="{{ c }}" onClick="{{ chipSend }}" style="height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(217,224,255,0.9); background: #fff; color: #879CF7; font-family: inherit; font-size: 11.5px; font-weight: 500; cursor: pointer;" style-hover="background: rgba(135,156,247,0.1);">{{ c }}</button>
+              </sc-for>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 6px 0 16px; border-radius: 14px; border: 1px solid rgba(217,224,255,0.9); background: #fff;">
+              <input id="askInput" onKeyDown="{{ askKey }}" placeholder="Ask about this video…" style="flex: 1 1 auto; min-width: 0; border: none; outline: none; background: transparent; font-family: inherit; font-size: 13px; color: #001364;">
+              <button onClick="{{ sendAsk }}" aria-label="Send" style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; border: none; background: #879CF7; color: #fff; cursor: pointer; flex: 0 0 auto;" style-hover="background: #6E86F2;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="19" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ============ TAB 2: Comments ============ -->
+        <sc-if value="{{ isComments }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; flex: 1 1 auto;">
+
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 22px 12px; border-bottom: 1px solid rgba(217,224,255,0.6);">
+            <span style="font-size: 12.5px; font-weight: 600; color: #001364;">{{ commentCount }} comments</span>
+            <span style="font-size: 11.5px; font-weight: 500; color: #9aa6c3;">Sorted by time in video</span>
+          </div>
+
+          <div style="padding: 8px 14px; display: flex; flex-direction: column; gap: 4px;">
+            <sc-for list="{{ comments }}" as="c" hint-placeholder-count="4">
+              <div class="srrow {{ c.rowCls }}" style="display: flex; gap: 12px; padding: 12px 10px; border-radius: 12px;" style-hover="background: #F7F9FF;">
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; background: {{ c.avatarBg }}; color: #fff; font-size: 12px; font-weight: 600; flex: 0 0 auto;">{{ c.initials }}</span>
+                <div style="flex: 1 1 auto; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <span style="font-size: 12.5px; font-weight: 600; color: #001364;">{{ c.name }}</span>
+                    <button data-vid="vid1b" data-sec="{{ c.sec }}" onClick="{{ seek }}" style="display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 999px; border: none; background: rgba(135,156,247,0.14); color: #879CF7; font-family: inherit; font-size: 10.5px; font-weight: 700; cursor: pointer;" style-hover="background: rgba(135,156,247,0.26);">
+                      <span style="display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border-radius: 50%; background: #879CF7; color: #fff; font-size: 8.5px; font-weight: 700;">{{ c.letter }}</span>
+                      {{ c.time }}
+                    </button>
+                    <span style="font-size: 11px; font-weight: 400; color: #9aa6c3;">{{ c.ago }}</span>
+                  </div>
+                  <p style="margin: 5px 0 6px; font-size: 12.5px; line-height: 1.55; color: #3D4A6B; font-weight: 400;">{{ c.text }}</p>
+                  <button style="border: none; background: transparent; padding: 0; font-family: inherit; font-size: 11.5px; font-weight: 600; color: #879CF7; cursor: pointer;" style-hover="color: #6E86F2;">Reply</button>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="margin-top: auto; padding: 16px; border-top: 1px solid rgba(217,224,255,0.6);">
+            <div style="display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 6px 0 16px; border-radius: 14px; border: 1px solid rgba(217,224,255,0.9); background: #fff;">
+              <span style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: #879CF7; color: #fff; font-size: 11px; font-weight: 600; flex: 0 0 auto;">BB</span>
+              <input placeholder="Leave a comment at 0:00…" style="flex: 1 1 auto; min-width: 0; border: none; outline: none; background: transparent; font-family: inherit; font-size: 13px; color: #001364;">
+              <button aria-label="Send" style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; border: none; background: #879CF7; color: #fff; cursor: pointer; flex: 0 0 auto;" style-hover="background: #6E86F2;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="19" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+              </button>
+            </div>
+          </div>
+
+        </div>
+        </sc-if>
+
+        <!-- ============ TAB 3: Transcript ============ -->
+        <sc-if value="{{ isTranscript }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; flex: 1 1 auto;">
+
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 22px 12px; border-bottom: 1px solid rgba(217,224,255,0.6);">
+            <div>
+              <div style="font-size: 12.5px; font-weight: 600; color: #001364;">Transcript</div>
+              <div style="font-size: 11px; font-weight: 400; color: #9aa6c3;">Spoken audio + on-screen captions</div>
+            </div>
+            <button style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(217,224,255,0.9); background: #fff; color: #879CF7; font-family: inherit; font-size: 11.5px; font-weight: 500; cursor: pointer;" style-hover="background: rgba(135,156,247,0.1);">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+              Copy transcript
+            </button>
+          </div>
+
+          <div style="padding: 8px 14px 16px; display: flex; flex-direction: column;">
+            <sc-for list="{{ transcript }}" as="r" hint-placeholder-count="5">
+              <div class="srrow {{ r.rowCls }}" style="display: flex; gap: 12px; padding: 11px 10px; border-radius: 12px; border-bottom: 1px solid rgba(217,224,255,0.4);" style-hover="background: #F7F9FF;">
+                <button data-vid="vid1b" data-sec="{{ r.sec }}" onClick="{{ seek }}" style="align-self: flex-start; display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; border: none; background: rgba(135,156,247,0.14); color: #879CF7; font-family: inherit; font-size: 10.5px; font-weight: 700; cursor: pointer; flex: 0 0 auto;" style-hover="background: rgba(135,156,247,0.26);">{{ r.time }}</button>
+                <div style="flex: 1 1 auto; min-width: 0;">
+                  <p style="margin: 0 0 6px; font-size: 12.5px; line-height: 1.5; color: #3D4A6B; font-weight: 400;">{{ r.text }}</p>
+                  <sc-if value="{{ r.onscreen }}" hint-placeholder-val="{{ true }}">
+                    <div style="display: inline-flex; align-items: flex-start; gap: 7px; margin: 0 0 6px; padding: 5px 9px; border-radius: 8px; background: rgba(135,156,247,0.09); border: 1px solid rgba(135,156,247,0.18);">
+                      <span style="font-size: 8.5px; font-weight: 700; letter-spacing: 0.05em; color: #879CF7; text-transform: uppercase; padding-top: 2px; flex: 0 0 auto;">On-screen</span>
+                      <span style="font-size: 11.5px; font-weight: 600; line-height: 1.4; color: #001364;">{{ r.onscreen }}</span>
+                    </div>
+                  </sc-if>
+                  <p style="margin: 0; font-size: 11px; line-height: 1.45; color: #9aa6c3; font-weight: 400;">{{ r.visual }}</p>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+        </div>
+        </sc-if>
+
+        <!-- ============ TAB 4: Remix ============ -->
+        <sc-if value="{{ isRemix }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; flex: 1 1 auto;">
+
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 22px 12px; border-bottom: 1px solid rgba(217,224,255,0.6);">
+            <div>
+              <div style="font-size: 12.5px; font-weight: 600; color: #001364;">Remixed script</div>
+              <div style="font-size: 11px; font-weight: 400; color: #9aa6c3;">Their script rewritten for your brand</div>
+            </div>
+            <button style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; border: none; background: #879CF7; color: #fff; font-family: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer;" style-hover="background: #6E86F2;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+              Copy script
+            </button>
+          </div>
+
+          <div style="padding: 8px 14px 16px; display: flex; flex-direction: column;">
+            <sc-for list="{{ remix }}" as="r" hint-placeholder-count="5">
+              <div class="srrow {{ r.rowCls }}" style="display: flex; gap: 12px; padding: 11px 10px; border-radius: 12px; border-bottom: 1px solid rgba(217,224,255,0.4);" style-hover="background: #F7F9FF;">
+                <button data-vid="vid1b" data-sec="{{ r.sec }}" onClick="{{ seek }}" style="align-self: flex-start; display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; border: none; background: rgba(135,156,247,0.14); color: #879CF7; font-family: inherit; font-size: 10.5px; font-weight: 700; cursor: pointer; flex: 0 0 auto;" style-hover="background: rgba(135,156,247,0.26);">{{ r.time }}</button>
+                <div style="flex: 1 1 auto; min-width: 0;">
+                  <p style="margin: 0 0 6px; font-size: 12.5px; line-height: 1.5; color: #3D4A6B; font-weight: 400;">{{ r.text }}</p>
+                  <sc-if value="{{ r.onscreen }}" hint-placeholder-val="{{ true }}">
+                    <div style="display: inline-flex; align-items: flex-start; gap: 7px; margin: 0 0 6px; padding: 5px 9px; border-radius: 8px; background: rgba(135,156,247,0.09); border: 1px solid rgba(135,156,247,0.18);">
+                      <span style="font-size: 8.5px; font-weight: 700; letter-spacing: 0.05em; color: #879CF7; text-transform: uppercase; padding-top: 2px; flex: 0 0 auto;">On-screen</span>
+                      <span style="font-size: 11.5px; font-weight: 600; line-height: 1.4; color: #001364;">{{ r.onscreen }}</span>
+                    </div>
+                  </sc-if>
+                  <p style="margin: 0; font-size: 11px; line-height: 1.45; color: #9aa6c3; font-weight: 400;">{{ r.visual }}</p>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+        </div>
+        </sc-if>
+
+        <!-- ============ TAB: Details ============ -->
+        <sc-if value="{{ isDetails }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; flex: 1 1 auto;">
+          <div style="padding: 22px 22px 6px;">
+            <div style="display: flex; align-items: center; gap: 14px; padding-bottom: 18px; border-bottom: 1px solid rgba(217,224,255,0.6);">
+              <span style="display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 46px; border-radius: 50%; background: #F2A65A; color: #fff; font-size: 16px; font-weight: 600; flex: 0 0 auto;">SJ</span>
+              <div style="flex: 1 1 auto; min-width: 0;">
+                <div style="font-size: 15px; font-weight: 700; color: #001364;">Sara Jones</div>
+                <div style="font-size: 12px; font-weight: 400; color: #9aa6c3;">@sarajones · Creator</div>
+              </div>
+              <span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; border-radius: 999px; background: rgba(45,170,99,0.12); color: #2DAA63; font-size: 12px; font-weight: 600; flex: 0 0 auto;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                Approved
+              </span>
+            </div>
+          </div>
+          <div style="padding: 4px 22px 16px;">
+            <sc-for list="{{ detailFields }}" as="f" hint-placeholder-count="5">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 0; border-bottom: 1px solid rgba(217,224,255,0.5);">
+                <span style="font-size: 12.5px; font-weight: 500; color: #9aa6c3;">{{ f.label }}</span>
+                <sc-if value="{{ f.link }}" hint-placeholder-val="{{ false }}">
+                  <a href="#" style="font-size: 13px; font-weight: 500; color: #879CF7; text-decoration: none; text-align: right;">{{ f.value }}</a>
+                </sc-if>
+                <sc-if value="{{ f.notLink }}" hint-placeholder-val="{{ true }}">
+                  <span style="font-size: 13px; font-weight: 600; color: #001364; text-align: right;">{{ f.value }}</span>
+                </sc-if>
+              </div>
+            </sc-for>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 0;">
+              <span style="font-size: 12.5px; font-weight: 500; color: #9aa6c3;">Overall rating</span>
+              <span style="font-size: 15px; letter-spacing: 2px; color: #F2A65A;">★★★★★</span>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ============ TAB: Report ============ -->
+        <sc-if value="{{ isReport }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; flex: 1 1 auto;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 22px 12px; border-bottom: 1px solid rgba(217,224,255,0.6);">
+            <span style="font-size: 12.5px; font-weight: 600; color: #001364;">{{ passCount }} / {{ reportCount }} criteria passed</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid rgba(217,224,255,0.9); border-radius: 9px;">
+                <button onClick="{{ setReportList }}" title="List view" style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 24px; border-radius: 7px; border: none; background: {{ listBtnBg }}; color: {{ listBtnColor }}; cursor: pointer;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" x2="21" y1="6" y2="6"></line><line x1="8" x2="21" y1="12" y2="12"></line><line x1="8" x2="21" y1="18" y2="18"></line><line x1="3" x2="3.01" y1="6" y2="6"></line><line x1="3" x2="3.01" y1="12" y2="12"></line><line x1="3" x2="3.01" y1="18" y2="18"></line></svg>
+                </button>
+                <button onClick="{{ setReportGrid }}" title="Grid view" style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 24px; border-radius: 7px; border: none; background: {{ gridBtnBg }}; color: {{ gridBtnColor }}; cursor: pointer;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"></rect><rect width="7" height="7" x="14" y="3" rx="1"></rect><rect width="7" height="7" x="14" y="14" rx="1"></rect><rect width="7" height="7" x="3" y="14" rx="1"></rect></svg>
+                </button>
+              </div>
+              <button style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px; border: 1px solid rgba(217,224,255,0.9); background: #fff; color: #879CF7; font-family: inherit; font-size: 11.5px; font-weight: 500; cursor: pointer;" style-hover="background: rgba(135,156,247,0.1);">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line></svg>
+                CSV
+              </button>
+            </div>
+          </div>
+
+          <!-- List view -->
+          <sc-if value="{{ isReportList }}" hint-placeholder-val="{{ true }}">
+          <div style="padding: 8px 14px 16px; display: flex; flex-direction: column;">
+            <sc-for list="{{ reportRows }}" as="r" hint-placeholder-count="0">
+              <div style="display: flex; gap: 12px; padding: 12px 10px; border-radius: 12px; border-bottom: 1px solid rgba(217,224,255,0.4);" style-hover="background: #F7F9FF;">
+                <button data-vid="vid1b" data-sec="{{ r.sec }}" onClick="{{ seek }}" title="Jump to {{ r.time }}" style="position: relative; width: 44px; height: 60px; border-radius: 9px; overflow: hidden; border: 1px solid rgba(0,0,0,0.06); padding: 0; cursor: pointer; flex: 0 0 auto; background: #0B1024;">
+                  {{ r.img }}
+                  <span style="position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); font-size: 8.5px; font-weight: 700; color: #fff; background: rgba(0,19,100,0.6); padding: 1px 5px; border-radius: 999px;">{{ r.time }}</span>
+                </button>
+                <div style="flex: 1 1 auto; min-width: 0;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                    <span style="font-size: 13px; font-weight: 600; color: #001364;">{{ r.criteria }}</span>
+                    <span style="font-size: 12.5px; font-weight: 700; color: #001364;">{{ r.score }}</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 6px; margin: 5px 0;">
+                    <span style="display: inline-flex; align-items: center; height: 19px; padding: 0 9px; border-radius: 999px; background: {{ r.statusBg }}; color: {{ r.statusColor }}; font-size: 10.5px; font-weight: 600;">{{ r.status }}</span>
+                    <span style="display: inline-flex; align-items: center; height: 19px; padding: 0 9px; border-radius: 999px; background: {{ r.sevBg }}; color: {{ r.sevColor }}; font-size: 10.5px; font-weight: 600;">{{ r.severity }}</span>
+                    <span style="font-size: 12px; letter-spacing: 1px; color: #F2A65A; margin-left: auto;">{{ r.stars }}</span>
+                  </div>
+                  <p style="margin: 0; font-size: 11.5px; line-height: 1.45; color: #6B7A99; font-weight: 300;">{{ r.comment }}</p>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          </sc-if>
+
+          <!-- Grid view -->
+          <sc-if value="{{ isReportGrid }}" hint-placeholder-val="{{ false }}">
+          <div style="padding: 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;">
+            <sc-for list="{{ reportRows }}" as="r" hint-placeholder-count="0">
+              <div style="border: 1px solid rgba(217,224,255,0.7); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column;" style-hover="box-shadow: 0 8px 20px -14px rgba(0,19,100,0.35);">
+                <button data-vid="vid1b" data-sec="{{ r.sec }}" onClick="{{ seek }}" style="position: relative; width: 100%; aspect-ratio: 16 / 10; border: none; padding: 0; cursor: pointer; background: #0B1024;">
+                  {{ r.img }}
+                  <span style="position: absolute; top: 6px; left: 6px; font-size: 9px; font-weight: 700; color: #fff; background: rgba(0,19,100,0.6); padding: 2px 6px; border-radius: 999px;">{{ r.time }}</span>
+                  <span style="position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; height: 18px; padding: 0 8px; border-radius: 999px; background: {{ r.statusBg }}; color: {{ r.statusColor }}; font-size: 9.5px; font-weight: 700;">{{ r.status }}</span>
+                </button>
+                <div style="padding: 10px 11px 12px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                    <span style="font-size: 12px; font-weight: 600; color: #001364;">{{ r.criteria }}</span>
+                    <span style="font-size: 12px; font-weight: 700; color: #001364;">{{ r.score }}</span>
+                  </div>
+                  <span style="display: block; font-size: 11px; letter-spacing: 1px; color: #F2A65A; margin: 4px 0 6px;">{{ r.stars }}</span>
+                  <p style="margin: 0; font-size: 11px; line-height: 1.45; color: #6B7A99; font-weight: 300;">{{ r.comment }}</p>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          </sc-if>
+        </div>
+        </sc-if>
+
+        <!-- ============ TAB: People ============ -->
+        <sc-if value="{{ isPeople }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; flex: 1 1 auto;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 22px 12px; border-bottom: 1px solid rgba(217,224,255,0.6);">
+            <span style="font-size: 12.5px; font-weight: 600; color: #001364;">{{ memberCount }} people</span>
+            <button style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; border: none; background: #879CF7; color: #fff; font-family: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer;" style-hover="background: #6E86F2;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 21a8 8 0 0 1 13.29-6"></path><circle cx="10" cy="8" r="5"></circle><path d="M19 16v6"></path><path d="M22 19h-6"></path></svg>
+              Invite
+            </button>
+          </div>
+          <div style="padding: 8px 14px; display: flex; flex-direction: column; gap: 2px;">
+            <sc-for list="{{ memberRows }}" as="m" hint-placeholder-count="4">
+              <div style="display: flex; align-items: center; gap: 12px; padding: 11px 10px; border-radius: 12px;" style-hover="background: #F7F9FF;">
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; background: {{ m.avatarBg }}; color: #fff; font-size: 12px; font-weight: 600; flex: 0 0 auto;">{{ m.initials }}</span>
+                <div style="flex: 1 1 auto; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 7px;">
+                    <span style="font-size: 13px; font-weight: 600; color: #001364;">{{ m.name }}</span>
+                    <sc-if value="{{ m.you }}" hint-placeholder-val="{{ false }}">
+                      <span style="font-size: 9.5px; font-weight: 700; color: #879CF7; background: rgba(135,156,247,0.14); padding: 1px 6px; border-radius: 999px;">YOU</span>
+                    </sc-if>
+                  </div>
+                  <div style="font-size: 11.5px; font-weight: 400; color: #9aa6c3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ m.email }}</div>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: 0 0 auto;">
+                  <span style="display: inline-flex; align-items: center; height: 19px; padding: 0 9px; border-radius: 999px; background: {{ m.statusBg }}; color: {{ m.statusColor }}; font-size: 10px; font-weight: 600;">{{ m.status }}</span>
+                  <span style="font-size: 10.5px; font-weight: 500; color: #b6bdd4;">{{ m.role }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="margin-top: auto; padding: 16px; border-top: 1px solid rgba(217,224,255,0.6);">
+            <div style="display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 6px 0 16px; border-radius: 14px; border: 1px solid rgba(217,224,255,0.9); background: #fff;">
+              <input placeholder="Invite by email…" style="flex: 1 1 auto; min-width: 0; border: none; outline: none; background: transparent; font-family: inherit; font-size: 13px; color: #001364;">
+              <button style="display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 10px; border: none; background: #879CF7; color: #fff; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; flex: 0 0 auto;" style-hover="background: #6E86F2;">Send</button>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+      </div>
+      </sc-if>
+      <sc-if value="{{ panelClosed }}" hint-placeholder-val="{{ false }}">
+      <div style="flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 16px 0;">
+        <button onClick="{{ togglePanel }}" title="Expand panel" style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 9px; border: 1px solid rgba(217,224,255,0.9); background: #fff; color: #879CF7; cursor: pointer;" style-hover="background: rgba(135,156,247,0.1);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"></polyline><polyline points="18 17 13 12 18 7"></polyline></svg>
+        </button>
+        <span style="writing-mode: vertical-rl; transform: rotate(180deg); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; color: #9aa6c3; text-transform: uppercase;">Review panel</span>
+      </div>
+      </sc-if>
+      </div>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    tab: (() => { try { return localStorage.getItem('sr01_tab') || 'review'; } catch (_) { return 'review'; } })(),
+    railOpen: true,
+    panelOpen: true,
+    reportView: 'list',
+    chat: [],
+    chatBusy: false,
+    activeSec: 0,
+    reactions: [ { e: '😍', sec: 6 }, { e: '🙌', sec: 20 } ]
+  };
+
+  componentDidMount() {
+    const v = document.getElementById('vid1b');
+    if (v) {
+      this._onTime = () => {
+        const s = Math.floor(v.currentTime || 0);
+        if (s !== this.state.activeSec) this.setState({ activeSec: s });
+      };
+      v.addEventListener('timeupdate', this._onTime);
+    }
+    try {
+      const w = localStorage.getItem('sr01_panelW');
+      const panel = document.getElementById('rightPanel');
+      if (w && panel) panel.style.flex = '0 0 ' + w + 'px';
+    } catch (_) {}
+  }
+
+  componentWillUnmount() {
+    const v = document.getElementById('vid1b');
+    if (v && this._onTime) v.removeEventListener('timeupdate', this._onTime);
+  }
+
+  componentDidUpdate(prevProps, prevState) {
+    if (prevState.chat !== this.state.chat || prevState.chatBusy !== this.state.chatBusy) {
+      const el = document.getElementById('askScroll');
+      if (el) el.scrollTop = el.scrollHeight;
+    }
+  }
+
+  renderVals() {
+    const DUR = 39;
+    const pct = (s) => ((s / DUR) * 100).toFixed(1) + '%';
+    const fmt = (s) => '0:' + String(s).padStart(2, '0');
+
+    const reviewMarks = [
+      { sec: 0,  title: 'Hook speed',    text: 'Audio hook lands a pain point in the first second.' },
+      { sec: 1,  title: 'Visual hook',   text: 'A hand pulls a passport from a hidden pocket.' },
+      { sec: 10, title: 'Scene pacing',  text: 'Rapid cuts, ~2 seconds per scene, keep viewers engaged.' },
+      { sec: 17, title: 'Energy & authenticity', text: 'Clear, enthusiastic delivery with genuine smiles.' },
+      { sec: 18, title: 'Wardrobe & look', text: 'Full Comfrt set fits the cozy, real-life aesthetic.' }
+    ];
+
+    const comments = [
+      { letter: 'A', sec: 3,  name: 'Sarah Okafor',  initials: 'SO', avatarBg: '#F2A65A', ago: '2d',
+        text: 'Love this hook — can we also test a version without the text overlay?' },
+      { letter: 'B', sec: 12, name: 'James Whitmore', initials: 'JW', avatarBg: '#5AB8B2', ago: '2d',
+        text: 'The hidden pocket demo is great. Could trim a beat here, feels a touch slow.' },
+      { letter: 'C', sec: 21, name: 'Sarah Okafor',  initials: 'SO', avatarBg: '#F2A65A', ago: '1d',
+        text: 'Eye mask reveal is the strongest moment — worth clipping for paid social.' },
+      { letter: 'D', sec: 33, name: 'James Whitmore', initials: 'JW', avatarBg: '#5AB8B2', ago: '5h',
+        text: 'CTA is clear and on-brand. Approve from me.' }
+    ];
+
+    const transcript = [
+      { sec: 0, onscreen: 'STOP losing things while travelling ✈️', visual: 'Close-up of a person in a red hoodie, hand near the side.', text: 'Stop losing things when you’re travelling!' },
+      { sec: 1, onscreen: '🛂 Hidden passport pocket', visual: 'Hand pulls a UK passport from a zippered sleeve pocket.', text: 'This hoodie has a pocket for your passport.' },
+      { sec: 2, onscreen: '💳 Pocket for cards & cash', visual: 'Hand zips up a small pocket on the front of the hoodie.', text: 'A pocket for your money or ID.' },
+      { sec: 3, onscreen: '🤫 Secret zip pocket — left', visual: 'Hand opens a hidden vertical zipper pocket on the left side.', text: 'A hidden zip-up pocket on your left.' },
+      { sec: 5, onscreen: '🤫 …and one on the right', visual: 'Hand opens a hidden vertical zipper pocket on the right side.', text: 'And another one on your right.' },
+      { sec: 7, onscreen: 'Pockets INSIDE pockets 🤯', visual: 'Hands reach into the main kangaroo pocket, revealing smaller internal pockets.', text: 'Plus there’s extra little pockets inside the main pocket too.' },
+      { sec: 9, onscreen: '😴 Built-in eye mask', visual: 'Person pulls up the hood, then pulls an integrated eye mask over their eyes.', text: 'And to top it all off, there’s an eye mask built into the hood.' }
+    ];
+
+    const remix = [
+      { sec: 0, onscreen: 'the hoodie that feels like a hug 🤍', visual: 'Creator snuggled in a Comfrt hoodie, smiling.', text: 'This Comfrt hoodie that feels like a warm hug and helps melt away stress is calling your name.' },
+      { sec: 5, onscreen: 'that perfect weighted feel', visual: 'Close-up of Comfrt hoodie fabric, hand running over it.', text: 'It’s so easy to slip on. The perfect cozy layer for any day, with that perfect weighted feel.' },
+      { sec: 8, onscreen: 'my WFH uniform ☁️', visual: 'Creator putting on the hoodie, showing the fit.', text: 'I use my Comfrt hoodie to get that instant cozy feeling for my work-from-home day.' },
+      { sec: 14, onscreen: 'the secret? premium fabric', visual: 'Creator showing a close-up of the fabric texture.', text: 'The secret ingredient is this premium fabric. You’ll feel it instantly — it just melts onto you.' },
+      { sec: 21, onscreen: 'plush, never bulky', visual: 'Creator pulling the hood up, snuggling into it.', text: 'A soft, plush feel without adding bulk. It drapes so nicely, and helps you feel safe.' },
+      { sec: 28, onscreen: 'Comfrt never misses on details ✨', visual: 'Creator showing off pocket and cuff details.', text: 'For the cozy details, Comfrt never misses. Thoughtful details for extra comfort and a pinch of calm.' },
+      { sec: 38, onscreen: 'comfort = self care 🫶', visual: 'Creator lounging comfortably by a window.', text: 'The fit is perfect — that hug-like feel while giving you mental health benefits too.' }
+    ];
+
+    const detailFields = [
+      { label: 'Email', value: 'sara.jones@email.com', link: true, notLink: false },
+      { label: 'Submission type', value: 'Content Review', link: false, notLink: true },
+      { label: 'Campaign', value: 'Comfrt — Travel Hoodie', link: false, notLink: true },
+      { label: 'Submitted', value: 'Jul 9, 2026', link: false, notLink: true },
+      { label: 'Video length', value: '0:39', link: false, notLink: true }
+    ];
+
+    const report = [
+      { criteria: 'Hook speed',            score: 90,  status: 'Pass', severity: 'Low',    rating: 5, sec: 0,  so: 0,  comment: 'Audio hook lands a clear pain point within the first second.' },
+      { criteria: 'Visual hook',           score: 90,  status: 'Pass', severity: 'Low',    rating: 5, sec: 1,  so: 1,  comment: 'Hidden-pocket reveal is an unexpected, scroll-stopping demo.' },
+      { criteria: 'Scene pacing',          score: 88,  status: 'Pass', severity: 'Low',    rating: 4, sec: 10, so: 10, comment: 'Cuts average ~2s; energy holds across every feature beat.' },
+      { criteria: 'Energy & authenticity', score: 95,  status: 'Pass', severity: 'None',   rating: 5, sec: 17, so: 17, comment: 'Warm, genuine delivery matches the brand’s best-friend voice.' },
+      { criteria: 'Wardrobe & look',       score: 95,  status: 'Pass', severity: 'None',   rating: 5, sec: 18, so: 18, comment: 'Full Comfrt set, natural styling, on-brand cozy aesthetic.' },
+      { criteria: 'CTA clarity',           score: 82,  status: 'Warn', severity: 'Medium', rating: 3, sec: 33, so: 30, comment: 'CTA is on-brand but soft — consider a firmer prompt to shop.' },
+      { criteria: 'Copyright check',       score: 100, status: 'Pass', severity: 'None',   rating: 5, sec: 0,  so: 5,  comment: 'No third-party music, logos or IP detected.' }
+    ];
+
+    const members = [
+      { name: 'Sara Jones',    email: 'sara.jones@email.com',    initials: 'SJ', avatarBg: '#F2A65A', role: 'Creator',  status: 'Pending revision',  invited: 'Jul 9, 2026',  you: false },
+      { name: 'Bella Bright',  email: 'bella@brieflee.co',      initials: 'BB', avatarBg: '#879CF7', role: 'Owner',    status: 'Active',  invited: 'Jun 28, 2026', you: true },
+      { name: 'Sarah Okafor',  email: 'sarah.okafor@brieflee.co', initials: 'SO', avatarBg: '#5AB8B2', role: 'Reviewer', status: 'Active',  invited: 'Jul 1, 2026',  you: false },
+      { name: 'James Whitmore', email: 'james.w@brieflee.co',    initials: 'JW', avatarBg: '#6C7BE0', role: 'Reviewer', status: 'Active',  invited: 'Jul 1, 2026',  you: false },
+      { name: 'Priya Nair',    email: 'priya.nair@comfrt.com',   initials: 'PN', avatarBg: '#B58AE0', role: 'Brand',    status: 'Pending', invited: 'Jul 8, 2026',  you: false }
+    ];
+
+    const tab = this.state.tab;
+    const isReview = tab === 'review';
+    const isComments = tab === 'comments';
+    const isTranscript = tab === 'transcript';
+    const isRemix = tab === 'remix';
+    const isDetails = tab === 'details';
+    const isReport = tab === 'report';
+    const isPeople = tab === 'people';
+    const isAsk = tab === 'ask';
+
+    const at = this.state.activeSec;
+    const near = (secs) => { let idx = -1; for (let i = 0; i < secs.length; i++) { if (secs[i] <= at) idx = i; } return idx; };
+    const reviewSecs = reviewMarks.map((m) => m.sec);
+    const commentSecs = comments.map((c) => c.sec);
+    const transcriptSecs = transcript.map((r) => r.sec);
+    const remixSecs = remix.map((r) => r.sec);
+    const reviewActive = near(reviewSecs);
+    const commentActive = near(commentSecs);
+    const transcriptActive = near(transcriptSecs);
+    const remixActive = near(remixSecs);
+
+    const reviewMarkers = isReview
+      ? reviewMarks.map((m, i) => ({ sec: m.sec, left: pct(m.sec), time: fmt(m.sec), tipTitle: m.title, tipText: m.text, activeCls: i === reviewActive ? 'active' : '' }))
+      : [];
+    const commentMarkers = isComments
+      ? comments.map((c, i) => ({ sec: c.sec, left: pct(c.sec), time: fmt(c.sec), letter: c.letter, tipTitle: c.name, tipText: c.text, activeCls: i === commentActive ? 'active' : '' }))
+      : [];
+    const scriptRows = isTranscript ? transcript : (isRemix ? remix : []);
+    const scriptMarkers = scriptRows.map((r) => ({ sec: r.sec, left: pct(r.sec), tip: fmt(r.sec) + ' · ' + r.text }));
+
+    const curSecs = isReview ? reviewSecs : isComments ? commentSecs : isTranscript ? transcriptSecs : isRemix ? remixSecs : reviewSecs;
+    const nextFlag = () => {
+      const v = document.getElementById('vid1b'); if (!v) return;
+      const t = v.currentTime || 0;
+      let n = curSecs.find((s) => s > t + 0.25);
+      if (n == null) n = curSecs[0];
+      if (n != null) { v.currentTime = n; if (v.play) v.play(); }
+    };
+    const prevFlag = () => {
+      const v = document.getElementById('vid1b'); if (!v) return;
+      const t = v.currentTime || 0;
+      const before = curSecs.filter((s) => s < t - 0.4);
+      const p = before.length ? before[before.length - 1] : curSecs[curSecs.length - 1];
+      if (p != null) { v.currentTime = p; if (v.play) v.play(); }
+    };
+
+    const seek = (e) => {
+      const b = e.currentTarget;
+      const v = document.getElementById(b.dataset.vid);
+      const s = Number(b.dataset.sec) || 0;
+      if (v) { try { v.currentTime = s; if (v.play) v.play(); } catch (_) {} }
+    };
+
+    const react = (e) => {
+      const emoji = e.currentTarget.dataset.emoji;
+      const v = document.getElementById('vid1b');
+      const sec = v ? Math.min(DUR, Math.round(v.currentTime)) : 0;
+      this.setState((s) => ({ reactions: s.reactions.concat([{ e: emoji, sec: sec }]) }));
+    };
+
+    const active = '#001364', inactive = '#9aa6c3';
+    const tabs = [
+      { key: 'review', label: 'AI review', showCount: false, count: 0 },
+      { key: 'report', label: 'Report', showCount: true, count: report.length },
+      { key: 'ask', label: 'Ask Lee', showCount: false, count: 0 },
+      { key: 'comments', label: 'Comments', showCount: true, count: comments.length },
+      { key: 'transcript', label: 'Transcript', showCount: false, count: 0 },
+      { key: 'remix', label: 'Remix', showCount: false, count: 0 },
+      { key: 'details', label: 'Details', showCount: false, count: 0 },
+      { key: 'people', label: 'People', showCount: true, count: members.length }
+    ].map((t) => Object.assign(t, {
+      weight: t.key === tab ? '600' : '500',
+      color: t.key === tab ? active : inactive,
+      border: t.key === tab ? '#879CF7' : 'transparent'
+    }));
+
+    const stripLabels = { review: 'Lee’s timestamps', comments: 'Team comments', transcript: 'Transcript', remix: 'Remixed script', details: 'Submission', report: 'Review report', people: 'Collaborators', ask: 'Ask Lee' };
+
+    const leeReply = (q) => {
+      const s = (q || '').toLowerCase();
+      if (s.includes('brief')) return 'Against your Comfrt brief this hits 6 of 7 must-haves — hook, hidden-pocket demo, cozy styling and a clear sign-off all land. The one gap is the promo code: it’s never spoken or shown on screen.';
+      if (s.includes('revision') || s.includes('notes')) return 'Suggested revisions: 1) Add the promo code as an on-screen caption near the CTA at 0:33. 2) Trim ~1s from the hidden-pocket demo around 0:12 to tighten pacing. Everything else is approve-ready.';
+      if (s.includes('cta')) return 'Try: “Tap the link and use code COMFRT20 for 20% off your first hug-in-a-hoodie.” It keeps the warm brand voice while making the offer explicit.';
+      if (s.includes('hook')) return 'The hook works because the audio pain point (“Stop losing things when travelling”) pairs with a surprising visual — a passport pulled from a hidden pocket — inside the first second.';
+      return 'Based on the review data, the strongest moment is the eye-mask reveal at 0:21 and the main risk is the soft CTA. Want me to draft revision notes or rewrite the CTA?';
+    };
+
+    const doSend = (text) => {
+      if (!text || !text.trim()) return;
+      const t = text.trim();
+      this.setState((st) => ({ chat: st.chat.concat([{ role: 'user', text: t }]), chatBusy: true }));
+      const reply = leeReply(t);
+      clearTimeout(this._leeT);
+      this._leeT = setTimeout(() => this.setState((st) => ({ chat: st.chat.concat([{ role: 'lee', text: reply }]), chatBusy: false })), 750);
+    };
+
+    const welcome = { role: 'lee', text: 'Hi Bella — I’ve reviewed Sara’s Comfrt hoodie video. It scored 93/100 and passed 6 of 7 checks. Ask me anything, or try a shortcut below.' };
+    const chatMessages = [welcome].concat(this.state.chat).map((m) => ({ text: m.text, isLee: m.role === 'lee', isUser: m.role === 'user' }));
+
+    const statusStyle = (s) => s === 'Pass'
+      ? { bg: 'rgba(45,170,99,0.12)', color: '#2DAA63' }
+      : s === 'Warn'
+        ? { bg: 'rgba(199,123,37,0.14)', color: '#C77B25' }
+        : { bg: 'rgba(224,82,82,0.12)', color: '#E05252' };
+    const sevStyle = (s) => s === 'High'
+      ? { bg: 'rgba(224,82,82,0.12)', color: '#E05252' }
+      : s === 'Medium'
+        ? { bg: 'rgba(199,123,37,0.14)', color: '#C77B25' }
+        : { bg: 'rgba(154,166,195,0.14)', color: '#6B7A99' };
+    const thumb = (n) => 'https://res.cloudinary.com/dspv9nm1n/video/upload/so_' + n + '/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg';
+    const reportRows = report.map((r) => {
+      const ss = statusStyle(r.status), sv = sevStyle(r.severity);
+      return Object.assign({}, r, {
+        time: fmt(r.sec),
+        img: React.createElement('img', { src: thumb(r.so), alt: '', style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } }),
+        statusBg: ss.bg, statusColor: ss.color,
+        sevBg: sv.bg, sevColor: sv.color,
+        stars: '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating)
+      });
+    });
+    const passCount = report.filter((r) => r.status === 'Pass').length;
+    const memberRows = members.map((m) => {
+      const ss = m.status === 'Active'
+        ? { bg: 'rgba(45,170,99,0.12)', color: '#2DAA63' }
+        : (m.status === 'Submitted' || m.status === 'Pending revision')
+          ? { bg: 'rgba(199,123,37,0.14)', color: '#C77B25' }
+          : { bg: 'rgba(199,123,37,0.14)', color: '#C77B25' };
+      return Object.assign({}, m, { statusBg: ss.bg, statusColor: ss.color });
+    });
+
+    return {
+      seek,
+      react,
+      setTab: (e) => { const t = e.currentTarget.dataset.tab; try { localStorage.setItem('sr01_tab', t); } catch (_) {} this.setState({ tab: t }); },
+      toggleRail: () => this.setState((s) => ({ railOpen: !s.railOpen })),
+      railOpen: this.state.railOpen,
+      railClosed: !this.state.railOpen,
+      railTitle: this.state.railOpen ? 'Minimize toolbar' : 'Show toolbar',
+      startDrag: (e) => {
+        e.preventDefault();
+        const panel = document.getElementById('rightPanel');
+        if (!panel) return;
+        const startX = e.clientX;
+        const startW = panel.getBoundingClientRect().width;
+        let lastW = startW;
+        const move = (ev) => {
+          let w = startW - (ev.clientX - startX);
+          w = Math.max(320, Math.min(760, w));
+          lastW = w;
+          panel.style.flex = '0 0 ' + w + 'px';
+        };
+        const up = () => {
+          window.removeEventListener('mousemove', move);
+          window.removeEventListener('mouseup', up);
+          document.body.style.userSelect = '';
+          try { localStorage.setItem('sr01_panelW', String(Math.round(lastW))); } catch (_) {}
+        };
+        document.body.style.userSelect = 'none';
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+      },
+      nextFlag,
+      prevFlag,
+      togglePanel: () => {
+        const panel = document.getElementById('rightPanel');
+        const open = !this.state.panelOpen;
+        this.setState({ panelOpen: open });
+        if (panel) {
+          if (open) {
+            let w = 436; try { w = Number(localStorage.getItem('sr01_panelW')) || 436; } catch (_) {}
+            panel.style.flex = '0 0 ' + w + 'px';
+          } else { panel.style.flex = '0 0 46px'; }
+        }
+      },
+      panelOpen: this.state.panelOpen,
+      panelClosed: !this.state.panelOpen,
+      tabs,
+      reviewMarkers,
+      commentMarkers,
+      scriptMarkers,
+      reactions: this.state.reactions.map((r) => ({ e: r.e, sec: r.sec, left: pct(r.sec), time: fmt(r.sec) })),
+      emojiList: [ { e: '😂' }, { e: '😍' }, { e: '😮' }, { e: '🙌' }, { e: '👍' }, { e: '👎' } ],
+      comments: comments.map((c, i) => Object.assign({}, c, { time: fmt(c.sec), rowCls: i === commentActive ? 'active' : '' })),
+      commentCount: comments.length,
+      transcript: transcript.map((r, i) => Object.assign({}, r, { time: fmt(r.sec), onscreen: r.onscreen, rowCls: i === transcriptActive ? 'active' : '' })),
+      remix: remix.map((r, i) => Object.assign({}, r, { time: fmt(r.sec), onscreen: r.onscreen, rowCls: i === remixActive ? 'active' : '' })),
+      isReview, isComments, isTranscript, isRemix,
+      isDetails, isReport, isPeople, isAsk,
+      chatMessages,
+      chatBusy: this.state.chatBusy,
+      askChips: ['Compare to my brief', 'Draft revision notes', 'Rewrite the CTA'],
+      chipSend: (e) => doSend(e.currentTarget.dataset.q),
+      sendAsk: () => { const el = document.getElementById('askInput'); if (el) { doSend(el.value); el.value = ''; } },
+      askKey: (e) => { if (e.key === 'Enter') { e.preventDefault(); const el = document.getElementById('askInput'); if (el) { doSend(el.value); el.value = ''; } } },
+      detailFields,
+      reportRows,
+      reportCount: report.length,
+      passCount,
+      reportView: this.state.reportView,
+      isReportList: this.state.reportView === 'list',
+      isReportGrid: this.state.reportView === 'grid',
+      setReportList: () => this.setState({ reportView: 'list' }),
+      setReportGrid: () => this.setState({ reportView: 'grid' }),
+      listBtnBg: this.state.reportView === 'list' ? '#879CF7' : '#fff',
+      listBtnColor: this.state.reportView === 'list' ? '#fff' : '#9aa6c3',
+      gridBtnBg: this.state.reportView === 'grid' ? '#879CF7' : '#fff',
+      gridBtnColor: this.state.reportView === 'grid' ? '#fff' : '#9aa6c3',
+      memberRows,
+      memberCount: members.length,
+      stripLabel: stripLabels[tab]
+    };
+  }
+}
+</script>
+</body>
+</html>

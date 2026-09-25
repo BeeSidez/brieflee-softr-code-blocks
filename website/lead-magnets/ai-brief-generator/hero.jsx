@@ -11,35 +11,36 @@
 //   (brand name / product / audience derived server-side from website_url)
 //   3. Format + Angle — 42-format fanned-stack carousel + 5 angle cards
 //                       filtered by awareness.
-//   4. Generating    — loader. Calls GENERATE_WORKFLOW_URL when set,
-//                       otherwise returns a stub so the result view is
-//                       testable end-to-end.
+//   4. Generating    — the block scrapes with Firecrawl, writes the
+//                       brief with DeepSeek through OpenRouter, then saves
+//                       the row, the lead_event and the EmailIt join.
 //   5. Result        — 10 collapsible sections (Goal, Brand, Audience,
 //                       Message, Hook, Script, CTA, Thresholds,
 //                       Storyboard, Standards) + sticky action bar
 //                       (Copy / .md / .html / Generate another).
 //
 // SOFTR UI SETUP (one-time):
-//   1. Source tab → Database: brieflee leads → Table: briefs
+//   1. Source tab → Database: Lead Magnets → Table: Briefs
 //   2. Actions tab → enable Add Record (aliases auto-populate from q.select)
 //   3. Visibility tab → public
-//   4. Once the brief workflow exists, paste its URL into
-//      GENERATE_WORKFLOW_URL below.
 //
 // Rebuilt 2026-05-14 from the parked 3-stage wizard. Prior version
 // available via git history.
 // =====================================================================
 
 import { useState, useEffect, useRef } from "react";
-import { useRecords, q } from "@/lib/datasource";
+import { datasource, useRecords, useRecordCreate, useProxyFetch, q } from "@/lib/datasource";
 import {
-  ArrowLeft, ArrowRight, Check,
+  ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp,
   Copy, Download, FileText, Loader2, Sparkles,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------
-// briefs table field aliases (leads DB → table U5BzXOpMGVF1AW)
-// Source: Brieflee/brief-generator/schema.json
+// Briefs table field aliases (Lead Magnets DB → table UjtyVJH875uVit)
+// Moved out of the leads DB on 2026-08-10 when that database became the
+// Brieflee CRM. Formats and Video travelled with it, because Softr cannot
+// link records across databases. Old-to-new field ids are in
+// Brieflee/backups/crm-migration-2026-08-10/map.json.
 // ---------------------------------------------------------------------
 // Fields the hero reads while polling for the workflow to create our row.
 // In the new architecture the hero doesn't create the brief itself — the
@@ -49,27 +50,456 @@ import {
 // The `*Lookup` aliases are LOOKUP fields on briefs that follow the
 // `selected_format_id` (7dA0W) relation to the Formats table and surface
 // per-format thresholds + QA checklist + example videos.
-const readFields = q.select({
-  clientUuid:        "MhPZU",
-  generatedBrief:    "BPpI5",
-  brandResearch:     "T01Og",
-  logoUrl:           "AFI5V",
-  // Format lookups — auto-pulled from the linked Format row
-  videoExamples:     "FYzNX",  // Video URL (Video Formats) (Formats)
-  sampleClips:       "4ILb5",  // Sample Clip URLs (Formats)
-  faceTime:          "uYe40",  // Face Time (Formats)
-  audioClarity:      "5XL9y",  // Audio Clarity (Formats)
-  audioHookTiming:   "bEdsv",  // Audio Hook Timing (Formats)
-  brandMentionCount: "i5UfP",  // Brand Mention Count (Formats)
-  ctaPlacement:      "5UUzq",  // CTA Placement (Formats)
-  engagementPacing:  "TdEgM",  // Engagement Pacing (Formats)
-  productVisibility: "3PXY2",  // Product Visibility (Formats)
-  textLegibility:    "0JQJh",  // Text Legibility (Formats)
-  visualHook:        "rdgdX",  // Visual Hook (Formats)
-  qaChecklist:       "1aWD6",  // QA Checklist (Formats)
-  formatDescription: "53Xtq",  // Format Description (Formats)
-  formatWhyItWorks:  "yd7zI",  // Format Why It Works (Formats)
+// ---------------------------------------------------------------------
+// The chat, which takes over the page once the email is in
+// ---------------------------------------------------------------------
+// It looks like a conversation and behaves like a wizard: every answer is
+// a preset option, so the only spend is the one generation at the end.
+const LEE_AVATAR_URL = "https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png";
+
+const CHAT_CSS = `
+.bgc{--peri:#879cf7;--navy2:#001364;--page:#FAFBFF;--l2:#eef4fd;--border:#eef4fd;--bd2:#d6defc;
+  --body:#565d78;--muted:#838aa3;--quiet:#aeb4c8;--pass:#2daa63;--fail:#c8443c;
+  font-family:'League Spartan',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:var(--page);color:var(--body);min-height:100vh;-webkit-font-smoothing:antialiased}
+.bgc h1,.bgc h2,.bgc h3,.bgc h4{margin:0;color:var(--navy2);letter-spacing:-.02em}
+.bgc p{margin:0}
+.bgc-wrap{max-width:900px;margin:0 auto;padding:24px 20px 120px}
+.bgc-top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:11px;padding:14px 4px;margin-bottom:6px;
+  background:rgba(250,251,255,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+.bgc-top .av{position:relative;width:38px;height:38px;flex:0 0 38px}
+.bgc-top .av img{width:38px;height:38px;border-radius:50%;display:block}
+.bgc-top .av i{position:absolute;right:0;bottom:1px;width:10px;height:10px;border-radius:50%;background:#2daa63;border:2px solid #fff}
+.bgc-top b{display:block;color:var(--navy2);font-size:16px;font-weight:800;line-height:1.1}
+.bgc-top span{display:block;font-size:12.5px;color:var(--quiet)}
+.bgc-pct{margin-left:auto;height:28px;padding:0 13px;border-radius:999px;background:#eef1ff;color:var(--navy2);
+  font-size:12.5px;font-weight:800;display:inline-flex;align-items:center}
+.bgc-brand{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.bgc-brand .logo{width:46px;height:46px;border-radius:12px;object-fit:contain;background:#fff;border:1px solid var(--border);padding:4px}
+.bgc-brand .nm{font-size:15.5px;font-weight:800;color:var(--navy2);line-height:1.2}
+.bgc-brand .dom{font-size:12.5px;color:var(--muted);margin-top:1px}
+.bgc-read{margin-left:auto;display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 11px;border-radius:999px;
+  background:rgba(45,170,99,.12);color:#2daa63;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.bgc-pills{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px;width:100%}
+.bgc-pill{background:#eef1ff;color:var(--navy2);font-size:12px;font-weight:700;padding:6px 11px;border-radius:999px}
+.bgc-prodimg{float:right;width:112px;height:112px;object-fit:contain;background:#fff;margin:0 0 10px 14px;
+  border:1px solid var(--border);border-radius:12px;padding:6px}
+.bgc-row{display:flex;gap:12px;margin-bottom:15px;align-items:flex-start}
+.bgc-row.me{justify-content:flex-end}
+.bgc-av{width:34px;height:34px;border-radius:50%;flex:0 0 34px;margin-top:2px}
+.bgc-b{background:#fff;border:1px solid var(--border);border-radius:16px;border-top-left-radius:5px;
+  padding:14px 17px;font-size:14.5px;line-height:1.55;box-shadow:0 6px 18px -14px rgba(0,15,77,.3);max-width:640px}
+.bgc-b.wide{max-width:100%;width:100%}
+.bgc-b.mine{background:var(--peri);color:#fff;border:0;border-radius:16px;border-bottom-right-radius:5px;font-weight:600}
+.bgc-opts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.bgc-opt{height:36px;padding:0 15px;border-radius:999px;border:1px solid var(--bd2);background:#fff;
+  color:var(--navy2);font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
+.bgc-opt:hover{border-color:var(--peri)}
+.bgc-opt.on{background:var(--peri);border-color:var(--peri);color:#fff}
+.bgc-note{font-size:12.5px;color:var(--quiet);margin-top:10px;line-height:1.5}
+.bgc-glbl{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:16px 0 2px}
+.bgc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
+.bgc-card{border:1px solid var(--bd2);border-radius:10px;background:#fff;cursor:pointer;padding:0;overflow:hidden;
+  position:relative;transition:border-color .12s,box-shadow .12s}
+.bgc-card:hover{border-color:var(--peri)}
+.bgc-card.on{border-color:var(--peri);box-shadow:0 0 0 1px var(--peri)}
+.bgc-card video{width:100%;height:92px;object-fit:cover;display:block;background:rgba(135,156,247,.08)}
+.bgc-card .ph{height:92px;background:rgba(135,156,247,.08)}
+.bgc-meta{padding:8px 10px 9px}
+.bgc-nm{font-size:12.5px;font-weight:600;color:var(--navy2);line-height:1.2}
+.bgc-ds{font-size:11px;font-weight:300;color:var(--muted);line-height:1.3;margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bgc-badge{position:absolute;top:6px;left:6px;background:rgba(41,79,246,.92);color:#fff;font-size:8.5px;
+  font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:2px 6px;border-radius:999px}
+.bgc-badge.fit{background:var(--peri);color:#fff}
+.bgc-tick{position:absolute;top:6px;right:6px;width:20px;height:20px;border-radius:50%;background:var(--peri);
+  color:#fff;display:flex;align-items:center;justify-content:center}
+.bgc-more{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 15px;margin-top:14px;border-radius:999px;
+  border:1px solid var(--bd2);background:#fff;color:var(--navy2);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.bgc-more:hover{border-color:var(--peri)}
+.bgc-flow{column-count:2;column-gap:22px}
+@media(max-width:720px){.bgc-flow{column-count:1}}
+.bgc-steps{display:flex;align-items:center;gap:7px;margin-left:auto}
+.bgc-dot{width:7px;height:7px;border-radius:50%;background:var(--bd2)}
+.bgc-dot.on{background:var(--peri)}
+.bgc-dot.now{box-shadow:0 0 0 3px rgba(135,156,247,.25)}
+.bgc-stepn{font-size:11.5px;font-weight:700;color:var(--quiet);letter-spacing:.02em}
+.bgc-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 22px;border:0;
+  border-radius:12px;background:var(--peri);color:#fff;font-family:inherit;font-size:14.5px;font-weight:700;
+  cursor:pointer;box-shadow:0 8px 18px -8px rgba(135,156,247,.8)}
+.bgc-btn[disabled]{opacity:.45;cursor:not-allowed;box-shadow:none}
+.bgc-btn.ghost{background:#fff;color:var(--navy2);border:1px solid var(--bd2);box-shadow:none}
+.bgc-err{color:var(--fail);font-size:13.5px;font-weight:600;margin-top:9px}
+.bgc-bar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.93);backdrop-filter:blur(10px);
+  border-top:1px solid var(--border);padding:12px 20px;z-index:40}
+.bgc-barin{max-width:900px;margin:0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.bgc-barin .lbl{font-size:13px;color:var(--muted);margin-right:auto}
+@media(max-width:720px){.bgc-barin .lbl{display:none}}
+`;
+
+function ChatLee({ children, wide }) {
+  return (
+    <div className="bgc-row">
+      <img className="bgc-av" src={LEE_AVATAR_URL} alt="" />
+      <div className={"bgc-b" + (wide ? " wide" : "")}>{children}</div>
+    </div>
+  );
+}
+function ChatMine({ children }) {
+  return <div className="bgc-row me"><div className="bgc-b mine">{children}</div></div>;
+}
+function ChatOpts({ options, value, onPick }) {
+  return (
+    <div className="bgc-opts">
+      {options.map((o) => {
+        const label = o.label || o.name;
+        return (
+          <button key={label} className={"bgc-opt" + (value === label ? " on" : "")} onClick={() => onPick(o)}>
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Formats, led by the ones that suit whoever is filming, with the handful
+// they genuinely could not film left out. A dial, not a rulebook.
+const BRAND_MADE_FORMATS = ["Press", "Grid Swap", "Social Proof Mashup"];
+const FORMAT_EXCLUDE = {
+  "Influencer":  ["Founder", ...BRAND_MADE_FORMATS],
+  "TikTok Shop Affiliate": ["Celebrity", "Influencer Endorsement", "Founder", "Expert Explainer",
+                            "Cinematic B-Roll", ...BRAND_MADE_FORMATS],
+  "UGC Creator": ["Celebrity", "Influencer Endorsement", "Founder", ...BRAND_MADE_FORMATS],
+  "Founder":     ["Celebrity", "Influencer Endorsement", "Testimonial", "Street Interview", ...BRAND_MADE_FORMATS],
+  "Customer":    ["Celebrity", "Influencer Endorsement", "Founder", "Behind The Scenes",
+                  "Expert Explainer", "Cinematic B-Roll", ...BRAND_MADE_FORMATS],
+  "Employee":    ["Celebrity", "Influencer Endorsement", "Founder", "Cinematic B-Roll", ...BRAND_MADE_FORMATS],
+};
+const FORMAT_SUITS = {
+  "Influencer":  ["Yapper","Try-On","POV","Review","Unboxing","Stitch","Duet","Reaction Video","Trend","Testimonial"],
+  "TikTok Shop Affiliate": ["Yapper","Demo","Try-On","Unboxing","Review","Before and After","Testimonial","Listicle","Trend","Stitch"],
+  "UGC Creator": ["Yapper","Demo","Try-On","Before and After","Listicle","Testimonial","How To","Unboxing","POV","Skit"],
+  "Founder":     ["Founder","Behind The Scenes","Expert Explainer","Educational","Yapper","Podcast","How To","Problem Agitation"],
+  "Customer":    ["Testimonial","Before and After","Review","Unboxing","Try-On","Yapper","Transformation","POV"],
+  "Employee":    ["Behind The Scenes","Yapper","Demo","How To","Educational","Expert Explainer","Humour","Skit","Street Interview"],
+};
+
+function ChatFormatPicker({ filmer, picked, onPick }) {
+  const ex = new Set(FORMAT_EXCLUDE[filmer] || []);
+  const suits = FORMAT_SUITS[filmer] || [];
+  const avail = FORMATS.filter((f) => !ex.has(f.name));
+  const fit = suits.map((n) => avail.find((f) => f.name === n)).filter(Boolean);
+  const rest = avail.filter((f) => !suits.includes(f.name)).sort((a, b) => a.name.localeCompare(b.name));
+  const who = String(filmer || "").toLowerCase();
+  // The ten that suit them are the answer. The rest are there for anyone
+  // who wants them, folded away so the question stays short.
+  const [showRest, setShowRest] = useState(false);
+
+  const Card = ({ f, suitsThem }) => {
+    const on = picked?.name === f.name;
+    const thumb = Array.isArray(f.thumbs) ? f.thumbs[0] : f.thumb;
+    return (
+      <div className={"bgc-card" + (on ? " on" : "")} onClick={() => onPick(f)}
+        onMouseEnter={(e) => { const v = e.currentTarget.querySelector("video"); if (v) v.play().catch(() => {}); }}
+        onMouseLeave={(e) => { const v = e.currentTarget.querySelector("video"); if (v) { v.pause(); v.currentTime = 0; } }}>
+        {thumb ? <video src={thumb} muted loop autoPlay playsInline preload="metadata" />
+               : <div className="ph" />}
+        {suitsThem ? <span className="bgc-badge fit">Suits them</span>
+                   : f.popular ? <span className="bgc-badge">Popular</span> : null}
+        {on ? <span className="bgc-tick"><Check className="w-3 h-3" strokeWidth={3} /></span> : null}
+        <div className="bgc-meta">
+          <div className="bgc-nm">{f.name}</div>
+          {f.desc ? <div className="bgc-ds">{f.desc}</div> : null}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <p className="bgc-note">
+        Showing {fit.length + rest.length} of {FORMATS.length}. {ex.size} do not suit a {who}: {[...ex].join(", ")}.
+      </p>
+      {fit.length ? (
+        <>
+          <div className="bgc-glbl">Suits a {who}</div>
+          <div className="bgc-grid">{fit.map((f) => <Card key={f.name} f={f} suitsThem />)}</div>
+        </>
+      ) : null}
+      <button type="button" className="bgc-more" onClick={() => setShowRest((v) => !v)}>
+        {showRest ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        {showRest ? "Hide the other formats" : `Show ${rest.length} more formats`}
+      </button>
+      {showRest ? <div className="bgc-grid">{rest.map((f) => <Card key={f.name} f={f} />)}</div> : null}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Sources (8) — connection ids for THIS block, from its Source tab
+// ---------------------------------------------------------------------
+const ds = datasource.define({
+  briefs:     "5a38f876-963d-46e5-9fc9-6890365122b5", // Lead Magnets → Briefs
+  emailit:    "4ccb4159-b17e-4906-ad92-cb7dc776522f", // EmailIt REST
+  // No leads source on purpose. The block writes one lead_event and the
+  // two-way relation in the CRM attaches it to the existing lead or makes
+  // a new one. Writing to leads as well is what duplicates rows.
+  leadEvents: "8080b8e6-e4f9-4f00-8f5a-7c79b71c0445", // Brieflee CRM → lead_events
+  formats:    "aa342c0c-45eb-4c72-8dc7-ead14ff0bb0b", // beta → formats
+  videos:     "f0d5e7e4-577b-4c02-a15d-fa2bfc0da624", // beta → videos
+  firecrawl:  "0d23f96a-1e08-45ea-9166-8ba3f3eb0c27", // Firecrawl REST
+  openrouter: "6ebc01df-fb32-43a2-85cc-367ec6014110", // OpenRouter REST
 });
+
+// The row this block writes (Lead Magnets → Briefs).
+// selected_format_id is deliberately NOT written: it is still a link to the
+// doomed Formats copy. The format name travels inside the brief JSON, so
+// nothing breaks when that link is dropped.
+const briefWrite = q.select({
+  clientUuid:    "jgOZo",
+  email:         "YrYDT",
+  websiteUrl:    "ykj6n",
+  filmer:        "REnaH",   // SELECT
+  channelType:   "Q2iqD",   // SELECT
+  awareness:     "OAuMK",   // SELECT
+  selectedAngle: "WnPLY",
+  generatedBrief:"YRFT5",
+  brandResearch: "flpoq",
+  logoUrl:       "ML2kA",
+  pageUrl:       "uwwMV",
+  productUrl:    "Ez58b",
+  featureDesc:   "y3OYO",
+  status:        "aNWUE",   // SELECT
+});
+
+// One row per use. This is where attribution lives, so it is never deduped:
+// grouping these by email gives first/last seen, per-magnet counts and which
+// tool someone came through first.
+const eventWrite = q.select({
+  email:       "KfXCh",
+  source:      "0tbOR",   // SELECT, one option per magnet
+  channel:     "Stu4F",   // SELECT
+  name:        "wNiuC",
+  website:     "MSNYn",
+  pageUrl:     "5GODb",
+  landingPage: "CO6OA",
+  payload:     "hvB7E",
+  submittedAt: "8ZeJj",
+  utmSource:   "enDXw",
+  utmMedium:   "DSAXX",
+  utmCampaign: "o6blp",
+  utmContent:  "mDzib",
+});
+
+// SELECT values are written as {id,label}, the same way the analyser
+// blocks do it, so Softr matches the option rather than guessing.
+const OPT_SOURCE_BRIEF  = { id: "47f2321f-3efb-4cd1-963d-9be8a59928d1", label: "ai-brief-generator" };
+const OPT_CHANNEL_MAGNET = { id: "dcaa1da5-8a7c-4c7d-a964-8bfadc910932", label: "Lead magnet" };
+const OPT_CHANNEL_PAID   = { id: "c82e4b4d-d516-46d0-9925-b05f6687964c", label: "Paid ad" };
+const OPT_STATUS_GENERATED = { id: "c79ae859-aca4-418b-a847-44e27b42cf25", label: "Generated" };
+
+// Control level (Brief Bible). It decides whether the creator gets
+// talking points or a scene by scene, never both: creator-led means they
+// find their own words, directional means the scenes carry the intent.
+const CONTROL_LEVEL = {
+  "Influencer":  "creator-led",
+  "TikTok Shop Affiliate": "creator-led",
+  "UGC Creator": "directional",
+  "Founder":     "directional",
+  "Customer":    "directional",
+  "Employee":    "directional",
+};
+
+// beta → formats: the single source of truth for thresholds and examples.
+const formatRead = q.select({
+  name:              "wYhAb",  // Name
+  formatDescription: "gMc91",  // Description
+  formatWhyItWorks:  "kOxkg",  // Why it works
+  qaChecklist:       "ZkYeh",  // Qa checklist
+  faceTime:          "4Czop",  // Face time
+  audioClarity:      "E7K0j",  // Audio clarity
+  audioHookTiming:   "qmaUU",  // Audio hook timing
+  brandMentionCount: "wbMV4",  // Brand mention count
+  ctaPlacement:      "w7BID",  // CTA placement
+  engagementPacing:  "lrEoP",  // Engagement pacing
+  productVisibility: "EgfKk",  // Product visibility
+  textLegibility:    "hkXzW",  // Text legibility
+  visualHook:        "BQgkr",  // Visual hook
+  sampleClips:       "QT9T8",  // Sample clip urls
+  videoExamples:     "3rWLE",  // Video url, looked up through Video formats
+});
+
+// ---------------------------------------------------------------------
+// What we can tell someone about their own brand from one read. Every
+// pill is lifted from the page, never guessed, so the card is a receipt
+// rather than a flourish.
+// ---------------------------------------------------------------------
+function readBrandCard(websiteUrl, markdown, meta) {
+  // A page can declare the same tag twice, and Firecrawl hands those back
+  // as an array. Take the first and never render a joined string.
+  const raw = meta || {};
+  const m = {};
+  Object.keys(raw).forEach((k) => { m[k] = Array.isArray(raw[k]) ? raw[k][0] : raw[k]; });
+  let host = "";
+  try {
+    host = new URL(/^https?:\/\//i.test(websiteUrl) ? websiteUrl : `https://${websiteUrl}`).hostname.replace(/^www\./, "");
+  } catch { host = String(websiteUrl || "").replace(/^https?:\/\//, "").split("/")[0]; }
+
+  // The brand name is the shortest half of the share title, which is
+  // almost always "Product | Brand" or "Brand | Tagline".
+  const rawTitle = String(m.ogTitle || m.title || "").replace(/\s+/g, " ").trim();
+  const halves = rawTitle.split(/\s[|–—\-]\s/).map((s) => s.trim()).filter(Boolean);
+  const brandName = (halves.length > 1
+    ? halves.reduce((a, b) => (a.length <= b.length ? a : b))
+    : halves[0]) || host.split(".")[0];
+
+  const pageTitle = String(m.title || "").replace(/\s+/g, " ").trim().split(/\s[|–—\-]\s/)[0];
+  // Bounded on both ends: a page full of digit sliders will otherwise
+  // hand back something like $01234567890123456789 and call it a price.
+  const price = (String(markdown || "").match(/[$£€]\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?(?!\d)/) || [])[0];
+  // bestRating is the top of the scale, not the score, so it is no use as
+  // a pill. The review count is the honest number.
+  const reviews = Number(String(m.reviewCount || "").replace(/[^\d]/g, ""));
+  const reviewPill = reviews > 0 ? `${reviews.toLocaleString()} reviews` : "";
+
+  const pills = [
+    pageTitle && pageTitle !== brandName ? pageTitle : "",
+    price ? `${price} hero product` : "",
+    reviewPill,
+  ].filter(Boolean).slice(0, 4);
+
+  return {
+    host,
+    brandName,
+    pills,
+    logoUrl: `https://www.google.com/s2/favicons?domain=${host}&sz=128`,
+    productImage: String(m.ogImage || ""),
+  };
+}
+
+// ---------------------------------------------------------------------
+// Endpoints called through the REST sources (server-side, so no CORS)
+// ---------------------------------------------------------------------
+const FIRECRAWL_URL   = "https://api.firecrawl.dev/v1/scrape";
+const OPENROUTER_URL  = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_MODEL = "deepseek/deepseek-v4-flash";
+// BL | Leads, the one nurture audience for every tool that hands the visitor
+// something (comms map v3). A repeat address returns 409, which means the
+// person is already on the list: success, not an error. The day-1 email
+// merges {{tool_name}} from the contact, so it is set on the join.
+const EMAILIT_AUDIENCE = "aud_4J2sokpCp3VLZHFhnayoyKe4SXL";
+const EMAILIT_TOOL_NAME = "brief generator";
+const EMAILIT_SUBSCRIBE = `https://api.emailit.com/v2/audiences/${EMAILIT_AUDIENCE}/subscribers`;
+
+// The confirmation is sent from here, not by an audience-join automation.
+// An automation fires the instant someone passes the gate, which is before
+// the brief exists, so the email would go out with nothing to link to.
+// Sending at the end of generation means record_url is always a real brief.
+// The matching audience-join automation stays paused, or this double-sends.
+const EMAILIT_SEND = "https://api.emailit.com/v2/emails";
+const CONFIRM_TEMPLATE = "bl-leadmag-bg";
+const CONFIRM_FROM = "Bev from Brieflee <bev@brieflee.co>";
+const TOOL_URL = "https://www.brieflee.co/free-tool-ai-brief-generator";
+
+// Meta pixel. The pixel on this page only sends PageView by itself, so an
+// ad campaign optimising for leads would have nothing to learn from. This
+// fires a standard Lead event the moment the email gate is passed, which is
+// the same moment the lead_event row is written. It never throws: with no
+// pixel on the page there is no event, and the gate still works.
+function trackMetaLead() {
+  try {
+    if (typeof window === "undefined" || typeof window.fbq !== "function") return;
+    const eventID = `bg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    window.fbq(
+      "track",
+      "Lead",
+      { content_name: "ai-brief-generator", content_category: "lead-magnet" },
+      { eventID }
+    );
+  } catch (e) { /* tracking never blocks the gate */ }
+}
+
+// Attribution hand-off. Ads land on a lead magnet, but the demo booking
+// happens on /book-a-demo, so the click id and UTMs would be lost between
+// pages. Landing with any of them writes one record to localStorage for
+// 7 days (Meta's click attribution window). The demo chat reads it back
+// when its own URL carries nothing, and this block reads it too, so a
+// returning visitor is still counted as paid.
+const ATTRIBUTION_KEY = "bl_attribution";
+const ATTRIBUTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+function readUrlAttribution() {
+  const blank = { utmSource: "", utmMedium: "", utmCampaign: "", utmContent: "", utmTerm: "", gclid: "", fbclid: "", ttclid: "", referrer: "", landingPage: "", firstLanding: "" };
+  if (typeof window === "undefined") return blank;
+  try {
+    const p = new URLSearchParams(window.location.search);
+    const get = (k) => (p.get(k) || "").slice(0, 200);
+    return {
+      utmSource: get("utm_source"),
+      utmMedium: get("utm_medium"),
+      utmCampaign: get("utm_campaign"),
+      utmContent: get("utm_content"),
+      utmTerm: get("utm_term"),
+      gclid: get("gclid"),
+      fbclid: get("fbclid"),
+      ttclid: get("ttclid"),
+      referrer: (document.referrer || "").slice(0, 300),
+      landingPage: (window.location.pathname + window.location.search).slice(0, 300),
+      firstLanding: "",
+    };
+  } catch (e) { return blank; }
+}
+function hasClickAttribution(a) {
+  return !!(a && (a.gclid || a.fbclid || a.ttclid || a.utmSource || a.utmMedium || a.utmCampaign));
+}
+function rememberAttribution() {
+  try {
+    const a = readUrlAttribution();
+    if (!hasClickAttribution(a)) return;
+    localStorage.setItem(ATTRIBUTION_KEY, JSON.stringify({ ...a, ts: Date.now() }));
+  } catch (e) { /* storage blocked, nothing to remember */ }
+}
+function recallAttribution() {
+  try {
+    const raw = localStorage.getItem(ATTRIBUTION_KEY);
+    if (!raw) return null;
+    const a = JSON.parse(raw);
+    if (!a || !a.ts || Date.now() - a.ts > ATTRIBUTION_TTL_MS) return null;
+    return a;
+  } catch (e) { return null; }
+}
+function currentAttribution() {
+  const a = readUrlAttribution();
+  if (hasClickAttribution(a)) return a;
+  const s = recallAttribution();
+  if (!s) return a;
+  return {
+    ...a,
+    utmSource: s.utmSource || "",
+    utmMedium: s.utmMedium || "",
+    utmCampaign: s.utmCampaign || "",
+    utmContent: s.utmContent || "",
+    utmTerm: s.utmTerm || "",
+    gclid: s.gclid || "",
+    fbclid: s.fbclid || "",
+    ttclid: s.ttclid || "",
+    referrer: s.referrer || a.referrer,
+    firstLanding: s.landingPage || "",
+  };
+}
+function isPaidAttribution(a) {
+  return !!(a && (a.gclid || a.fbclid || a.ttclid || /cpc|paid|ppc/i.test(a.utmMedium || "")));
+}
+
+// Mirrors the record_url formula on the Briefs table. Computed here rather
+// than read back off the row so the send needs no extra round trip, and it
+// falls back to the tool page so the template can never merge an empty
+// string (EmailIt renders an unknown variable as "", which is how the dead
+// unsubscribe link shipped).
+function briefRecordUrl(recordId) {
+  if (!recordId || typeof window === "undefined") return TOOL_URL;
+  return `${window.location.origin}${window.location.pathname}?brief=${encodeURIComponent(recordId)}`;
+}
 
 // ---------------------------------------------------------------------
 // SELECT option UUIDs (from schema.json)
@@ -82,6 +512,10 @@ const readFields = q.select({
 const FILMER_OPTIONS = [
   { id: "ffba9900-c3c3-4708-9535-c4e96de2683f", label: "Influencer" },
   { id: "2d7129c6-47a8-4b64-8978-31ded65be607", label: "UGC Creator" },
+  // No id yet: the filmer SELECT on Lead Magnets → Briefs has no TikTok
+  // Affiliate choice, and the Softr API will not add one. Until it is added
+  // by hand the column is left empty and the label travels in the brief.
+  { id: "", label: "TikTok Shop Affiliate" },
   { id: "893287a0-3ea0-41a8-9506-b862bd52e409", label: "Founder" },
   { id: "2e35c74e-136f-4792-8e51-9eee446c4579", label: "Customer" },
   { id: "0e26a628-8602-44e6-bc9c-0f82f777d876", label: "Employee" },
@@ -106,6 +540,7 @@ const AWARENESS_OPTIONS = [
 const FILMER_GUIDANCE = {
   "UGC Creator": "Paid creator with no following. Polished but authentic. Bright lighting, clear product use, branded but not over-styled. Energy in first 3 seconds. Talks to camera or to a friend off-camera.",
   "Influencer":  "Creator with an established following. Polished, aspirational. Uses their own established voice and references their audience. Affiliate-style CTAs work well.",
+  "TikTok Shop Affiliate": "Forks from the influencer: same own channel, own audience, but sales first and paid on commission per sale through a TikTok Shop link or code. Often a micro creator, often a real customer who liked the product enough to monetise it. Briefed light and built for volume, because the play is many affiliates off one template. No script, they know what converts for their audience. What carries it: a friction first hook, their own credibility, the product shown actually working, a clean link and code CTA, and disclosure done right.",
   "Founder":     "Founder on camera. Direct-to-camera, founder seat, single takes. Mission-driven. Speaks with conviction about the product they built. No marketing-speak. Often plain backdrop.",
   "Customer":    "Real customer testimonial. Raw, handheld, honest. Why they bought it and what changed. Imperfect framing is OK and adds credibility. No actors, no script.",
   "Employee":    "Staff-led BTS (Employee Generated Content). Workplace settings, real desks or store floor. Candid coworkers, natural sound. Workplace-authentic, NOT polished. Day-in-the-life energy.",
@@ -125,7 +560,7 @@ const AWARENESS_HOOK_TACTICS = {
 };
 
 // Format guidance — Description + Why It Works + Hook Tactic from the
-// Softr Formats table (`p69Bcs6TjD5kiM`), pulled 2026-05-19. The hero looks
+// Softr Formats table (Lead Magnets DB, `h2LC8rO0GgOCke`), pulled 2026-05-19. The hero looks
 // up by format name when building the webhook payload so Claude receives
 // the relevant format guidance as one pre-resolved string. Refresh from
 // the Formats table when guidance changes there.
@@ -339,14 +774,11 @@ const FAN_LAYOUT = [
 // Webhook URLs
 // ---------------------------------------------------------------------
 // Email capture — same shared workflow the checklist + storyboard use.
-const EMAIL_WORKFLOW_URL = "https://workflows-api.softr.io/v1/workflows/1e28685f-1a24-4042-80ac-cadfedef7336/executions/22b90d5d-a73b-43b5-ac1b-f24843b781bd";
 
 // Brief generation — Softr workflow that runs Sonar (brand research) +
 // Claude (brief sections) + Update Record. Webhook is fire-and-forget;
 // the hero polls the briefs row by recordId until status = Generated.
 // Workflow body: { recordId, source: "ai-brief-generator" }.
-const GENERATE_WORKFLOW_URL = "https://workflows-api.softr.io/v1/workflows/918e0a63-ea4d-45fe-96f8-fedf2d7c5ee5/executions/6ebf0702-048f-46ee-a30b-d1c0caf0df9d";
-const GENERATE_TIMEOUT_MS = 45000;
 
 // Personal / throwaway email domains — blocked across every Brieflee
 // lead-magnet form to keep lead quality high. Mirrors the Modash / Motion
@@ -425,28 +857,37 @@ function storyboardToMarkdown(rows) {
 }
 
 function briefToMarkdown(b, ctx) {
-  const formatLine = ctx.formatName ? `**Format:** ${ctx.formatName} — ${ctx.formatDesc}` : "";
+  const formatLine = ctx.formatName ? `**Format:** ${ctx.formatName}. ${ctx.formatDesc || ""}`.trim() : "";
   const angleLine = ctx.angleName ? `**Angle:** ${ctx.angleName}` : "";
+  const sceneRows = Array.isArray(b.storyboard) && b.storyboard.length
+    ? storyboardToMarkdown(b.storyboard) : "";
+  const asText = (v) => (Array.isArray(v) ? v.map((s) => `- ${s}`).join("\n") : String(v || ""));
+  const section = (title, body) => { const t = asText(body); return t ? [`## ${title}`, t, ""] : []; };
   const lines = [
     `# ${ctx.brandName} brief`,
     "",
-    "Generated by Brieflee — the free AI UGC Brief Generator",
+    "Generated by Brieflee, the free AI brief generator",
     "",
     formatLine,
     angleLine,
     "",
     "---",
     "",
-    "## 1. The Goal",        b.goal,                          "",
-    "## 2. The Brand",       b.brand,                         "",
-    "## 3. The Audience",    b.audience,                      "",
-    "## 4. The Message",     b.message,                       "",
-    "## 5. The Hook",        b.hook,                          "",
-    "## 6. The Script",      b.script,                        "",
-    "## 7. The CTA",         b.cta,                           "",
-    "## 8. The Thresholds",  b.thresholds,                    "",
-    "## 9. The Storyboard",  storyboardToMarkdown(b.storyboard), "",
-    "## 10. The Standards",  b.standards,
+    ...section("About the brand", b.aboutBrand),
+    ...section("About the product", b.aboutProduct),
+    ...section("Who it's for", b.audience),
+    ...section("The message", b.message),
+    ...section("The offer", b.offerList),
+    ...section("Personal experiences", b.personalList),
+    ...section("Hook options", b.hook),
+    ...section("Talking points", b.talkingPointsList),
+    ...section("Call to action", b.ctaList),
+    ...section("Scene by scene", sceneRows),
+    ...section("Deliverables", b.deliverablesList),
+    ...section("Thresholds", (b.thresholds || []).map((t) => `${t.label}: ${t.value}`)),
+    ...section("Standards", b.standards),
+    ...section("Do", b.dos),
+    ...section("Don't", b.donts),
   ];
   return lines.filter((l) => l !== undefined).join("\n");
 }
@@ -483,74 +924,38 @@ function briefToStyledHtml(b, ctx) {
     ctx.formatName ? `<span class="tag">${safe(ctx.formatName)}</span>` : "",
     ctx.angleName ? `<span class="tag">${safe(ctx.angleName)}</span>` : "",
   ].join("");
+  const part = (title, body) => {
+    if (Array.isArray(body)) {
+      return body.length
+        ? `<h2>${title}</h2><ul>${body.map((l) => `<li>${safe(l)}</li>`).join("")}</ul>`
+        : "";
+    }
+    return body ? `<h2>${title}</h2><p>${safe(body)}</p>` : "";
+  };
+  const scenesPart = Array.isArray(b.storyboard) && b.storyboard.length
+    ? `<h2>Scene by scene</h2>${storyboardHtml}` : "";
   return `<!doctype html><html><head><meta charset="utf-8"><title>${safe(ctx.brandName)} brief</title><style>${css}</style></head><body>
 <h1>${safe(ctx.brandName)} brief</h1>
-<div class="meta">Generated by Brieflee — the free AI UGC Brief Generator</div>
+<div class="meta">Generated by Brieflee, the free AI brief generator</div>
 ${tags ? `<div>${tags}</div>` : ""}
-<h2>1. The Goal</h2><p>${safe(b.goal)}</p>
-<h2>2. The Brand</h2><p>${safe(b.brand)}</p>
-<h2>3. The Audience</h2><p>${safe(b.audience)}</p>
-<h2>4. The Message</h2><p>${safe(b.message)}</p>
-<h2>5. The Hook</h2><p>${safe(b.hook)}</p>
-<h2>6. The Script</h2><p>${safe(b.script)}</p>
-<h2>7. The CTA</h2><p>${safe(b.cta)}</p>
-<h2>8. The Thresholds</h2><p>${safe(b.thresholds)}</p>
-<h2>9. The Storyboard</h2>${storyboardHtml}
-<h2>10. The Standards</h2><p>${safe(b.standards)}</p>
+${part("About the brand", b.aboutBrand)}
+${part("About the product", b.aboutProduct)}
+${part("Who it's for", b.audience)}
+${part("The message", b.message)}
+${part("The offer", b.offerList)}
+${part("Personal experiences", b.personalList)}
+${part("Hook options", b.hook)}
+${part("Talking points", b.talkingPointsList)}
+${part("Call to action", b.ctaList)}
+${scenesPart}
+${part("Deliverables", b.deliverablesList)}
+${part("Thresholds", (b.thresholds || []).map((t) => `${t.label}: ${t.value}`))}
+${part("Standards", b.standards)}
+${part("Do", b.dos)}
+${part("Don't", b.donts)}
 </body></html>`;
 }
 
-// ---------------------------------------------------------------------
-// Brief generation — calls Softr workflow when URL is set, else stubs.
-// ---------------------------------------------------------------------
-async function generateBrief(inputs) {
-  if (GENERATE_WORKFLOW_URL) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), GENERATE_TIMEOUT_MS);
-    try {
-      const res = await fetch(GENERATE_WORKFLOW_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(inputs),
-        signal: ctrl.signal,
-      });
-      clearTimeout(timer);
-      if (!res.ok) throw new Error(`Workflow returned ${res.status}`);
-      return await res.json();
-    } catch (e) {
-      throw new Error(`Brief generation failed: ${e.message}`);
-    }
-  }
-  // Stub mode — testable without the workflow.
-  await new Promise((resolve) => setTimeout(resolve, 2200));
-  return stubBrief(inputs);
-}
-
-function stubBrief(i) {
-  const channelLow = (i.channelType || "").toLowerCase();
-  const awarenessLow = (i.awareness || "").toLowerCase();
-  const formatPart = i.formatName ? `as a ${i.formatName} video` : "";
-  return {
-    goal: `Move the buyer from ${awarenessLow} to action with a single ${channelLow} ${(i.filmer || "creator").toLowerCase()} video ${formatPart}, built around the "${i.selectedAngle}" angle. The brief locks in what the creator needs to film, how to film it, and what the ad must hit to actually perform.`,
-    brand: `[Pulled from ${i.websiteUrl || "the brand site"} by Sonar in the live workflow. Stub mode shows placeholders.]`,
-    audience: `[AI section, currently stubbed] Sonar reads ${i.websiteUrl || "the website"} and returns the audience description in the buyer's own voice, naming the specific frustration this product solves.`,
-    message: `[AI section, currently stubbed] One message every viewer should walk away believing, built from the "${i.selectedAngle}" angle, customised to the brand pulled from the website.`,
-    hook: `[AI section, currently stubbed] Three hook options:\n1. ...\n2. ...\n3. ...\nEach hits in the first 3 seconds and matches the chosen angle.`,
-    script: `[AI section, currently stubbed] Talking points the ${i.filmer || "creator"} can riff on. Not word-for-word.`,
-    cta: `For a ${channelLow} ${awarenessLow}-aware audience, close with a direct, low-friction ask in the last 3-5 seconds. No generic "shop now". Match the urgency of the awareness stage.`,
-    thresholds: `[Pulled from Formats table once Layer 2 is populated]\nProduct visibility: target\nAudio hook timing: target\nVisual hook: target\nCTA placement: target\nFace time: target\nText legibility: target\nAudio clarity: target\nEngagement pacing: target\nBrand mentions: target`,
-    storyboard: [
-      { section: "Hook",           visual: "Extreme close-up that breaks the pattern. No setup, no context.", script: "Opening line that hits in under 2 seconds." },
-      { section: "Problem",        visual: "Cut to the everyday moment the pain shows up.",                    script: "Name the exact frustration the buyer has." },
-      { section: "Solution Intro", visual: "Reveal the way out, without naming the product yet.",              script: "There's a version of this without the headache." },
-      { section: "Product Intro",  visual: "Product enters frame. Clean, in focus, brand visible.",            script: "Introduce the product by name in one line." },
-      { section: "Demonstration",  visual: "Show the product working in the buyer's actual context.",          script: "One clear line about what just happened on screen." },
-      { section: "Proof",          visual: "Receipts. Numbers, results, or a third-party endorsement.",         script: "The credibility line that earns the click." },
-      { section: "Call To Action", visual: "On-screen text and a clean cut to the brand.",                     script: "Direct ask. Low-friction. Last 3 seconds." },
-    ],
-    standards: `For ${i.channelType}: vertical 9:16, 15-30 seconds, captions on by default, audio mixed at -14 LUFS, hook visual + audio synced to first 3 seconds.`,
-  };
-}
 
 // ---------------------------------------------------------------------
 // FloatingLogo — animated hero-side decoration
@@ -612,10 +1017,159 @@ function deriveLogoUrl(websiteUrl) {
 // fences; the 5 deterministic sections (goal/brand/cta/thresholds/
 // standards) are assembled here from form state + Sonar's brand_research.
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// The guidelines engine, lifted from the in-app brief builder so the two
+// speak the same language. A creator never sees a threshold, an agent
+// name or a percentage: they see one plain instruction, in the Do block
+// or the Don't block. Brief writers speak in do's and don'ts, so those
+// two blocks are the whole story.
+// ---------------------------------------------------------------------
+const AGENT_SENTENCES = {
+  "Brand alignment": "Match the brand's voice, look and feel.",
+  "Hook quality": "Make the first three seconds grab attention without sounding like an advert.",
+  "Visual hook": "Open with a visual moment strong enough to stop the scroll.",
+  "Watchable on mute": "Make sure the video still makes sense with the sound off.",
+  "Scene pacing": "Keep the pace up so nobody scrolls past.",
+  "Audio delivery": "Speak clearly and naturally.",
+  "Audio clarity": "Record somewhere quiet with clean, clear sound.",
+  "Music & sound balance": "Don't let the music drown out your voice.",
+  "Pronunciation": "Say the brand and product names the right way.",
+  "Lighting & camera": "Film somewhere bright, keep the camera steady and in focus.",
+  "Setting & background": "Keep the background tidy and on-brand.",
+  "Distracting elements": "Don't leave anything distracting in frame.",
+  "Text legibility": "Make any on-screen text big and easy to read.",
+  "Closed captions": "Add accurate captions.",
+  "Safe zones": "Keep text and key moments away from the screen edges.",
+  "Video length": "Keep to the video length set on this brief.",
+  "Product visibility": "Keep the product clearly on screen throughout.",
+  "Product usage": "Show yourself actually using the product.",
+  "Creator visibility": "Be on camera yourself, not just the product.",
+  "Energy & authenticity": "Keep it real and engaged, never flat or over-scripted.",
+  "Wardrobe & appearance": "Dress the part for the brand.",
+  "CTA present": "Include a clear ask to the viewer.",
+  "Brand name mentioned": "Say the brand name out loud.",
+  "Copyright check": "Don't use music, fonts or clips you don't have the rights to.",
+  "Inspiration link match": "Stay close to the example videos on this brief.",
+  "Follows the brief": "Stick to what this brief asks for.",
+};
+const AGENT_BLOCK = {
+  "Distracting elements": "dont",
+  "Copyright check": "dont",
+  "Music & sound balance": "dont",
+};
+// Which format-row threshold sharpens which check.
+const THRESHOLD_PAIR = {
+  productVisibility:  "Product visibility",
+  audioHookTiming:    "Hook quality",
+  visualHook:         "Visual hook",
+  ctaPlacement:       "CTA present",
+  faceTime:           "Creator visibility",
+  textLegibility:     "Text legibility",
+  audioClarity:       "Audio clarity",
+  engagementPacing:   "Scene pacing",
+  brandMentionCount:  "Brand name mentioned",
+};
+function thresholdSentence(alias, label) {
+  if (!label || /^none\b/i.test(label)) return "";
+  const pct = parseInt(label, 10);
+  if (alias === "productVisibility") {
+    if (pct <= 50) return "Keep the product clearly on screen for at least half the video.";
+    if (pct <= 80) return "Keep the product clearly on screen for most of the video.";
+    return "Keep the product clearly on screen for nearly the whole video.";
+  }
+  if (alias === "faceTime") {
+    if (pct <= 50) return "Be on camera yourself for at least half the video.";
+    if (pct <= 80) return "Be on camera yourself for most of the video.";
+    return "Be on camera yourself for nearly the whole video.";
+  }
+  if (alias === "audioHookTiming") return "Hook us with what you say in the first " + label + ".";
+  if (alias === "engagementPacing") return "Change scene or angle at least " + label.toLowerCase() + ".";
+  if (alias === "ctaPlacement") {
+    if (/^first/i.test(label)) return "Get your call to action in within the " + label.toLowerCase() + ".";
+    if (/^last/i.test(label)) return "End with a clear call to action in the " + label.toLowerCase() + ".";
+    return "Weave the call to action through the video.";
+  }
+  if (alias === "brandMentionCount") {
+    if (label === "0") return "";
+    if (label === "1") return "Say the brand name at least once.";
+    if (label === "2") return "Say the brand name at least twice.";
+    return "Say the brand name at least " + label.replace("+", "") + " times.";
+  }
+  if (alias === "visualHook") return "Open with a visual moment strong enough to stop the scroll.";
+  if (alias === "textLegibility") return "Make any on-screen text big and easy to read.";
+  if (alias === "audioClarity") return "Record somewhere quiet with clean, clear sound.";
+  return "";
+}
+// Five is the most anyone reads. The brand's own lines come first because
+// they are the ones only this brief can say; the format's lines top the
+// list up to a decent length and no further. When the format sets a lot of
+// bars they stay in the Thresholds section rather than flooding the page:
+// sixteen do's is not a brief, it is a wall.
+const BLOCK_MAX = 5;
+const BLOCK_MIN = 4;
+const FOLD_LIMIT = 3;
+function fillBlock(own, extra) {
+  const out = (own || []).slice(0, BLOCK_MAX);
+  const spare = (extra || []).filter((l) => l && !out.includes(l));
+  // A short list of bars is worth repeating in the creator's language.
+  // A long one is already a table further up the page.
+  const target = spare.length <= FOLD_LIMIT ? BLOCK_MAX : BLOCK_MIN;
+  for (const line of spare) {
+    if (out.length >= target) break;
+    out.push(line);
+  }
+  return out;
+}
+
+// Every ticked check on the format becomes one line, sharpened by its
+// paired threshold where there is one.
+function buildGuidelineBlocks(fields, labelOf) {
+  const out = { do: [], dont: [] };
+  const push = (blk, line) => { if (line && !out[blk].includes(line)) out[blk].push(line); };
+  const checks = Array.isArray(fields.qaChecklist)
+    ? fields.qaChecklist.map((c) => (c && (c.label || c)) || "").filter(Boolean)
+    : [];
+  checks.forEach((name) => {
+    const alias = Object.keys(THRESHOLD_PAIR).find((k) => THRESHOLD_PAIR[k] === name);
+    const line = (alias && thresholdSentence(alias, labelOf(fields[alias]))) || AGENT_SENTENCES[name] || "";
+    push(AGENT_BLOCK[name] === "dont" ? "dont" : "do", line);
+  });
+  // Thresholds the format sets but no check names still matter to the
+  // creator, so they land as their own line rather than going missing.
+  Object.keys(THRESHOLD_PAIR).forEach((alias) => {
+    if (checks.includes(THRESHOLD_PAIR[alias])) return;
+    push("do", thresholdSentence(alias, labelOf(fields[alias])));
+  });
+  return out;
+}
+
 function safeParseJson(raw) {
   if (!raw) return null;
-  const m = String(raw).match(/\{[\s\S]*\}/);
-  try { return JSON.parse(m ? m[0] : raw); } catch { return null; }
+  const text = String(raw);
+  const m = text.match(/\{[\s\S]*\}/);
+  try { return JSON.parse(m ? m[0] : text); } catch (e) { /* fall through to repair */ }
+  // A brief that stops mid-sentence is still worth reading, so close what
+  // the writer left open rather than throwing the whole thing away.
+  const start = text.indexOf("{");
+  if (start < 0) return null;
+  let body = text.slice(start);
+  let inStr = false, esc = false;
+  const stack = [];
+  let lastSafe = -1;
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (esc) { esc = false; continue; }
+    if (c === "\\") { esc = true; continue; }
+    if (c === '"') { inStr = !inStr; if (!inStr) lastSafe = i; continue; }
+    if (inStr) continue;
+    if (c === "{" || c === "[") stack.push(c === "{" ? "}" : "]");
+    else if (c === "}" || c === "]") { stack.pop(); lastSafe = i; }
+    else if (c === "," ) lastSafe = i - 1;
+  }
+  if (lastSafe < 0) return null;
+  let repaired = body.slice(0, lastSafe + 1).replace(/,\s*$/, "");
+  for (let i = stack.length - 1; i >= 0; i--) repaired += stack[i];
+  try { return JSON.parse(repaired); } catch { return null; }
 }
 
 function parseGeneratedBrief(fields, ctx) {
@@ -627,7 +1181,7 @@ function parseGeneratedBrief(fields, ctx) {
   const noEm = (s) =>
     String(s || "")
       .replace(/\s*—\s*/g, ", ")
-      .replace(/\s*–\s*/g, "-")
+      .replace(/\s*–\s*/g, ", ")
       .replace(/\s+/g, " ")
       .trim();
 
@@ -648,48 +1202,69 @@ function parseGeneratedBrief(fields, ctx) {
   const formatSlug     = formatName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   const angleName      = ctx.angle?.name || "";
 
-  // Hook + CTA — Claude returns each as an array of 3 options
+  // Hook — three options, each written as three parts that work together.
+  const hookLine = (h, i) => {
+    if (h && typeof h === "object") {
+      const parts = [
+        h.caption   ? `Caption: ${noEm(h.caption)}` : "",
+        h.visual    ? `On screen: ${noEm(h.visual)}` : "",
+        h.voiceover ? `Spoken: ${noEm(h.voiceover)}` : "",
+      ].filter(Boolean);
+      return `${i + 1}.\n${parts.join("\n")}`;
+    }
+    return `${i + 1}. ${noEm(h)}`;
+  };
   const hookText = Array.isArray(ai.hook)
-    ? ai.hook.map((h, i) => `${i + 1}. ${noEm(h)}`).join("\n\n")
+    ? ai.hook.map(hookLine).join("\n\n")
     : noEm(ai.hook);
-  const ctaText = Array.isArray(ai.cta)
-    ? ai.cta.map((c, i) => `${i + 1}. ${noEm(c)}`).join("\n\n")
-    : noEm(ai.cta);
+  const offerList = Array.isArray(ai.offer)
+    ? ai.offer.map((s) => noEm(s)).filter(Boolean)
+    : [];
+  const ctaList = Array.isArray(ai.cta)
+    ? ai.cta.map((c) => noEm(c)).filter(Boolean)
+    : String(ai.cta || "").split("\n").map((s) => noEm(s.replace(/^[-•]\s*/, ""))).filter(Boolean);
+  const ctaText = ctaList.map((s) => `• ${s}`).join("\n");
 
-  // Talking Points — Claude's talking_points or fallback to legacy keys
-  const talkingPointsRaw = ai.talking_points || ai.talkingPoints || ai.script;
-  const talkingPointsText = Array.isArray(talkingPointsRaw)
-    ? talkingPointsRaw.map((s, i) => `${i + 1}. ${noEm(s)}`).join("\n\n")
-    : noEm(talkingPointsRaw);
-
-  // Script — derived from storyboard rows. Plain lines, no numbering —
-  // creators copy this straight into a doc. Section tags live on the
-  // Storyboard card; here we just want the spoken lines flowing.
-  const scriptText = storyboard.length > 0
-    ? storyboard
-        .map((row) => row.script.trim())
-        .filter(Boolean)
-        .join("\n\n")
-    : "";
+  // Talking points and the scene by scene are the same slot filled two
+  // ways, so only one of them is ever shown. Creator-led gets the points,
+  // directional gets the scenes, and the scenes already carry the intent.
+  const creatorLed = ctx.control === "creator-led" || storyboard.length === 0;
+  const talkingPointsRaw = ai.talking_points || ai.talkingPoints;
+  const talkingPointsList = !creatorLed
+    ? []
+    : Array.isArray(talkingPointsRaw)
+      ? talkingPointsRaw.map((s) => noEm(s)).filter(Boolean)
+      : String(talkingPointsRaw || "").split("\n").map((s) => noEm(s.replace(/^[-•]\s*/, ""))).filter(Boolean);
+  const talkingPointsText = talkingPointsList.map((s) => `• ${s}`).join("\n");
+  const scenes = creatorLed ? [] : storyboard;
 
   // Personal Experiences — Claude's personal_experiences bullet list, fallback to Sonar's audience quote
   const personalExperiencesRaw = ai.personal_experiences || ai.personalExperiences;
-  const personalExperiencesText = Array.isArray(personalExperiencesRaw)
-    ? personalExperiencesRaw.map((s) => `• ${s}`).join("\n\n")
-    : String(personalExperiencesRaw || brand.targetAudience || "");
+  const personalList = Array.isArray(personalExperiencesRaw)
+    ? personalExperiencesRaw.map((s) => noEm(s)).filter(Boolean)
+    : String(personalExperiencesRaw || brand.targetAudience || "")
+        .split("\n").map((s) => noEm(s.replace(/^[-•]\s*/, ""))).filter(Boolean);
+  const personalExperiencesText = personalList.map((s) => `• ${s}`).join("\n");
 
-  // Do's / Don'ts — Claude returns each as an array of bullets
-  const formatBullets = (raw) =>
-    Array.isArray(raw) ? raw.map((s) => `• ${s}`).join("\n") : String(raw || "");
-  const dosText   = formatBullets(ai.dos || ai.do_s || ai.dont_film_advice);
-  const dontsText = formatBullets(ai.donts || ai.dont_s);
+  // Do's / Don'ts — the writer's lines, then the format's, as one list
+  // each. Kept as arrays so they render as real bullets.
+  const asList = (raw) =>
+    Array.isArray(raw)
+      ? raw.map((s) => noEm(s)).filter(Boolean)
+      : String(raw || "").split("\n").map((s) => noEm(s.replace(/^[-•]\s*/, ""))).filter(Boolean);
+  const dosList   = asList(ai.dos || ai.do_s);
+  const dontsList = asList(ai.donts || ai.dont_s);
 
   // Deliverables — channel-conditional template (no Claude call needed)
-  const deliverablesText = channelLabel.toLowerCase() === "paid"
-    ? "• 3 HD video ads, 15-30 seconds each\n• 3 hook variants per ad (9 hooks total)\n• Vertical 9:16, captions on\n• No copyrighted music or watermarks\n• Disclose paid partnership in caption (#ad)"
+  const deliverablesList = channelLabel.toLowerCase() === "paid"
+    ? ["3 HD video ads, 15-30 seconds each", "3 hook variants per ad, nine hooks in total",
+       "Vertical 9:16, captions on", "No copyrighted music or watermarks",
+       "Disclose the paid partnership in the caption (#ad)"]
     : channelLabel.toLowerCase() === "organic"
-      ? "• 1 video, 15-30 seconds\n• 3 hook variants you can pick from\n• Match your usual posting style\n• No copyrighted music"
-      : "• 1 polished video, 15-30 seconds\n• 3 hook variants";
+      ? ["1 video, 15-30 seconds", "3 hook variants you can pick from",
+         "Match your usual posting style", "No copyrighted music"]
+      : ["1 polished video, 15-30 seconds", "3 hook variants"];
+  const deliverablesText = deliverablesList.map((s) => `• ${s}`).join("\n");
 
   // Format-driven sections (Thresholds, Standards, Examples) — read from the
   // briefs row's Format-lookup fields. These auto-populate from the linked
@@ -701,40 +1276,45 @@ function parseGeneratedBrief(fields, ctx) {
     if (typeof val === "object") return val.label || "";
     return String(val);
   };
-  const thresholdLines = [];
-  const pushThreshold = (label, fieldVal) => {
-    const v = labelOf(fieldVal);
-    if (v) thresholdLines.push(`• ${label}: ${v}`);
-  };
-  pushThreshold("Face Time", fields.faceTime);
-  pushThreshold("Product Visibility", fields.productVisibility);
-  pushThreshold("Visual Hook", fields.visualHook);
-  pushThreshold("Audio Clarity", fields.audioClarity);
-  pushThreshold("Audio Hook Timing", fields.audioHookTiming);
-  pushThreshold("CTA Placement", fields.ctaPlacement);
-  pushThreshold("Engagement Pacing", fields.engagementPacing);
-  pushThreshold("Text Legibility", fields.textLegibility);
-  pushThreshold("Brand Mention Count", fields.brandMentionCount);
-  const thresholdsText = thresholdLines.length
-    ? thresholdLines.join("\n")
-    : `(Thresholds for the ${formatName} format will appear once the Format record has them populated.)`;
-
-  const standardsRaw = fields.qaChecklist;
-  const standardsText = Array.isArray(standardsRaw) && standardsRaw.length
-    ? standardsRaw.map((s) => `• ${s.label || s}`).join("\n")
-    : `(QA checklist for ${formatName} will appear once the Format record has it populated.)`;
+  // The same bars, said twice on purpose, because two people read this.
+  // The brand sees the numbers, so they know exactly what gets measured.
+  // The creator reads them as instructions, further down, in the Do and
+  // Don't lists, because nobody briefs a creator in percentages.
+  const guide = buildGuidelineBlocks(fields, labelOf);
+  // Disclosure is the law, not a preference. It leads the Do list for an
+  // affiliate, ahead of the writer's own lines, so the five-line cap can
+  // never drop it.
+  const isAffiliateBrief = String(ctx.filmer?.label || "") === "TikTok Shop Affiliate";
+  const dosFinal = isAffiliateBrief
+    ? ["Label it as an affiliate post and add #ad, on every single video."]
+        .concat(dosList.filter((l) => !/#ad|affiliate label|disclos/i.test(l)))
+    : dosList;
+  const thresholdRows = [
+    ["Face time",          labelOf(fields.faceTime),          "How much of the video the creator is on camera"],
+    ["Product on screen",  labelOf(fields.productVisibility), "How much of the video the product is visible"],
+    ["Visual hook",        labelOf(fields.visualHook),        "How strong the opening frame has to be"],
+    ["Hook timing",        labelOf(fields.audioHookTiming),   "When the spoken hook has to land"],
+    ["Scene pacing",       labelOf(fields.engagementPacing),  "How often the scene or angle changes"],
+    ["CTA placement",      labelOf(fields.ctaPlacement),      "Where the ask sits in the video"],
+    ["Brand mentions",     labelOf(fields.brandMentionCount), "How many times the brand is named out loud"],
+    ["Audio clarity",      labelOf(fields.audioClarity),      "How clean the sound has to be"],
+    ["Text legibility",    labelOf(fields.textLegibility),    "How readable on-screen text has to be"],
+  ].filter(([, v]) => v).map(([label, value, what]) => ({ label, value, what }));
 
   const exampleUrlsRaw = fields.videoExamples || fields.sampleClips;
   const examplesUrls = Array.isArray(exampleUrlsRaw)
-    ? exampleUrlsRaw.filter(Boolean).slice(0, 5)
+    ? exampleUrlsRaw.filter(Boolean).slice(0, 12)
     : [];
   const examplesText = examplesUrls.length === 0
     ? `(Reference videos for ${formatName} will appear once the Format record has them populated.)`
     : "";
 
-  // About: brand name + productSummary only. NO keyClaims dump.
-  // 1-2 short paragraphs max so the card doesn't read like war and peace.
-  const aboutText = noEm(`${brand.brandName || "Brand"}. ${brand.productSummary || ""}`).trim();
+  // The brand and the product are two different questions, so they get two
+  // sections. A creator who only reads one of them still knows what to say.
+  const aboutBrandText   = noEm(ai.brand || ai.about || brand.brandName || "");
+  const aboutProductText = noEm(ai.product || brand.productDescription || "");
+  const audienceText     = noEm(ai.audience || brand.targetAudience || "");
+  const messageText      = noEm(ai.message || "");
 
   // Brief name comes from Claude (ai.brief_name). Fallback to a derived
   // label so something always renders on the result page header.
@@ -747,20 +1327,33 @@ function parseGeneratedBrief(fields, ctx) {
   return {
     brandName: brand.brandName || "",
     briefName,
-    logoUrl:   fields.logoUrl || "",
-    // New section list (matches the bento layout)
-    about:               aboutText,
-    personalExperiences: noEm(personalExperiencesText),
+    logoUrl:      fields.logoUrl || "",
+    productImage: fields.productImage || "",
+    aboutBrand:          aboutBrandText,
+    aboutProduct:        aboutProductText,
+    audience:            audienceText,
+    message:             messageText,
+    personalExperiences: personalExperiencesText,
+    personalList,
     hook:                hookText,
+    // Structured too, so the page can lay each one out as a card while
+    // the download keeps the plain version.
+    hooks: Array.isArray(ai.hook)
+      ? ai.hook.map((h) => (h && typeof h === "object"
+          ? { caption: noEm(h.caption), visual: noEm(h.visual), voiceover: noEm(h.voiceover) }
+          : { voiceover: noEm(h) }))
+      : [],
     talkingPoints:       talkingPointsText,
-    storyboard,
-    script:              scriptText,
+    talkingPointsList,
+    storyboard:          scenes,
     cta:                 ctaText,
-    dos:                 noEm(dosText) || `(Filming Do's for ${filmerLow}/${channelLow} briefs will appear here once the new prompt is wired up.)`,
-    donts:               noEm(dontsText) || `(Filming Don'ts for ${filmerLow}/${channelLow} briefs will appear here once the new prompt is wired up.)`,
+    ctaList,
+    offerList,
+    deliverablesList,
+    thresholds:          thresholdRows,
+    dos:                 fillBlock(dosFinal, guide.do),
+    donts:               fillBlock(dontsList, guide.dont),
     deliverables:        deliverablesText,
-    thresholds:          thresholdsText,
-    standards:           standardsText,
     examples:            examplesText,
     examplesUrls,
   };
@@ -1047,12 +1640,20 @@ export default function Block() {
   // Email gate state
   const [email, setEmail] = useState("");
   const [website, setWebsite] = useState("");
+  // The brand mark on the finished brief. Derived here so the render never
+  // depends on a value that only exists while a run is in flight.
+  const logoUrl = deriveLogoUrl(website);
   // New: target the brief at a specific product / feature / brand-level only.
   // Drives Sonar's product-page focus and Claude's anchor priority.
   const [targetType, setTargetType] = useState("brand"); // "brand" | "product" | "feature"
   const [productUrl, setProductUrl] = useState("");
   const [featureDescription, setFeatureDescription] = useState("");
   const [gateStatus, setGateStatus] = useState("idle"); // idle | submitting | sent
+  // The read starts the moment the email lands, so it happens while they
+  // answer the questions rather than making them wait for it afterwards.
+  const [scrapeState, setScrapeState] = useState("idle"); // idle | reading | read | failed
+  const [brandCard, setBrandCard] = useState(null);
+  const scrapeRef = useRef(null);
   const [gateError, setGateError] = useState("");
   const isUnlocked = gateStatus === "sent";
 
@@ -1066,17 +1667,28 @@ export default function Block() {
 
   // Result state
   const [briefSections, setBriefSections] = useState(null);
+  // Kept so the finished brief has an address that can be sent to a creator.
+  const [briefRecordId, setBriefRecordId] = useState("");
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
+  // Locks the run so a double click cannot produce two briefs, two rows
+  // or two events for the same submission.
+  const [generating, setGenerating] = useState(false);
 
-  // Polling state. Hero fires the webhook with a client UUID baked into
-  // the payload, then waits for the workflow to Create the row with that
-  // UUID. `pollTick` bumps every 3s while waiting so useRecords re-evaluates.
-  const [waitingClientUuid, setWaitingClientUuid] = useState("");
-  const [pollTick, setPollTick] = useState(0);
-  const recentBriefs = useRecords({ select: readFields, count: 20 });
+  // No polling any more: the block does the whole run itself, so the
+  // brief exists the moment it is written.
+  const createBrief = useRecordCreate({ fields: briefWrite, from: ds.briefs });
+  const createEvent = useRecordCreate({ fields: eventWrite, from: ds.leadEvents });
+  const proxyFirecrawl  = useProxyFetch(ds.firecrawl);
+  const proxyOpenRouter = useProxyFetch(ds.openrouter);
+  const proxyEmailit    = useProxyFetch(ds.emailit);
+  // Thresholds + example clips for the chosen format, read from beta.
+  const formatRows = useRecords({ select: formatRead, from: ds.formats, count: 60 });
 
   const topRef = useRef(null);
+
+  // Keep the ad click id and UTMs for the demo chat on a later page.
+  useEffect(() => { rememberAttribution(); }, []);
 
   // Scroll to top when entering generating/result.
   useEffect(() => {
@@ -1085,47 +1697,6 @@ export default function Block() {
     }
   }, [step]);
 
-  // Tick every 3s while polling. Also call refetch on the records query
-  // if the data layer exposes it (best-effort).
-  useEffect(() => {
-    if (!waitingClientUuid) return;
-    const t = setInterval(() => {
-      setPollTick((n) => n + 1);
-      if (typeof recentBriefs?.refetch === "function") {
-        recentBriefs.refetch();
-      }
-    }, 3000);
-    return () => clearInterval(t);
-  }, [waitingClientUuid, recentBriefs]);
-
-  // Hard timeout — if the workflow doesn't create the row within 90s, show
-  // an error. With no draft row to update, failure = row never appears, so
-  // the timeout is the only client-side signal.
-  useEffect(() => {
-    if (!waitingClientUuid) return;
-    const t = setTimeout(() => {
-      setWaitingClientUuid("");
-      setError("Brief is taking longer than expected. Please try again in a moment.");
-      setStep("error");
-    }, 90000);
-    return () => clearTimeout(t);
-  }, [waitingClientUuid]);
-
-  // Watch the briefs feed for our client_uuid showing up.
-  useEffect(() => {
-    if (!waitingClientUuid || !recentBriefs?.data) return;
-    const items = recentBriefs.data?.pages?.flatMap((p) => p?.items ?? []) ?? [];
-    const found = items.find((r) => {
-      const cu = r.fields?.clientUuid || r.fields?.MhPZU;
-      return cu === waitingClientUuid;
-    });
-    if (!found) return;
-    const ctx = { filmer, channel, awareness, format, angle };
-    const sections = parseGeneratedBrief(found.fields, ctx);
-    setBriefSections(sections);
-    setWaitingClientUuid("");
-    setStep("result");
-  }, [recentBriefs?.data, waitingClientUuid, pollTick, filmer, channel, awareness, format, angle]);
 
   // Step 1 = brief target. Always complete if target_type=brand; otherwise needs
   // the product URL or feature description.
@@ -1153,97 +1724,323 @@ export default function Block() {
     }
     setGateStatus("submitting");
     setGateError("");
-    try {
-      await fetch(EMAIL_WORKFLOW_URL, {
+    const websiteUrl = website.trim();
+
+    // Lead capture happens here, in the block, so it costs no workflow
+    // credit and it lands even for someone who never finishes a brief.
+    // One event per unlock. Every brief they go on to build is joined to
+    // this person by email, so nothing needs writing twice.
+    const attribution = currentAttribution();
+    const eventBody = {
+      email: email.trim(),
+      name: "",
+      website: websiteUrl,
+      source: OPT_SOURCE_BRIEF,
+      channel: isPaidAttribution(attribution) ? OPT_CHANNEL_PAID : OPT_CHANNEL_MAGNET,
+      pageUrl: typeof window !== "undefined" ? window.location.href : "",
+      landingPage: typeof window !== "undefined" ? window.location.pathname : "",
+      submittedAt: new Date().toISOString(),
+      payload: JSON.stringify({
+        stage: "unlocked",
+        utm_term: attribution.utmTerm,
+        gclid: attribution.gclid,
+        fbclid: attribution.fbclid,
+        ttclid: attribution.ttclid,
+        referrer: attribution.referrer,
+        first_landing: attribution.firstLanding,
+      }),
+    };
+    if (attribution.utmSource) eventBody.utmSource = attribution.utmSource;
+    if (attribution.utmMedium) eventBody.utmMedium = attribution.utmMedium;
+    if (attribution.utmCampaign) eventBody.utmCampaign = attribution.utmCampaign;
+    if (attribution.utmContent) eventBody.utmContent = attribution.utmContent;
+    createEvent.mutateAsync(eventBody).catch((e) => console.error("lead_event write failed (continuing):", e));
+    trackMetaLead();
+
+    // 409 means already subscribed, which is success.
+    proxyEmailit(EMAILIT_SUBSCRIBE, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: email.trim(),
+        custom_fields: { tool_name: EMAILIT_TOOL_NAME, source: "ai-brief-generator", website: websiteUrl },
+      }),
+    }).then((r) => { if (!r.ok && r.status !== 409) console.error("EmailIt returned", r.status); })
+      .catch((e) => console.error("EmailIt failed (continuing):", e));
+
+    // Read the site now, while they answer the five questions. By the time
+    // they press the button the page is already in hand, so the only wait
+    // left is the writing itself.
+    setScrapeState("reading");
+    scrapeRef.current = readSite(websiteUrl)
+      .then((res) => {
+        if (!res.markdown) { setScrapeState("failed"); return res; }
+        setBrandCard(readBrandCard(websiteUrl, res.markdown, res.meta));
+        setScrapeState("read");
+        return res;
+      })
+      .catch((e) => { console.error("Firecrawl failed:", e); setScrapeState("failed"); return { markdown: "", meta: {} }; });
+
+    setGateStatus("sent");
+  }
+
+  // One read, one shape: the page as markdown plus whatever the share tags
+  // gave us. Everything downstream reads from here.
+  async function readSite(url) {
+    if (!url) return { markdown: "", meta: {} };
+    const res = await withTimeout(
+      proxyFirecrawl(FIRECRAWL_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email.trim(),
-          website: website.trim(),
-          source: "ai-brief-generator",
-          page_url: typeof window !== "undefined" ? window.location.href : "",
-          submitted_at: new Date().toISOString(),
-        }),
-      });
-    } catch (e) {
-      console.error("Lead capture failed (continuing anyway):", e);
-    }
-    setGateStatus("sent");
+        body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true }),
+      }),
+      30000,
+      "read timed out"
+    );
+    if (!res.ok) { console.error("Firecrawl returned", res.status); return { markdown: "", meta: {} }; }
+    const j = await res.json();
+    return {
+      markdown: String(j?.data?.markdown || j?.markdown || "").slice(0, 12000),
+      meta: j?.data?.metadata || {},
+    };
+  }
+
+  // ── The whole run, in the block ─────────────────────────────────
+  // Scrape with Firecrawl, write with DeepSeek through OpenRouter, then
+  // one brief row, one lead_event, one EmailIt join. No workflow, so no
+  // workflow credit per use, and nothing to poll for.
+  // Nothing waits forever. A visitor staring at a spinner is worse than a
+  // visitor being told to press the button again.
+  function withTimeout(p, ms, message) {
+    let timer;
+    return Promise.race([
+      Promise.resolve(p).finally(() => clearTimeout(timer)),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); }),
+    ]);
   }
 
   async function handleGenerate() {
     if (!step3Complete) return;
+    if (generating) return;                       // one run per click
+    setGenerating(true);
     setStep("generating");
     setError(null);
 
     const websiteUrl = website.trim();
     const logoUrl = deriveLogoUrl(websiteUrl);
-
-    // Generate a client UUID so we can find our row later. The workflow
-    // stores this on the row it creates; the hero polls for it.
     const clientUuid =
       typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
         : `brief-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-    // Fire the workflow. Payload carries everything Sonar + Claude need;
-    // the workflow no longer reads from a draft row. On success it Creates
-    // a new briefs row with this client_uuid + the generated brief.
-    //
-    // We pre-resolve the filmer / channel / awareness guidance here so the
-    // Claude system prompt stays short and only carries the relevant block
-    // (instead of every filmer convention every run).
-    const filmerLabel    = filmer?.label    || "";
-    const channelLabel   = channel?.label   || "";
-    const awarenessLabel = awareness?.label || "";
-    const payload = {
-      client_uuid: clientUuid,
-      source: "ai-brief-generator",
-      email: email.trim(),
-      website_url: websiteUrl,
-      logo_url: logoUrl,
-      filmer: filmerLabel,
-      channel_type: channelLabel,
-      awareness: awarenessLabel,
-      selected_angle: angle?.name || "",
-      angle_example:  angle?.example || "",
-      selected_format_id: format?.name || "",
-      page_url: typeof window !== "undefined" ? window.location.href : "",
-      // Pre-resolved prompt guidance — used by the Claude action via
-      // {{Trigger → body → filmer_guidance}} etc. Keeps the prompt small
-      // and gives Claude pre-fetched building blocks to assemble from
-      // (rather than asking it to invent hook copy from scratch).
-      filmer_guidance:  FILMER_GUIDANCE[filmerLabel]            || "",
-      channel_guidance: CHANNEL_GUIDANCE[channelLabel]          || "",
-      hook_tactics:     AWARENESS_HOOK_TACTICS[awarenessLabel]  || "",
-      format_guidance:  FORMAT_GUIDANCE[format?.name || ""]     || "",
-      // Product/feature targeting — Sonar uses these to focus research,
-      // Claude uses target_type to pick which Sonar fields to anchor on.
-      target_type:          targetType || "brand",
-      product_url:          targetType === "product" ? productUrl.trim() : "",
-      feature_description:  targetType === "feature" ? featureDescription.trim() : "",
-    };
+    // The chosen format's row in beta formats: thresholds, checklist and
+    // the example clips all come from here, so there is one place to edit.
+    const fmtRow = (formatRows?.data?.pages?.flatMap((p) => p?.items ?? []) ?? []).find(
+      (r) => String(r?.fields?.name || "").toLowerCase() === String(format?.name || "").toLowerCase()
+    );
+    const fmt = fmtRow?.fields || {};
 
     try {
-      const res = await fetch(GENERATE_WORKFLOW_URL, {
+      // 1. The site was read at the gate, so this usually resolves at once.
+      const site = scrapeRef.current
+        ? await scrapeRef.current
+        : await readSite(websiteUrl).catch(() => ({ markdown: "", meta: {} }));
+      const siteText = site.markdown || "";
+      const card = brandCard || readBrandCard(websiteUrl, siteText, site.meta);
+      const productPage = targetType === "product" && productUrl.trim()
+        ? await readSite(productUrl.trim()).catch(() => ({ markdown: "", meta: {} }))
+        : { markdown: "", meta: {} };
+      const productText = productPage.markdown || "";
+      // A product page's own share image beats the brand's homepage one.
+      const productImage = String(productPage.meta?.ogImage || card.productImage || "");
+      if (!siteText && !productText) {
+        throw new Error("We couldn't read that website. Check the address and try again.");
+      }
+
+      // 2. Write the brief.
+      // The brief is written at one control level, so nothing is said
+      // twice. Creator-led gets talking points and no scenes. Directional
+      // gets scenes that carry the intent, and no talking points.
+      const control = CONTROL_LEVEL[filmer?.label] || "directional";
+      const creatorLed = control === "creator-led";
+      // An affiliate is paid on what they sell, so the offer is the engine
+      // of the brief, not a footnote. It gets its own section and it is the
+      // only creator type that asks for one.
+      const isAffiliate = filmer?.label === "TikTok Shop Affiliate";
+      const sys = [
+        "You are a creative strategist writing a short form video brief that a " + (filmer?.label || "creator") + " will film from.",
+        "Return ONLY JSON, no prose, no code fences.",
+        "House voice: never use em dashes or en dashes. Say scenes, never beats. Plain spoken English, no marketing padding.",
+        "Ground every line in the page you were given. Name the real product, the real ingredients or specs, the real price, the real claims and the real proof. Never invent a fact and never write a generic line that would fit any brand.",
+        creatorLed
+          ? "This creator works CREATOR LED. Give talking points, which are the things that must be said, in any order, in their own words. Return storyboard as an empty array."
+          : "This creator works DIRECTIONAL. Give a scene by scene storyboard where each scene carries what is said and what is on screen. Return talking_points as an empty array, because the scenes already carry them.",
+        "Each hook is three parts written together: the on screen caption, the visual action in the first second, and the spoken opening line. They complement each other, they never say the same thing.",
+        "personal_experiences are prompts, questions the creator answers from their own life, not statements you have written for them. Ask for one oddly specific detail rather than a general feeling.",
+        "A spoken line and its B roll never sit in the same scene.",
+        "Every scene carries a section, chosen from this list and spelled exactly: " +
+          Object.keys(STORYBOARD_TAGS).join(", ") + ". Only the first scene is Hook, and the last one is Call To Action or Outro.",
+        'Shape: {"brandName":string,"brand":string,"product":string,"audience":string,"message":string,"offer":[string],"personal_experiences":[string],"hook":[{"caption":string,"visual":string,"voiceover":string}],"talking_points":[string],"cta":[string],"dos":[string],"donts":[string],"storyboard":[{"section":string,"visual":string,"script":string}]}',
+        isAffiliate
+          ? "offer: exactly four lines, because the offer is the engine of an affiliate brief. One, the base commission. Two, the tiered commission and what unlocks it. Three, the competition: the time boxed sprint, the GMV tiers and prizes, the leaderboard, and any volume bonus like a number of videos to qualify. Four, the affiliate link or code. Write each as a line the brand fills in, with the blank shown, never an invented number."
+          : "offer: return an empty array.",
+        isAffiliate
+          ? "Open on friction, the thing that is annoying right now, because that is what converts for an affiliate audience. Name the product and its price out loud. The call to action is the link and the code, and every hook and talking point has to earn that click, because this creator is paid on what they sell."
+          : "",
+        isAffiliate
+          ? "Two of the don'ts must be about disclosure and claims: the affiliate label and #ad go on every post, and no claim the brand has not made."
+          : "",
+        "brand: three or four sentences on who the brand is, what they sell, what they stand for and the proof they lean on.",
+        "product: three or four sentences on this exact product. What it is, what it does, the ingredients or specs that matter, the price, and what customers say about it.",
+        "audience: who this video is for, in their own terms.",
+        "message: the single idea the video has to land, in one sentence.",
+      ].join("\n");
+      const user = [
+        "Website content:\n" + siteText.slice(0, 3500),
+        productText ? "Product page:\n" + productText.slice(0, 2500) : "",
+        targetType === "feature" && featureDescription.trim() ? "Feature: " + featureDescription.trim() : "",
+        "Who is filming: " + (filmer?.label || "") + ". " + (FILMER_GUIDANCE[filmer?.label] || ""),
+        "Channel: " + (channel?.label || "") + ". " + (CHANNEL_GUIDANCE[channel?.label] || ""),
+        "Awareness: " + (awareness?.label || "") + ". Hook tactics: " + (AWARENESS_HOOK_TACTICS[awareness?.label] || ""),
+        "Format: " + (format?.name || "") + ". " + (FORMAT_GUIDANCE[format?.name || ""] || ""),
+        angle?.name ? "Angle: " + angle.name + ". " + (angle.example || "") : "",
+        "Exactly five do's and five don'ts, every one of them specific to this brand and this product. Never a generic filming tip like good lighting or clear audio, those are handled elsewhere.",
+        "Three hook options. " + (creatorLed
+          ? "Around six talking points, each one a thing that must be said."
+          : "Six storyboard scenes, in order."),
+      ].filter(Boolean).join("\n\n");
+
+      const aiRes = await withTimeout(proxyOpenRouter(OPENROUTER_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      console.log("Webhook fired:", res.status, "client_uuid:", clientUuid);
-      if (!res.ok) {
-        throw new Error(`Workflow returned HTTP ${res.status}`);
+        body: JSON.stringify({
+          model: OPENROUTER_MODEL,
+          temperature: 0.6,
+          // The brief is long, and a truncated one comes back as broken
+          // JSON, so there is headroom here on purpose.
+          max_tokens: 5000,
+          // Route to the fastest provider. The same model behind a slow
+          // one turned a 17 second run into 46.
+          provider: { sort: "throughput" },
+          messages: [{ role: "system", content: sys }, { role: "user", content: user }],
+        }),
+      }), 75000, "That took longer than it should have. Press the button again and it will usually come straight back.");
+      if (!aiRes.ok) {
+        throw new Error("The writer is busy right now (" + aiRes.status + "). Try again in a moment.");
       }
-    } catch (e) {
-      console.error("Generator webhook failed:", e);
-      setError(`Couldn't trigger the AI workflow: ${e.message || "Unknown error"}.`);
-      setStep("error");
-      return;
-    }
+      const aiJson = await aiRes.json();
+      const raw = aiJson?.choices?.[0]?.message?.content || "";
+      let ai = safeParseJson(raw);
+      // One quiet retry. A model that returns prose once usually returns
+      // JSON the second time, and a visitor should never see that.
+      if (!ai || !(ai.brand || ai.product || ai.about)) {
+        console.error("First pass came back unreadable, retrying once.");
+        const retry = await withTimeout(proxyOpenRouter(OPENROUTER_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: OPENROUTER_MODEL,
+            temperature: 0.4,
+            max_tokens: 5000,
+            provider: { sort: "throughput" },
+            messages: [{ role: "system", content: sys }, { role: "user", content: user }],
+          }),
+        }), 75000, "That took longer than it should have. Press the button again and it will usually come straight back.");
+        if (retry.ok) {
+          const rj = await retry.json();
+          ai = safeParseJson(rj?.choices?.[0]?.message?.content || "") || ai;
+        }
+      }
+      if (!ai || !(ai.brand || ai.product || ai.about)) {
+        throw new Error("The brief came back in a shape we could not read. Try again.");
+      }
 
-    // Start polling. The effect above watches recentBriefs for a row
-    // where client_uuid matches; when it appears, parses + renders.
-    setWaitingClientUuid(clientUuid);
+      // 3. Build the shape the renderer already expects, with thresholds
+      //    and clips read from beta formats.
+      // Values go across raw. parseGeneratedBrief already flattens option
+      // objects, and it needs the arrays intact to list example clips.
+      const fieldsForRender = {
+        clientUuid,
+        generatedBrief: JSON.stringify(ai),
+        brandResearch: JSON.stringify({
+          brandName: ai.brandName || "",
+          targetAudience: ai.audience || "",
+          productDescription: ai.product || "",
+        }),
+        logoUrl,
+        productImage,
+        videoExamples:     fmt.videoExamples,
+        sampleClips:       fmt.sampleClips,
+        faceTime:          fmt.faceTime,
+        audioClarity:      fmt.audioClarity,
+        audioHookTiming:   fmt.audioHookTiming,
+        brandMentionCount: fmt.brandMentionCount,
+        ctaPlacement:      fmt.ctaPlacement,
+        engagementPacing:  fmt.engagementPacing,
+        productVisibility: fmt.productVisibility,
+        textLegibility:    fmt.textLegibility,
+        visualHook:        fmt.visualHook,
+        qaChecklist:       fmt.qaChecklist,
+        formatDescription: fmt.formatDescription,
+        formatWhyItWorks:  fmt.formatWhyItWorks,
+      };
+
+      // 4. One complete row, written before the email so a send failure
+      //    can never cost someone their brief.
+      let recordId = "";
+      try {
+        const created = await createBrief.mutateAsync({
+          clientUuid,
+          email: email.trim(),
+          websiteUrl,
+          filmer: filmer && filmer.id ? { id: filmer.id, label: filmer.label } : null,
+          channelType: channel ? { id: channel.id, label: channel.label } : null,
+          awareness: awareness ? { id: awareness.id, label: awareness.label } : null,
+          selectedAngle: angle?.name || "",
+          generatedBrief: JSON.stringify({ ...ai, filmer: filmer?.label || "", format: format?.name || "" }),
+          brandResearch: fieldsForRender.brandResearch,
+          logoUrl,
+          pageUrl: typeof window !== "undefined" ? window.location.href : "",
+          productUrl: targetType === "product" ? productUrl.trim() : "",
+          featureDesc: targetType === "feature" ? featureDescription.trim() : "",
+          status: OPT_STATUS_GENERATED,
+        });
+        recordId = created?.id || created?.recordId || "";
+      } catch (e) { console.error("Brief row write failed (continuing):", e); }
+      setBriefRecordId(recordId);
+
+      // The brief is written, so the link in the email is guaranteed to
+      // open something. Never blocks the render: a send failure costs an
+      // email, not their brief.
+      proxyEmailit(EMAILIT_SEND, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: CONFIRM_FROM,
+          to: email.trim(),
+          template: CONFIRM_TEMPLATE,
+          variables: {
+            record_url: briefRecordUrl(recordId),
+            website: websiteUrl,
+          },
+        }),
+      }).then((r) => { if (!r.ok) console.error("Confirmation send returned", r.status); })
+        .catch((e) => console.error("Confirmation send failed (continuing):", e));
+
+      // 5. Render. The lead and the audience join were both handled at the
+      //    gate, so a second brief in the same session adds a brief row and
+      //    nothing else.
+
+      const ctx = { filmer, channel, awareness, format, angle, control };
+      setBriefSections(parseGeneratedBrief(fieldsForRender, ctx));
+      setStep("result");
+    } catch (e) {
+      console.error("=== brief generation failed:", e);
+      setError(e?.message || "Something went wrong. Try again in a moment.");
+      setStep("error");
+    } finally {
+      setGenerating(false);
+    }
   }
 
   const websiteHost = (() => {
@@ -1284,154 +2081,429 @@ export default function Block() {
   const angles = awareness ? (ANGLES_BY_AWARENESS[awareness.label] || []) : [];
 
   // ============================ RESULT VIEW ============================
-  if (step === "result" && briefSections) {
-    return (
-      <div ref={topRef} className="relative w-full overflow-hidden">
-        <div className="pointer-events-none absolute inset-0 -z-10">
-          <div className="absolute inset-0 bg-gradient-to-br from-background via-primary/[0.04] to-primary/[0.10]" />
+  // ── The finished brief ───────────────────────────────────────────
+  // One column, numbered sections, read top to bottom the way a creator
+  // reads it. Same sections as before, laid out as a document rather
+  // than a grid of cards.
+  // ── The chat takes over once the email is in ────────────────────
+  // The landing page is gone from here on. Lee asks, you tap, and the
+  // finished brief lands in the thread.
+  if (isUnlocked) {
+    const bs = briefSections || {};
+    // Five questions, so the chat can say how far along you are.
+    const answered = [filmer, channel, awareness, angle, format].filter(Boolean).length;
+    const shareUrl = briefRecordId
+      ? `${window.location.origin}${window.location.pathname}?brief=${encodeURIComponent(briefRecordId)}`
+      : "";
+    const Section = ({ icon, title, children }) => (
+      <section className="py-6 border-t border-border first:border-t-0 first:pt-1">
+        <div className="flex items-center gap-2.5 mb-3">
+          {icon ? <img src={icon} alt="" className="w-6 h-6 object-contain" draggable={false} /> : null}
+          <h3 className="text-[15px] md:text-base font-bold" style={{ color: NAVY }}>{title}</h3>
         </div>
-        <div className="container py-14 md:py-20">
-          <div className="content max-w-5xl mx-auto">
-            <div className="mb-10">
-              {/* Eyebrow */}
-              <div className="text-center mb-5">
-                <div
-                  className="inline-flex items-center"
-                  style={{
-                    gap: 10,
-                    padding: "8px 16px",
-                    background: "rgba(135,156,247,0.16)",
-                    color: NAVY,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    letterSpacing: "0.06em",
-                    textTransform: "uppercase",
-                    borderRadius: 999,
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: "50%",
-                      background: PERIWINKLE,
-                      boxShadow: `0 0 0 3px ${PERIWINKLE}33`,
-                    }}
-                  />
-                  Your brief is ready
-                </div>
-              </div>
+        <div className="text-[15px] leading-relaxed whitespace-pre-line" style={{ color: "#565d78" }}>
+          {children}
+        </div>
+      </section>
+    );
 
-              {/* Logo + brief name on one row */}
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-5 mb-3">
-                {briefSections.logoUrl ? (
+    const rows = [
+      { icon: ICON_ABOUT,          title: "About the brand",   body: bs.aboutBrand },
+      { icon: ICON_EXAMPLES,       title: "About the product", body: bs.aboutProduct },
+      { icon: ICON_PERSONAL,       title: "Who it's for",      body: bs.audience },
+      { icon: ICON_TALKING_POINTS, title: "The message",       body: bs.message },
+      { icon: ICON_DELIVERABLES,   title: "The offer",         body: (bs.offerList || []).length ? "x" : "" },
+      { icon: ICON_SCRIPT,         title: "Personal experiences", body: bs.personalExperiences },
+      { icon: ICON_HOOK,           title: "Hook options",      body: bs.hook },
+      { icon: ICON_TALKING_POINTS, title: "Talking points",    body: bs.talkingPoints },
+      { icon: ICON_CTA,            title: "Call to action",    body: bs.cta },
+    ].filter((r) => r.body);
+
+    const tailRows = [
+      { icon: ICON_DELIVERABLES, title: "Deliverables", body: bs.deliverables },
+    ].filter((r) => r.body);
+
+    // Do and Don't arrive as arrays, so they render as real bullets.
+    // A long list flows into two columns so it sits level with a short one
+    // beside it, rather than running twice its height.
+    const Bullets = ({ items, color, flow }) => (
+      <ul
+        className={flow && (items || []).length > 7 ? "bgc-flow" : ""}
+        style={{ margin: 0, paddingLeft: 18, listStyle: "disc" }}
+      >
+        {(items || []).map((line, i) => (
+          <li key={i} style={{ marginBottom: 6, color: color || "#565d78", fontSize: 14, lineHeight: 1.55, breakInside: "avoid" }}>{line}</li>
+        ))}
+      </ul>
+    );
+
+    const DownloadBar = ({ top }) => (
+      <div className="flex flex-wrap items-center gap-2" style={top ? { marginBottom: 4 } : { marginTop: 18 }}>
+        <button className="bgc-btn ghost" onClick={handleCopy}>
+          {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}{copied ? "Copied" : "Copy brief"}
+        </button>
+        <button className="bgc-btn ghost" onClick={handleDownloadHtml}><FileText className="w-4 h-4" />HTML</button>
+        <button className="bgc-btn" onClick={handleDownloadMarkdown}><Download className="w-4 h-4" />Download</button>
+      </div>
+    );
+
+    const filmerLabel = filmer?.label || "";
+    const angles = awareness ? (ANGLES_BY_AWARENESS[awareness.label] || []) : [];
+
+    return (
+      <div ref={topRef} className="bgc">
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700;800&display=swap');${CHAT_CSS}`}</style>
+        <div className="bgc-wrap">
+          <div className="bgc-top">
+            <span className="av"><img src={LEE_AVATAR_URL} alt="" /><i /></span>
+            <span><b>Lee</b><span>online</span></span>
+            <span className="bgc-pct">{step === "result" ? "100%" : `${Math.round((answered / 5) * 100)}%`}</span>
+          </div>
+
+          <ChatMine>{website.trim().replace(/^https?:\/\//, "")}</ChatMine>
+
+          {scrapeState !== "idle" && (
+            <ChatLee>
+              {scrapeState === "reading"
+                ? `Reading ${brandCard ? brandCard.host : website.trim().replace(/^https?:\/\//, "")}. Give me a second.`
+                : scrapeState === "read"
+                  ? `Right, I've read ${brandCard ? brandCard.host : "it"}. Here's what I picked up.`
+                  : "I couldn't read that one, so I'll work from your answers instead."}
+            </ChatLee>
+          )}
+
+          {brandCard && scrapeState === "read" && (
+            <ChatLee wide>
+              <div className="bgc-brand">
+                <img className="logo" src={brandCard.logoUrl} alt="" />
+                <div style={{ minWidth: 0 }}>
+                  <div className="nm">{brandCard.brandName}</div>
+                  <div className="dom">{brandCard.host}</div>
+                </div>
+                <span className="bgc-read"><Check className="w-3 h-3" strokeWidth={3} />Read</span>
+                {brandCard.pills.length > 0 && (
+                  <div className="bgc-pills">
+                    {brandCard.pills.map((p) => <span key={p} className="bgc-pill">{p}</span>)}
+                  </div>
+                )}
+              </div>
+            </ChatLee>
+          )}
+
+          <ChatLee>
+            Who's filming this one?
+            <ChatOpts options={FILMER_OPTIONS} value={filmerLabel}
+              onPick={(o) => { setFilmer(o); setFormat(null); }} />
+          </ChatLee>
+
+          {filmer && (
+            <ChatLee>
+              Where is it going?
+              <ChatOpts options={CHANNEL_OPTIONS} value={channel?.label} onPick={setChannel} />
+            </ChatLee>
+          )}
+
+          {filmer && channel && (
+            <ChatLee>
+              How well do they know you already?
+              <ChatOpts options={AWARENESS_OPTIONS} value={awareness?.label}
+                onPick={(o) => { setAwareness(o); setAngle(null); }} />
+            </ChatLee>
+          )}
+
+          {filmer && channel && awareness && angles.length > 0 && (
+            <ChatLee>
+              Which angle should it take?
+              <ChatOpts options={angles} value={angle?.name} onPick={setAngle} />
+              {angle?.example ? <p className="bgc-note">{angle.example}</p> : null}
+            </ChatLee>
+          )}
+
+          {filmer && channel && awareness && angle && (
+            <ChatLee wide>
+              Last one. Pick the format and I'll build the brief around it.
+              <ChatFormatPicker filmer={filmerLabel} picked={format} onPick={setFormat} />
+              {step === 1 || step === 2 || step === "gate" || !step || step === "chat" ? null : null}
+              {error && step === "error" ? <p className="bgc-err">{error}</p> : null}
+              {step !== "generating" && step !== "result" && (
+                <div style={{ marginTop: 16 }}>
+                  <button className="bgc-btn" disabled={!format || generating} onClick={handleGenerate}>
+                    {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    Build my brief
+                  </button>
+                </div>
+              )}
+            </ChatLee>
+          )}
+
+          {step === "generating" && (
+            <ChatLee>
+              <Loader2 className="w-4 h-4 animate-spin" style={{ display: "inline", marginRight: 8 }} />
+              Reading the site and writing your brief. About a minute.
+            </ChatLee>
+          )}
+
+          {step === "error" && (
+            <ChatLee>
+              {error || "Something went wrong."}
+              <div style={{ marginTop: 12 }}>
+                <button className="bgc-btn ghost" onClick={() => setStep(1)}>Try again</button>
+              </div>
+            </ChatLee>
+          )}
+
+          {step === "result" && briefSections && (
+            <>
+              <ChatLee>Here it is. I've written it the way a creator reads it, so you can send it as it is.</ChatLee>
+              <div className="bgc-row">
+                <img className="bgc-av" src={LEE_AVATAR_URL} alt="" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+            {/* The brief itself */}
+            <div className="rounded-2xl border border-border bg-card overflow-hidden">
+              <div
+                className="px-6 md:px-8 py-5 border-b border-border flex items-center gap-3"
+                style={{ background: "linear-gradient(180deg, rgba(135,156,247,0.10), transparent)" }}
+              >
+                {logoUrl ? (
                   <img
-                    src={briefSections.logoUrl}
-                    alt={briefSections.brandName || brandLabel || ""}
-                    className="w-16 h-16 md:w-20 md:h-20 shrink-0 rounded-2xl object-contain bg-white shadow-sm p-2"
+                    src={logoUrl}
+                    alt=""
+                    className="w-11 h-11 shrink-0 rounded-lg object-contain bg-white p-1.5 border border-border/50"
                     draggable={false}
                   />
                 ) : null}
-                <h1
-                  className="text-2xl md:text-4xl font-bold tracking-tight leading-[1.1] text-center sm:text-left"
-                  style={{ color: NAVY }}
-                >
-                  {briefSections.briefName || `Your ${briefSections.brandName || brandLabel || ""} brief`}
-                </h1>
-              </div>
-              <p className="text-center text-base md:text-lg text-muted-foreground mt-3 leading-relaxed">
-                Copy it, download it, send it straight to the creator filming.
-              </p>
-              {(format || angle) && (
-                <div className="flex flex-wrap gap-2 justify-center mt-5">
-                  {format && (
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold" style={{ background: "rgba(135,156,247,0.16)", color: NAVY }}>
-                      {format.name}
-                    </span>
-                  )}
-                  {angle && (
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold" style={{ background: "rgba(135,156,247,0.16)", color: NAVY }}>
-                      {angle.name}
-                    </span>
-                  )}
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-lg md:text-xl font-bold truncate" style={{ color: NAVY }}>
+                    {briefSections.brandName || website.trim().replace(/^https?:\/\//, "")}
+                  </h2>
+                  <p className="text-xs md:text-sm text-muted-foreground mt-0.5">Creator brief</p>
                 </div>
-              )}
-            </div>
+              </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 mb-8">
-              {/* Row 1 — context: who, who for, what to open with */}
-              <BentoCard icon={ICON_ABOUT} title="About" tooltip={SECTION_TOOLTIPS.about}>{briefSections.about}</BentoCard>
-              <BentoCard icon={ICON_PERSONAL} title="Personal Experiences" tooltip={SECTION_TOOLTIPS.personalExperiences}>{briefSections.personalExperiences}</BentoCard>
-              <BentoCard icon={ICON_HOOK} title="Hook options" tooltip={SECTION_TOOLTIPS.hook}>{briefSections.hook}</BentoCard>
-
-              {/* Row 2 — talking points (wide) + CTA */}
-              <BentoCard icon={ICON_TALKING_POINTS} title="Talking Points" tooltip={SECTION_TOOLTIPS.talkingPoints} wide>{briefSections.talkingPoints}</BentoCard>
-              <BentoCard icon={ICON_CTA} title="CTA" tooltip={SECTION_TOOLTIPS.cta}>{briefSections.cta}</BentoCard>
-
-              {/* Row 3 — storyboard full width */}
-              <BentoCard icon={ICON_STORYBOARD} title="Storyboard" tooltip={SECTION_TOOLTIPS.storyboard} full>
-                <StoryboardTable rows={briefSections.storyboard} />
-              </BentoCard>
-
-              {/* Row 4 — rules: do's, don'ts, deliverables */}
-              <BentoCard icon={ICON_DO} title="Do's" tooltip={SECTION_TOOLTIPS.dos} defaultOpen={false}>{briefSections.dos}</BentoCard>
-              <BentoCard icon={ICON_DONT} title="Don'ts" tooltip={SECTION_TOOLTIPS.donts} defaultOpen={false}>{briefSections.donts}</BentoCard>
-              <BentoCard icon={ICON_DELIVERABLES} title="Deliverables" tooltip={SECTION_TOOLTIPS.deliverables} defaultOpen={false}>{briefSections.deliverables}</BentoCard>
-
-              {/* Row 5 — thresholds (wide) + standards */}
-              <BentoCard icon={ICON_THRESHOLDS} title="Thresholds" tooltip={SECTION_TOOLTIPS.thresholds} wide defaultOpen={false}>{briefSections.thresholds}</BentoCard>
-              <BentoCard icon={ICON_STANDARDS} title="Standards" tooltip={SECTION_TOOLTIPS.standards} defaultOpen={false}>{briefSections.standards}</BentoCard>
-
-              {/* Row 6 — script (derived from storyboard), full width, with inline copy button */}
-              <BentoCard icon={ICON_SCRIPT} title="Script" tooltip={SECTION_TOOLTIPS.script} full defaultOpen={false} copyText={briefSections.script}>{briefSections.script}</BentoCard>
-
-              {/* Row 7 — example reference videos (autoplay grid, not text list) */}
-              <BentoCard icon={ICON_EXAMPLES}       title="Examples"            tooltip={SECTION_TOOLTIPS.examples}      full defaultOpen={false}>
-                {briefSections.examplesUrls && briefSections.examplesUrls.length > 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                    {briefSections.examplesUrls.map((url, i) => (
-                      <video
-                        key={i}
-                        src={url}
-                        controls
-                        playsInline
-                        muted
-                        preload="metadata"
-                        className="w-full rounded-lg aspect-[9/16] object-cover bg-black"
-                      />
+              <div className="px-6 md:px-8 pb-7 pt-1">
+                <div className="flex flex-wrap gap-1.5 pt-5 pb-1">
+                  {[filmer?.label, channel?.label, awareness?.label, format?.name, angle?.name]
+                    .filter(Boolean)
+                    .map((chip, i) => (
+                      <span
+                        key={chip}
+                        className="inline-flex items-center h-7 px-3 rounded-full text-[11.5px] font-semibold"
+                        style={
+                          i === 0
+                            ? { background: PERIWINKLE, color: "#fff" }
+                            : { background: "rgba(135,156,247,0.14)", color: NAVY }
+                        }
+                      >
+                        {chip}
+                      </span>
                     ))}
-                  </div>
-                ) : (
-                  <div className="text-sm">{briefSections.examples}</div>
-                )}
-              </BentoCard>
-            </div>
+                </div>
 
-            <div className="sticky bottom-4 bg-card border border-border rounded-2xl p-3 shadow-lg flex flex-wrap gap-2 items-center justify-end">
+                <div className="pt-4 pb-1"><DownloadBar top /></div>
+
+                {rows.map((r) => {
+                  if (r.title === "Hook options" && Array.isArray(bs.hooks) && bs.hooks.length) {
+                    return (
+                      <Section key={r.title} icon={r.icon} title={r.title}>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          {bs.hooks.map((h, i) => (
+                            <div key={i} className="rounded-xl border border-border p-4" style={{ background: "rgba(135,156,247,0.05)" }}>
+                              <div className="text-[10.5px] font-extrabold uppercase tracking-widest mb-2.5" style={{ color: PERIWINKLE }}>
+                                Hook {i + 1}
+                              </div>
+                              {[["Caption", h.caption], ["On screen", h.visual], ["Spoken", h.voiceover]]
+                                .filter(([, v]) => v)
+                                .map(([k, v]) => (
+                                  <div key={k} className="mb-2 last:mb-0">
+                                    <div className="text-[10.5px] font-bold uppercase tracking-wider" style={{ color: "#aeb4c8" }}>{k}</div>
+                                    <div className="text-[13.5px] leading-snug" style={{ color: "#565d78" }}>{v}</div>
+                                  </div>
+                                ))}
+                            </div>
+                          ))}
+                        </div>
+                      </Section>
+                    );
+                  }
+                  if (r.title === "Talking points" && Array.isArray(bs.talkingPointsList) && bs.talkingPointsList.length) {
+                    return <Section key={r.title} icon={r.icon} title={r.title}><Bullets items={bs.talkingPointsList} /></Section>;
+                  }
+                  if (r.title === "The offer" && Array.isArray(bs.offerList) && bs.offerList.length) {
+                    return <Section key={r.title} icon={r.icon} title={r.title}><Bullets items={bs.offerList} /></Section>;
+                  }
+                  if (r.title === "Call to action" && Array.isArray(bs.ctaList) && bs.ctaList.length) {
+                    return <Section key={r.title} icon={r.icon} title={r.title}><Bullets items={bs.ctaList} /></Section>;
+                  }
+                  if (r.title === "Personal experiences" && Array.isArray(bs.personalList) && bs.personalList.length) {
+                    return <Section key={r.title} icon={r.icon} title={r.title}><Bullets items={bs.personalList} /></Section>;
+                  }
+                  if (r.title === "About the product" && bs.productImage) {
+                    return (
+                      <Section key={r.title} icon={r.icon} title={r.title}>
+                        <img
+                          className="bgc-prodimg"
+                          src={bs.productImage}
+                          alt=""
+                          onError={(e) => { e.currentTarget.style.display = "none"; }}
+                        />
+                        {r.body}
+                      </Section>
+                    );
+                  }
+                  return <Section key={r.title} icon={r.icon} title={r.title}>{r.body}</Section>;
+                })}
+
+                {briefSections.storyboard && briefSections.storyboard.length > 0 && (
+                  <section className="py-6 border-t border-border">
+                    <div className="flex items-center gap-2.5 mb-3">
+                      <img src={ICON_STORYBOARD} alt="" className="w-6 h-6 object-contain" draggable={false} />
+                      <h3 className="text-[15px] md:text-base font-bold" style={{ color: NAVY }}>Scene by scene</h3>
+                    </div>
+                    <StoryboardTable rows={briefSections.storyboard} />
+                  </section>
+                )}
+
+                {tailRows.map((r) => (
+                  <Section key={r.title} icon={r.icon} title={r.title}>
+                    {r.title === "Deliverables" && Array.isArray(bs.deliverablesList)
+                      ? <Bullets items={bs.deliverablesList} />
+                      : r.body}
+                  </Section>
+                ))}
+
+                {Array.isArray(briefSections.thresholds) && briefSections.thresholds.length > 0 && (
+                  <section className="py-6 border-t border-border">
+                    <div className="flex items-center gap-2.5 mb-1">
+                      <img src={ICON_THRESHOLDS} alt="" className="w-6 h-6 object-contain" draggable={false} />
+                      <h3 className="text-[15px] md:text-base font-bold" style={{ color: NAVY }}>Thresholds</h3>
+                    </div>
+                    <p className="text-[13px] mb-3.5" style={{ color: "#838aa3" }}>
+                      The bars every video is measured against. The creator never has to read them:
+                      they are already written into the do's and don'ts below, in plain English.
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {briefSections.thresholds.map((t) => (
+                        <div
+                          key={t.label}
+                          className="flex items-center gap-3 rounded-xl border border-border px-3.5 py-2.5"
+                          style={{ background: "rgba(135,156,247,0.05)" }}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[13px] font-bold" style={{ color: NAVY }}>{t.label}</div>
+                            <div className="text-[11.5px] leading-snug" style={{ color: "#aeb4c8" }}>{t.what}</div>
+                          </div>
+                          <span
+                            className="shrink-0 inline-flex items-center h-7 px-3 rounded-full text-[12.5px] font-bold"
+                            style={{ background: PERIWINKLE, color: "#fff" }}
+                          >
+                            {t.value}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {(briefSections.dos || briefSections.donts) && (
+                  <section className="py-6 border-t border-border">
+                    <div className="flex items-center gap-2.5 mb-3">
+                      <img src={ICON_DO} alt="" className="w-6 h-6 object-contain" draggable={false} />
+                      <h3 className="text-[15px] md:text-base font-bold" style={{ color: NAVY }}>Do and don't</h3>
+                    </div>
+                    <div className="grid gap-3 items-start sm:grid-cols-2">
+                      <div className="rounded-xl border p-4" style={{ borderColor: "rgba(45,170,99,0.22)", background: "rgba(45,170,99,0.07)" }}>
+                        <h4 className="text-xs font-bold uppercase tracking-wider mb-2.5" style={{ color: "#2daa63" }}>Do</h4>
+                        <Bullets items={briefSections.dos} />
+                      </div>
+                      <div className="rounded-xl border p-4" style={{ borderColor: "rgba(200,68,60,0.20)", background: "rgba(200,68,60,0.06)" }}>
+                        <h4 className="text-xs font-bold uppercase tracking-wider mb-2.5" style={{ color: "#c8443c" }}>Don't</h4>
+                        <Bullets items={briefSections.donts} />
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {briefSections.examplesUrls && briefSections.examplesUrls.length > 0 && (
+                  <section className="py-6 border-t border-border">
+                    <div className="flex items-center gap-2.5 mb-3">
+                      <img src={ICON_EXAMPLES} alt="" className="w-6 h-6 object-contain" draggable={false} />
+                      <h3 className="text-[15px] md:text-base font-bold" style={{ color: NAVY }}>Examples to watch first</h3>
+                      {briefSections.examplesUrls.length > 5 ? (
+                        <span className="ml-auto text-[11.5px]" style={{ color: "#aeb4c8" }}>Scroll for more</span>
+                      ) : null}
+                    </div>
+                    <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollSnapType: "x mandatory" }}>
+                      {briefSections.examplesUrls.map((url, i) => (
+                        <video
+                          key={i}
+                          src={url}
+                          muted
+                          loop
+                          autoPlay
+                          playsInline
+                          preload="metadata"
+                          className="rounded-xl border border-border bg-muted shrink-0"
+                          style={{ width: 132, aspectRatio: "9/16", objectFit: "cover", scrollSnapAlign: "start" }}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                <div className="pt-5 border-t border-border"><DownloadBar /></div>
+              </div>
+            </div>
+                </div>
+              </div>
+            {/* Take it with you */}
+            <div className="sticky bottom-4 mt-6 bg-card border border-border rounded-2xl p-3 shadow-lg flex flex-wrap gap-2 items-center justify-end">
+              {shareUrl ? (
+                <>
+                  <span className="mr-auto text-xs text-muted-foreground pl-1 hidden sm:block">
+                    Send this link to your creator
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { try { navigator.clipboard.writeText(shareUrl); } catch (e) { console.error(e); } }}
+                    className="inline-flex items-center gap-1.5 px-3.5 h-10 rounded-xl border border-border bg-card text-foreground text-sm font-semibold hover:border-primary/40 transition-colors"
+                  >
+                    <Copy className="w-4 h-4" /> Copy link
+                  </button>
+                  <a
+                    href={shareUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3.5 h-10 rounded-xl border border-border bg-card text-foreground text-sm font-semibold hover:border-primary/40 transition-colors"
+                  >
+                    <ArrowRight className="w-4 h-4" /> Open in a new tab
+                  </a>
+                </>
+              ) : null}
               <button
                 type="button"
                 onClick={handleCopy}
-                className={`inline-flex items-center gap-1.5 px-3.5 h-10 rounded-xl border text-sm font-semibold transition-colors ${copied ? "bg-primary/10 border-primary text-primary" : "bg-card border-border text-foreground hover:border-primary/40"}`}
-              >
-                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                {copied ? "Copied" : "Copy"}
-              </button>
-              <button
-                type="button"
-                onClick={handleDownloadMarkdown}
                 className="inline-flex items-center gap-1.5 px-3.5 h-10 rounded-xl border border-border bg-card text-foreground text-sm font-semibold hover:border-primary/40 transition-colors"
               >
-                <Download className="w-4 h-4" /> Download Markdown
+                <Copy className="w-4 h-4" /> Copy brief
               </button>
               <button
                 type="button"
                 onClick={handleDownloadHtml}
-                className="inline-flex items-center gap-1.5 px-3.5 h-10 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
+                className="inline-flex items-center gap-1.5 px-3.5 h-10 rounded-xl border border-border bg-card text-foreground text-sm font-semibold hover:border-primary/40 transition-colors"
               >
-                <FileText className="w-4 h-4" /> Download HTML
+                <FileText className="w-4 h-4" /> HTML
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadMarkdown}
+                className="inline-flex items-center gap-1.5 px-3.5 h-10 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
+                style={{ background: PERIWINKLE }}
+              >
+                <Download className="w-4 h-4" /> Download
               </button>
             </div>
-          </div>
+            </>
+          )}
         </div>
       </div>
     );
@@ -1932,14 +3004,22 @@ export default function Block() {
           </p>
 
           <div className="mt-9 md:mt-10 flex flex-wrap items-center justify-center gap-3 md:gap-4">
-            <a href="/sign-up" className="bl-cta-primary">
-              Start free trial
+            <a
+              href="/book-call"
+              onClick={(e) => {
+                if (typeof window !== "undefined" && typeof window.openSwModal === "function") {
+                  e.preventDefault();
+                  window.openSwModal("/book-call", "md");
+                }
+              }}
+              className="bl-cta-primary"
+            >
+              Book a demo
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <line x1="5" y1="12" x2="19" y2="12" />
                 <polyline points="12 5 19 12 12 19" />
               </svg>
             </a>
-            <a href="/book-a-demo" className="bl-cta-secondary">Book a demo</a>
           </div>
         </div>
       </section>

@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Instagram Reel Analyser — design mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--blue:#294ff6;--blue2:#4466f8;--blue3:#5e7bf6;--blue4:#7a93ff;--blue5:#879cf7;--navy:#000f4d;--navy2:#001364;--page:#f8fbff;--card:#fff;--l2:#eef4fd;--peri:#d9e0ff;--lav:#d8d8ff;--ice:#ccedff;--border:#eef4fd;--bd2:#d6defc;--body:#565d78;--muted:#838aa3;--quiet:#aeb4c8;--pass:#2daa63;--passbg:rgba(45,170,99,.12);--warn:#a9750a;--warnbg:rgba(248,211,19,.16);--fail:#c8443c;--failbg:rgba(200,68,60,.10);--font:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--w:390px}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--font);background:#e9edf7;color:var(--body);-webkit-font-smoothing:antialiased}
+a{color:var(--blue);text-decoration:none}a:hover{color:var(--blue2);text-decoration:underline}
+h1,h2,h3,h4{margin:0;color:var(--navy);font-family:var(--font)}
+h1{font-weight:800;letter-spacing:-.03em}h2{font-weight:700;letter-spacing:-.02em}h3{font-weight:700;letter-spacing:-.01em}h4{font-weight:600}
+p{margin:0}
+body[data-w="d"]{--w:1140px}
+
+/* ── handoff chrome ───────────────────────────────── */
+.bar{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;align-items:center;gap:18px;padding:14px 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--bd2)}
+.bar .brandline{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--navy);font-size:14px;letter-spacing:-.01em}
+.bar .brandline img{width:22px;height:22px}
+.bar .sp{flex:1}
+.seg{display:flex;gap:2px;padding:3px;background:var(--l2);border-radius:10px}
+.seg button{border:0;background:transparent;font:inherit;font-size:12.5px;font-weight:600;color:var(--muted);padding:6px 12px;border-radius:8px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(0,15,77,.10)}
+.seglabel{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--quiet)}
+.desk{padding:40px 24px 120px;display:flex;flex-direction:column;gap:56px;align-items:center}
+.state{width:100%;max-width:var(--w);display:flex;flex-direction:column;gap:14px}
+.slug{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.slug .n{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--blue);background:#fff;border:1px solid var(--bd2);border-radius:6px;padding:3px 7px}
+.slug h4{font-size:14px;color:var(--navy)}
+.slug .note{font-size:12.5px;color:var(--muted)}
+.frame{width:100%;background:var(--page);border:1px solid var(--bd2);border-radius:26px;overflow:hidden;box-shadow:0 18px 44px -22px rgba(0,15,77,.28);container-type:inline-size}
+
+/* ── screen primitives ────────────────────────────── */
+.pad{padding:30px 20px 36px}
+.hero{text-align:center;display:flex;flex-direction:column;gap:12px;align-items:center}
+.eyebrow{display:inline-flex;align-items:center;gap:7px;background:var(--peri);color:var(--blue);font-size:11.5px;font-weight:700;letter-spacing:.02em;padding:6px 12px;border-radius:999px}
+.eyebrow img{width:15px;height:15px}
+.hero h1{font-size:30px;line-height:1.1}
+.hero p.sub{font-size:15px;line-height:1.5;color:var(--body);max-width:34ch;text-wrap:pretty}
+.card{background:var(--card);border:1px solid var(--border);border-radius:18px;box-shadow:0 10px 30px -18px rgba(0,15,77,.22)}
+.field{display:flex;flex-direction:column;gap:10px}
+.input{display:flex;align-items:center;gap:10px;min-width:0;height:52px;padding:0 14px;background:var(--l2);border:1px solid var(--bd2);border-radius:12px;color:var(--muted);font-size:14.5px}
+.input svg{flex:none;color:var(--blue4)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:52px;padding:0 22px;border:0;border-radius:12px;background:var(--blue5);color:#fff;font:inherit;font-size:15px;font-weight:600;cursor:pointer;letter-spacing:-.01em}
+.btn:hover{background:var(--blue3)}
+.btn.ghost{background:#fff;color:var(--navy);border:1px solid var(--bd2)}
+.btn.ghost:hover{background:var(--l2)}
+.btn.sm{height:42px;padding:0 16px;font-size:13.5px;border-radius:10px}
+.drop{margin-top:14px;border:1.5px dashed var(--bd2);border-radius:14px;background:var(--page);padding:22px 16px;text-align:center;display:flex;flex-direction:column;gap:4px;align-items:center}
+.drop .t{font-size:14px;font-weight:600;color:var(--navy)}
+.drop .s{font-size:12.5px;color:var(--muted)}
+.or{display:flex;align-items:center;gap:12px;margin-top:16px;color:var(--quiet);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.or:before,.or:after{content:"";height:1px;flex:1;background:var(--bd2)}
+.trust{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 10px;margin-top:18px}
+.trust span{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--body);background:#fff;border:1px solid var(--border);border-radius:999px;padding:6px 12px}
+.trust i{width:5px;height:5px;border-radius:50%;background:var(--blue5);display:block}
+.sectionhead{display:flex;flex-direction:column;gap:6px;text-align:center;align-items:center}
+.sectionhead h2{font-size:20px}
+.sectionhead p{font-size:13.5px;color:var(--muted)}
+
+/* score card */
+.scard{background:linear-gradient(168deg,#fff 0%,#fdfdff 52%,#f4f7ff 100%);border:1px solid var(--bd2);border-radius:22px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 60px -30px rgba(0,15,77,.42)}
+.scard .top{display:flex;gap:16px;padding:20px 20px 14px;align-items:center;justify-content:space-between}
+.thumb{width:64px;aspect-ratio:9/16;flex:none;position:relative;overflow:hidden;border-radius:10px;background:#dfe5f5;border:1px solid var(--bd2)}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb b{position:absolute;left:0;right:0;bottom:5px;text-align:center;font-size:9px;font-weight:700;color:#fff;letter-spacing:.04em;text-shadow:0 1px 3px rgba(0,15,77,.7)}
+.metarow{display:flex;flex-direction:column;gap:3px;padding:0 20px 16px}
+.ring{position:relative;width:96px;height:96px;flex:none}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring .val{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
+.ring .val b{font-size:34px;font-weight:800;color:var(--blue);letter-spacing:-.04em;line-height:1}
+.ring .val span{font-size:10.5px;font-weight:700;color:var(--quiet);letter-spacing:.06em}
+.scard .metarow{display:flex;flex-direction:column;gap:3px;min-width:0}
+.scard .metarow .lbl{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--blue5)}
+.scard .metarow .h{font-size:17px;font-weight:700;color:var(--navy);letter-spacing:-.01em}
+.scard .metarow .sm{font-size:13px;color:var(--muted)}
+.verdict{margin:0 20px 16px;padding:14px 16px;background:var(--peri);border-radius:12px;font-size:13.5px;line-height:1.5;color:var(--navy2);text-wrap:pretty}
+.checks{display:flex;flex-direction:column;gap:1px;background:var(--border);margin:0 20px;border-radius:12px;overflow:hidden}
+.checks .row{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;padding:11px 14px}
+.checks .row .nm{font-size:13.5px;font-weight:600;color:var(--navy)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;letter-spacing:.01em;padding:4px 10px;border-radius:999px;white-space:nowrap}
+.pill.pass{background:var(--passbg);color:var(--pass)}
+.pill.flag{background:var(--failbg);color:var(--fail)}
+.pill.warn{background:var(--warnbg);color:var(--warn)}
+.pill.blue{background:var(--peri);color:var(--blue)}
+.mark{margin-top:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;background:var(--navy);color:#fff}
+.mark .l{display:flex;align-items:center;gap:9px}
+.mark .l img{width:22px;height:22px}
+.mark .l b{font-size:13px;font-weight:700;letter-spacing:-.01em}
+.mark .r{font-size:11.5px;color:#a9b6e8;letter-spacing:.02em}
+.cropnote{display:flex;justify-content:center;margin-top:10px}
+.cropnote span{font-size:11.5px;color:var(--quiet)}
+.sharerow{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:18px}
+
+/* gate */
+.gate{padding:22px 20px;display:flex;flex-direction:column;gap:14px}
+.gate .gh{display:flex;gap:12px;align-items:flex-start}
+.gate .gh img{width:34px;height:34px;flex:none}
+.gate h3{font-size:16px;line-height:1.3}
+.gate p{font-size:13px;color:var(--muted);line-height:1.5;margin-top:4px}
+.optin{display:flex;gap:9px;align-items:flex-start;font-size:12px;color:var(--muted);line-height:1.45}
+.optin i{width:16px;height:16px;flex:none;border:1.5px solid var(--bd2);border-radius:4px;background:#fff;display:block;margin-top:1px}
+
+/* breakdown */
+.band{display:flex;align-items:center;gap:14px;padding:14px 16px;background:#fff;border:1px solid var(--border);border-radius:14px}
+.band .num{font-size:26px;font-weight:800;color:var(--blue);letter-spacing:-.04em;line-height:1}
+.band .num sup{font-size:12px;font-weight:700;color:var(--quiet);letter-spacing:0}
+.band .txt{font-size:13px;color:var(--body);font-weight:500}
+.band .track{flex:1;height:6px;background:var(--l2);border-radius:99px;overflow:hidden;min-width:60px}
+.band .track b{display:block;height:100%;width:79%;background:linear-gradient(90deg,var(--blue5),var(--blue))}
+.groups{display:flex;flex-direction:column;gap:10px}
+details.grp{background:#fff;border:1px solid var(--border);border-radius:14px;overflow:hidden}
+details.grp>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:15px 16px}
+details.grp>summary::-webkit-details-marker{display:none}
+details.grp>summary .gname{flex:1;font-size:14.5px;font-weight:700;color:var(--navy);letter-spacing:-.01em}
+details.grp>summary .chev{color:var(--blue4);transition:transform .18s}
+details.grp[open]>summary .chev{transform:rotate(180deg)}
+details.grp[open]>summary{border-bottom:1px solid var(--border)}
+.agents{display:flex;flex-direction:column}
+.agent{display:flex;gap:12px;padding:14px 16px;border-top:1px solid var(--page)}
+.agent:first-child{border-top:0}
+.agent .shot{width:44px;aspect-ratio:9/16;flex:none;border-radius:7px;overflow:hidden;background:#e3e8f7;border:1px solid var(--border)}
+.agent .shot img{width:100%;height:100%;object-fit:cover;display:block}
+.agent .bd{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.agent .hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.agent .hd .an{font-size:13.5px;font-weight:600;color:var(--navy)}
+.agent .cm{font-size:12.5px;line-height:1.5;color:var(--body);text-wrap:pretty}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--muted);background:var(--l2);border-radius:6px;padding:3px 7px;letter-spacing:.01em}
+.score{font-size:12px;font-weight:700;color:var(--blue);letter-spacing:-.01em}
+
+/* processing */
+.proc{display:flex;flex-direction:column;align-items:center;gap:18px;padding:56px 24px 60px;text-align:center}
+.proc .halo{position:relative;width:150px;height:150px;display:grid;place-items:center}
+.proc .halo:before{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle,var(--lav) 0%,rgba(216,216,255,0) 68%);animation:breathe 3.4s ease-in-out infinite}
+.proc .halo img{width:108px;height:108px;position:relative;animation:float 4.6s ease-in-out infinite}
+@keyframes breathe{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.12);opacity:1}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.proc h2{font-size:22px}
+.status{min-height:22px;font-size:14.5px;font-weight:600;color:var(--blue)}
+.bar-ind{width:100%;max-width:320px;height:6px;border-radius:99px;background:var(--l2);overflow:hidden;position:relative}
+.bar-ind:after{content:"";position:absolute;top:0;bottom:0;width:42%;border-radius:99px;background:linear-gradient(90deg,var(--blue5),var(--blue));animation:slide 1.9s cubic-bezier(.45,0,.55,1) infinite}
+@keyframes slide{0%{left:-45%}100%{left:100%}}
+.dots{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:280px}
+.dots i{width:7px;height:7px;border-radius:50%;background:var(--lav);display:block}
+.dots i.on{background:var(--blue5)}
+.proc .cnt{font-size:12.5px;color:var(--muted);font-weight:500}
+
+/* preview / mini card */
+.mini{background:#fff;border:1px solid var(--bd2);border-radius:16px;padding:16px;display:flex;gap:14px;align-items:center;box-shadow:0 12px 30px -20px rgba(0,15,77,.3)}
+.mini .mring{width:62px;height:62px;flex:none;position:relative}
+.mini .mring .v{position:absolute;inset:0;display:grid;place-items:center;font-size:19px;font-weight:800;color:var(--blue);letter-spacing:-.03em}
+.mini .lines{flex:1;display:flex;flex-direction:column;gap:6px}
+.mini .lines b{font-size:13px;color:var(--navy);font-weight:700}
+.mini .lines .ln{height:7px;border-radius:99px;background:var(--l2)}
+.mini .lines .ln.s{width:62%}
+.fieldlabel{font-size:13px;font-weight:600;color:var(--navy);display:block;margin-bottom:9px}
+/* ── hero (shared Brieflee free-tool hero) ────────── */
+.herowrap{position:relative;overflow:hidden}
+.wash{position:absolute;inset:0;pointer-events:none;z-index:0}
+.wash .g1{position:absolute;inset:0;background:linear-gradient(135deg,var(--page),rgba(41,79,246,.04) 45%,rgba(41,79,246,.10))}
+.wash .b1{position:absolute;top:-10%;right:-10%;width:420px;height:420px;border-radius:50%;background:rgba(41,79,246,.22);filter:blur(120px)}
+.wash .b2{position:absolute;bottom:-15%;left:-8%;width:340px;height:340px;border-radius:50%;background:rgba(41,79,246,.14);filter:blur(100px)}
+.wash .grid{position:absolute;inset:0;opacity:.05;background-image:radial-gradient(circle at 1px 1px,#000f4d 1px,transparent 0);background-size:32px 32px}
+.herogrid{position:relative;z-index:1;display:flex;flex-direction:column;gap:36px}
+.hcol{display:flex;flex-direction:column;gap:18px;align-items:flex-start;min-width:0}
+.eyebrow2{display:inline-flex;align-items:center;gap:10px;padding:9px 16px;background:rgba(135,156,247,.16);color:var(--navy);font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:999px}
+.eyebrow2 i{width:8px;height:8px;border-radius:50%;background:var(--blue5);box-shadow:0 0 0 3px rgba(135,156,247,.22);display:block;flex:none}
+.h1blk{display:flex;flex-direction:column;gap:2px}
+.h1blk h1{font-size:33px;line-height:1.05}
+.h1blk h1 em{font-style:normal;color:var(--blue5)}
+.typing{font-size:33px;font-weight:800;color:var(--blue5);letter-spacing:-.03em;line-height:1.05;margin-top:2px;min-height:1.05em}
+.caret{display:inline-block;width:3px;height:.85em;background:var(--blue5);margin-left:3px;vertical-align:-.05em;animation:blink 1.05s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.tabs{display:inline-flex;gap:2px;padding:4px;background:rgba(255,255,255,.85);border:1px solid var(--bd2);border-radius:999px;box-shadow:0 1px 3px rgba(0,15,77,.06)}
+.tabs button{display:inline-flex;align-items:center;gap:7px;border:0;background:transparent;font:inherit;font-size:13px;font-weight:600;color:var(--muted);padding:8px 15px;border-radius:999px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--blue5);color:#fff}
+.tabpanel[hidden]{display:none}
+.truststrip{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;font-size:13px;font-weight:500;color:var(--body)}
+.truststrip span{display:inline-flex;align-items:center;gap:7px}
+.truststrip .pulse{width:8px;height:8px;border-radius:50%;background:var(--blue);animation:pulsedot 1.4s ease-in-out infinite;flex:none}
+@keyframes pulsedot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.85)}}
+.truststrip svg{color:var(--blue);flex:none}
+.assetwrap{position:relative;width:100%;max-width:252px;margin:6px auto 0;aspect-ratio:1}
+.assetwrap .halo2{position:absolute;inset:0;border-radius:50%;background:rgba(41,79,246,.26);filter:blur(70px)}
+.assetdisc{position:relative;width:100%;height:100%;border-radius:50%;overflow:hidden;border:6px solid #fff;background:radial-gradient(circle at 50% 26%,#f4f7ff 0%,#e4eaff 55%,#d9e0ff 100%);box-shadow:0 30px 80px -25px rgba(41,79,246,.5);display:grid;place-items:center}
+.discvid{position:relative;height:66%;aspect-ratio:9/16;border-radius:12px;overflow:hidden;transform:rotate(-5deg);background:#d5dcf0;border:1px solid rgba(255,255,255,.85);box-shadow:0 16px 34px -16px rgba(0,15,77,.4)}
+.discvid video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.discvid .play{position:absolute;inset:0;display:grid;place-items:center;color:#fff;opacity:.9;text-shadow:0 2px 8px rgba(0,15,77,.5)}
+.discvid .tl{position:absolute;left:9px;right:9px;bottom:9px;height:4px;border-radius:99px;background:rgba(255,255,255,.6);overflow:hidden;z-index:3}
+.scanui{position:absolute;inset:0;z-index:2;pointer-events:none}
+.scanui:before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.16) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.16) 1px,transparent 1px);background-size:100% 33.34%,33.34% 100%}
+.scanui .k{position:absolute;width:20px;height:20px;border:2.5px solid rgba(41,79,246,.95);border-radius:4px}
+.scanui .k1{top:8px;left:8px;border-right:0;border-bottom:0}
+.scanui .k2{top:8px;right:8px;border-left:0;border-bottom:0}
+.scanui .k3{bottom:8px;left:8px;border-right:0;border-top:0}
+.scanui .k4{bottom:8px;right:8px;border-left:0;border-top:0}
+.scanui .line{position:absolute;top:0;left:0;right:0;height:24%;background:linear-gradient(180deg,rgba(41,79,246,0),rgba(135,156,247,.3) 55%,rgba(41,79,246,.55));border-bottom:2px solid rgba(41,79,246,.9);box-shadow:0 0 18px rgba(41,79,246,.55);animation:scanline 3s ease-in-out infinite alternate}
+@keyframes scanline{0%{transform:translateY(-100%)}100%{transform:translateY(416%)}}
+.discvid .tl b{display:block;height:100%;width:44%;background:var(--blue)}
+.flo{position:absolute;z-index:3;width:var(--sm);height:var(--sm);top:var(--mtop,auto);right:var(--mright,auto);bottom:var(--mbot,auto);left:var(--mleft,auto);animation:floaty 7s ease-in-out var(--d,0s) infinite alternate}
+.flo.rev{animation-direction:alternate-reverse}
+.flo img{width:100%;height:100%;object-fit:contain;display:block;transform:rotate(var(--r,0deg)) scaleX(var(--fx,1));filter:drop-shadow(0 12px 24px rgba(99,102,241,.25))}
+@keyframes floaty{0%{transform:translateY(0)}100%{transform:translateY(-16px)}}
+.chip2{position:absolute;z-index:4;top:4%;left:52%;display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--bd2);border-radius:999px;padding:7px 13px;font-size:11px;font-weight:700;color:var(--navy);white-space:nowrap;box-shadow:0 10px 24px -12px rgba(0,15,77,.34);animation:chipfloat 6s ease-in-out .4s infinite alternate}
+@keyframes chipfloat{0%{transform:translateY(0)}100%{transform:translateY(-6px)}}
+.ping{position:relative;width:8px;height:8px;flex:none;display:block}
+.ping i{position:absolute;inset:0;border-radius:50%;background:var(--blue);display:block}
+.ping i:first-child{animation:ping 1.7s cubic-bezier(0,0,.2,1) infinite;opacity:.7}
+@keyframes ping{75%,100%{transform:scale(2.2);opacity:0}}
+.scorechip{position:absolute;z-index:4;bottom:4%;right:52%;white-space:nowrap;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--bd2);border-radius:15px;padding:9px 14px;box-shadow:0 14px 34px -14px rgba(0,15,77,.36);animation:chipfloat 6s ease-in-out 1s infinite alternate-reverse}
+.scorechip b{font-size:23px;font-weight:800;color:var(--blue);line-height:1;letter-spacing:-.03em}
+.scorechip .t{font-size:9px;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--quiet)}
+.scorechip .v{font-size:11px;font-weight:600;color:var(--navy)}
+.previewband{position:relative;z-index:1;display:flex;flex-direction:column;gap:12px;margin-top:38px;padding-top:28px;border-top:1px solid var(--bd2)}
+.previewband .pbgrid{display:flex;flex-direction:column;gap:12px}
+@container (min-width:700px){
+ .herogrid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(300px,1fr);gap:56px;align-items:center}
+ .hcol{gap:22px}
+ .h1blk h1{font-size:50px}
+ .typing{font-size:50px}
+ .assetwrap{max-width:440px;margin:0 auto}
+ .flo{width:var(--s);height:var(--s);top:var(--top,auto);right:var(--right,auto);bottom:var(--bot,auto);left:var(--left,auto)}
+ .chip2{font-size:12px;padding:8px 15px}
+ .scorechip b{font-size:27px}
+ .previewband{margin-top:56px;padding-top:40px}
+ .previewband .pbgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;align-items:center}
+}
+.minilabel{font-size:10.5px;font-weight:700;color:var(--quiet);letter-spacing:.06em;text-transform:uppercase}
+.input .txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+
+/* closing */
+.closing{display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;padding:44px 22px 50px}
+.closing h2{font-size:23px;line-height:1.2;max-width:22ch}
+.closing p.s{font-size:14px;color:var(--body);max-width:38ch;line-height:1.5}
+.crosslink{font-size:12.5px;color:var(--muted)}
+.crosslink a{font-weight:600}
+.ctastack{display:flex;flex-direction:column;gap:10px;width:100%;max-width:340px}
+.ctastack .btn{width:100%}
+
+/* failure */
+.errwrap{padding:44px 20px 50px;display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center}
+.errcard{width:100%;max-width:420px;padding:24px 20px;display:flex;flex-direction:column;gap:14px;align-items:center}
+.errcard .ic{width:44px;height:44px;border-radius:12px;background:var(--l2);display:grid;place-items:center;color:var(--blue4)}
+.errcard h3{font-size:17px}
+.errcard p{font-size:13.5px;color:var(--body);line-height:1.5;max-width:30ch}
+
+/* ── desktop (container query) ─────────────────────── */
+.gatescreen{display:flex;flex-direction:column;gap:18px}
+.gatevid{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid var(--border);border-radius:16px;padding:14px}
+.gvshot{width:44px;aspect-ratio:9/16;flex:none;border-radius:8px;overflow:hidden;border:1px solid var(--bd2)}
+.gvshot img{width:100%;height:100%;object-fit:cover;display:block}
+.gvmeta{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.gvmeta b{font-size:14px;font-weight:700;color:var(--navy);letter-spacing:-.01em}
+.gvsub{font-size:12px;color:var(--muted)}
+
+.flagwrap{display:flex;flex-direction:column;gap:10px}
+.flaglabel{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--quiet)}
+.flagrows{display:grid;gap:10px}
+.flagrow{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 16px;box-shadow:0 8px 24px -20px rgba(0,15,77,.3)}
+.flagrow .ts{font-size:19px;font-weight:800;color:var(--blue);letter-spacing:-.03em;line-height:1;flex:none;min-width:52px}
+.flagrow .nm{flex:1;font-size:13.5px;font-weight:600;color:var(--navy)}
+.moments{display:grid;gap:14px}
+.moment{background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:8px}
+.moment .ic{width:36px;height:36px;border-radius:11px;background:rgba(41,79,246,.09);display:grid;place-items:center;color:var(--blue)}
+.moment h3{font-size:15.5px;line-height:1.3}
+.moment p{font-size:13px;line-height:1.55;color:var(--body)}
+.microcopy{font-size:11.5px;color:var(--muted);line-height:1.45}
+@container (min-width:700px){
+ .flagrows{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .flagrow .ts{font-size:22px}
+ .moments{grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+ .moment{padding:24px}
+}
+
+/* ── landing sections ─────────────────────────────── */
+.lsec{position:relative;padding:46px 20px;background:#fff}
+.lsec.alt{background:var(--page);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.lsec.dark{background:linear-gradient(160deg,#001364 0%,#000f4d 55%,#00092f 100%);overflow:hidden}
+.lwrap{max-width:1140px;margin:0 auto;display:flex;flex-direction:column;gap:26px}
+.sectag{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;background:#fff;border:1px solid var(--bd2);border-radius:999px;padding:5px 12px 5px 6px;font-size:11.5px;font-weight:600;color:var(--muted)}
+.sectag img{width:19px;height:19px}
+.lsec.dark .sectag{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18);color:#c3ccf5}
+.sechead{display:flex;flex-direction:column;gap:12px;max-width:56ch}
+.sechead h2{font-size:26px;line-height:1.12}
+.sechead p{font-size:14.5px;line-height:1.55;color:var(--body);text-wrap:pretty}
+.lsec.dark .sechead h2{color:#fff}
+.lsec.dark .sechead p{color:#b9c4ee}
+.cards3{display:grid;gap:16px}
+.fcard{background:#fff;border:1px solid var(--border);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px -22px rgba(0,15,77,.28)}
+.fcard .viz{padding:20px;background:linear-gradient(155deg,rgba(41,79,246,.05),rgba(41,79,246,.12));border-bottom:1px solid var(--border);min-height:150px;display:flex;align-items:center;justify-content:center}
+.fcard .txt{padding:18px;display:flex;flex-direction:column;gap:7px}
+.fcard h3{font-size:16.5px;line-height:1.28}
+.fcard p{font-size:13.5px;line-height:1.55;color:var(--body)}
+.vizring{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid var(--bd2);border-radius:14px;padding:14px 16px;box-shadow:0 10px 26px -18px rgba(0,15,77,.3)}
+.vizring .r{width:62px;height:62px;position:relative;flex:none}
+.vizring .r span{position:absolute;inset:0;display:grid;place-items:center;font-size:20px;font-weight:800;color:var(--blue);letter-spacing:-.03em}
+.vizring .c{display:flex;flex-direction:column;gap:3px}
+.vizring .c b{font-size:13px;color:var(--navy)}
+.vizring .c i{font-style:normal;font-size:11.5px;color:var(--muted)}
+.vizrows{width:100%;display:flex;flex-direction:column;gap:7px}
+.vizrows div{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fff;border:1px solid var(--bd2);border-radius:10px;padding:9px 12px;font-size:12.5px;font-weight:600;color:var(--navy)}
+.vizshot{position:relative;width:92px;aspect-ratio:9/16;border-radius:10px;overflow:hidden;border:1px solid var(--bd2);box-shadow:0 12px 28px -16px rgba(0,15,77,.4)}
+.vizshot img{width:100%;height:100%;object-fit:cover;display:block}
+.vizfix{display:flex;align-items:center;gap:12px}
+.vizfix .note{background:#fff;border:1px solid var(--bd2);border-radius:12px;padding:10px 13px;display:flex;flex-direction:column;gap:5px;box-shadow:0 10px 26px -18px rgba(0,15,77,.3)}
+.vizfix .note b{font-size:12.5px;color:var(--navy)}
+.vizfix .note i{font-style:normal;font-size:11.5px;color:var(--muted);line-height:1.4;max-width:22ch}
+.benefits{display:grid;gap:18px}
+.ben{display:flex;gap:12px}
+.ben .ic{width:36px;height:36px;flex:none;border-radius:11px;background:rgba(41,79,246,.09);display:grid;place-items:center;color:var(--blue)}
+.ben h4{font-size:13.5px;line-height:1.3}
+.ben p{font-size:12.5px;line-height:1.5;color:var(--body);margin-top:3px}
+.steps{display:flex;flex-direction:column;gap:14px}
+.step{display:flex;gap:14px;background:#fff;border:1px solid var(--border);border-radius:16px;padding:18px}
+.step .no{font-size:30px;font-weight:800;color:rgba(41,79,246,.28);line-height:1;letter-spacing:-.04em;flex:none}
+.step h3{font-size:16px;line-height:1.3}
+.step p{font-size:13.5px;line-height:1.55;color:var(--body);margin-top:6px}
+.agrid{display:grid;gap:16px}
+.agroup{background:#fff;border:1px solid var(--border);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px}
+.agroup .gh{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.agroup h3{font-size:15px}
+.achips{display:flex;flex-wrap:wrap;gap:7px}
+.achips span{font-size:12px;font-weight:500;color:var(--navy2);background:var(--l2);border:1px solid var(--border);border-radius:8px;padding:5px 9px}
+.whogrid{display:grid;gap:16px}
+.who{background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:8px}
+.who .ic{width:38px;height:38px;border-radius:12px;background:rgba(41,79,246,.09);display:grid;place-items:center;color:var(--blue);margin-bottom:2px}
+.who h3{font-size:15.5px}
+.who p{font-size:13px;line-height:1.55;color:var(--body)}
+.faqlist{display:flex;flex-direction:column;gap:10px}
+details.faq{background:#fff;border:1px solid var(--border);border-radius:14px}
+details.faq>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:16px 18px;font-size:14.5px;font-weight:600;color:var(--navy)}
+details.faq>summary::-webkit-details-marker{display:none}
+details.faq>summary span{flex:1}
+details.faq>summary svg{color:var(--blue4);flex:none;transition:transform .18s}
+details.faq[open]>summary svg{transform:rotate(45deg)}
+details.faq p{padding:0 18px 17px;font-size:13.5px;line-height:1.6;color:var(--body);text-wrap:pretty}
+.finalwrap{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;text-align:center;gap:16px;max-width:640px;margin:0 auto}
+.finalwrap h2{font-size:29px;line-height:1.1;color:#fff;max-width:24ch}
+.finalwrap p{font-size:15px;line-height:1.55;color:#b9c4ee;max-width:44ch}
+.lsec.dark .blob{position:absolute;border-radius:50%;filter:blur(110px);pointer-events:none}
+.lsec.dark .blob.a{top:-30%;left:12%;width:380px;height:380px;background:rgba(41,79,246,.55)}
+.lsec.dark .blob.b{bottom:-35%;right:8%;width:320px;height:320px;background:rgba(135,156,247,.35)}
+.logostrip{display:flex;flex-wrap:wrap;justify-content:center;gap:12px;margin-top:2px}
+.logostrip img{width:44px;height:44px;object-fit:contain;filter:drop-shadow(0 8px 16px rgba(41,79,246,.35))}
+.btn.light{background:#fff;color:var(--navy)}
+.btn.light:hover{background:var(--peri)}
+.btn.outline{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.32)}
+.btn.outline:hover{background:rgba(255,255,255,.1)}
+.finalwrap .crosslink{color:#a9b6e8}
+.finalwrap .crosslink a{color:#fff;font-weight:600}
+@container (min-width:700px){
+ .lsec{padding:78px 40px}
+ .lwrap{gap:38px}
+ .sechead h2{font-size:40px}
+ .sechead p{font-size:17px}
+ .cards3{grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}
+ .fcard .viz{min-height:190px;padding:26px}
+ .fcard .txt{padding:22px}
+ .fcard h3{font-size:18px}
+ .benefits{grid-template-columns:repeat(3,minmax(0,1fr));gap:26px 32px}
+ .steps{flex-direction:row;gap:20px}
+ .step{flex-direction:column;flex:1;padding:24px}
+ .step .no{font-size:44px}
+ .step h3{font-size:19px}
+ .agrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+ .agroup{padding:24px}
+ .whogrid{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+ .finalwrap h2{font-size:46px}
+ .finalwrap p{font-size:18px}
+ .logostrip img{width:56px;height:56px}
+}
+
+@container (min-width:700px){
+ .pad{padding:64px 40px 72px;max-width:1140px;margin:0 auto}
+ .hero h1{font-size:52px}
+ .hero p.sub{font-size:18px;max-width:52ch}
+ .inputcard{padding:26px}
+ .inputrow{display:flex;flex-direction:row;align-items:center;gap:12px}
+ .fieldlabel{font-size:14px;margin-bottom:12px}
+ .inputrow .input{flex:1;min-width:0;height:58px;font-size:15.5px}
+ .inputrow .btn{height:58px;padding:0 30px;font-size:16px}
+ .drop{padding:30px 20px}
+ .twocol{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(300px,.85fr);gap:56px;align-items:center}
+ .twocol.rev{grid-template-columns:400px minmax(0,1fr)}
+ .sectionhead h2{font-size:28px}
+ .scard{border-radius:26px}
+ .scard .top{padding:28px 28px 18px;gap:22px}
+ .metarow{padding:0 28px 20px}
+ .thumb{width:96px}
+ .ring{width:126px;height:126px}
+ .ring .val b{font-size:42px}
+ .verdict{margin:0 28px 20px;font-size:15px;padding:16px 18px}
+ .checks{margin:0 28px}
+ .checks .row{padding:13px 16px}
+ .mark{padding:16px 28px}
+ .gate{padding:28px;display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:28px;align-items:center}
+ .gate .gcol{display:flex;flex-direction:column;gap:12px}
+ .gate h3{font-size:19px}
+ .agent{padding:16px 20px;gap:16px}
+ .agent .hd .an{font-size:14px}
+ .agent .cm{font-size:13px}
+ .agent .shot{width:54px}
+ details.grp>summary{padding:18px 20px}
+ details.grp>summary .gname{font-size:16px}
+ .band{padding:18px 22px}
+ .band .num{font-size:32px}
+ .proc{padding:96px 40px 100px}
+ .proc .halo{width:210px;height:210px}
+ .proc .halo img{width:152px;height:152px}
+ .proc h2{font-size:30px}
+ .status{font-size:17px}
+ .closing{padding:76px 40px 84px}
+ .closing h2{font-size:34px}
+ .ctastack{flex-direction:row;max-width:none;justify-content:center}
+ .ctastack .btn{width:auto}
+ .errwrap{padding:80px 40px 88px}
+ .scoreside{display:grid;grid-template-columns:420px minmax(0,1fr);gap:56px;align-items:start}
+ .scoreside .aside{display:flex;flex-direction:column;gap:18px;padding-top:8px}
+ .sharerow{justify-content:flex-start;margin-top:0}
+}
+</style></head>
+<body data-w="m">
+
+<div class="bar">
+  <div class="brandline"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png" alt="">Instagram Reel Analyser</div>
+  <div class="sp"></div>
+  <span class="seglabel">Width</span>
+  <div class="seg" id="wSeg"><button data-w="m" aria-pressed="true">Mobile 390</button><button data-w="d" aria-pressed="false">Desktop 1140</button></div>
+</div>
+
+<div class="desk">
+
+<!-- 1 ─────────────────────────────────────────────── -->
+<section class="state" data-screen-label="01">
+  <div class="slug"><span class="n">01</span><h4>Input</h4><span class="note">Landing page. Organic search destination.</span></div>
+  <div class="frame">
+    <div class="pad herowrap">
+      <div class="wash"><div class="g1"></div><div class="b1"></div><div class="b2"></div><div class="grid"></div></div>
+      <div class="herogrid">
+        <div class="hcol">
+          <span class="eyebrow2"><i></i>Instagram Reel Analyser</span>
+          <div class="h1blk">
+            <h1>Creator made a Reel? Break it down in seconds.</h1>
+            <p class="typing"><span id="typeWordB">Creator Reels</span><span class="caret"></span></p>
+          </div>
+          <p class="sub" style="max-width:46ch;text-align:left">24 Review Agents watch it frame by frame and flag what you would check anyway: the hook, the product, the brand mention, the safe zones. Under 60 seconds.</p>
+          <div class="tabs" id="inputTabs" role="tablist">
+            <button role="tab" aria-selected="true" data-tab="url"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12 19"/></svg>Paste URL</button>
+            <button role="tab" aria-selected="false" data-tab="file"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>Upload file</button>
+          </div>
+          <div class="card inputcard" style="width:100%;padding:18px">
+            <div class="tabpanel" data-panel="url">
+              <span class="fieldlabel">Paste the Reel URL</span>
+              <div class="inputrow field">
+                <div class="input"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12 19"/></svg><span class="txt">https://www.instagram.com/reel/...</span></div>
+                <button class="btn">Break it down<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13m-5.5-5.5L19 12l-6.5 5.5"/></svg></button>
+              </div>
+            </div>
+            <div class="tabpanel" data-panel="file" hidden>
+              <span class="fieldlabel">Or upload the file they sent you</span>
+              <div class="drop">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7a93ff" stroke-width="1.8" stroke-linecap="round"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+                <span class="t">Drop the video file, or tap to browse</span>
+                <span class="s">MP4 or MOV, up to 200MB</span>
+              </div>
+              <button class="btn" style="width:100%;margin-top:12px">Break it down<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13m-5.5-5.5L19 12l-6.5 5.5"/></svg></button>
+            </div>
+          </div>
+          <div class="truststrip">
+            <span><i class="pulse"></i>24 Review Agents watching</span>
+            <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m4 12.5 5 5L20 6.5"/></svg>Frame by frame</span>
+            <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m4 12.5 5 5L20 6.5"/></svg>Under 60 seconds</span>
+            <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m4 12.5 5 5L20 6.5"/></svg>Free</span>
+          </div>
+        </div>
+        <div class="assetwrap">
+          <div class="halo2"></div>
+          <div class="assetdisc">
+            <div class="discvid"><video src="https://res.cloudinary.com/dchroynzv/video/upload/demo/veloure/jas-v1.mp4" poster="https://res.cloudinary.com/dchroynzv/video/upload/so_1/demo/veloure/jas-v1.jpg" autoplay muted loop playsinline></video><span class="scanui"><i class="k k1"></i><i class="k k2"></i><i class="k k3"></i><i class="k k4"></i><i class="line"></i></span><span class="tl"><b></b></span></div>
+          </div>
+          <div class="flo" style="--top:-10%;--right:-8%;--mtop:-5%;--mright:-4%;--s:110px;--sm:64px;--r:12deg;--d:0s"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_instagram-logo-3d-transparent_2026-05.png" alt="Instagram Reel" draggable="false"></div>
+          <div class="flo rev" style="--top:38%;--right:-14%;--mtop:40%;--mright:-7%;--s:78px;--sm:46px;--r:6deg;--d:.5s;--fx:-1"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_upload-cloud-3d-transparent_2026-05.png" alt="Upload" draggable="false"></div>
+          <div class="flo" style="--bot:-4%;--right:0%;--mbot:-2%;--mright:0%;--s:92px;--sm:54px;--r:-14deg;--d:1s;--fx:-1"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_instagram-logo-3d-transparent_2026-05.png" alt="Instagram Reel" draggable="false"></div>
+          <div class="flo rev" style="--bot:12%;--left:-12%;--mbot:8%;--mleft:-5%;--s:72px;--sm:42px;--r:-8deg;--d:.3s"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_upload-cloud-3d-transparent_2026-05.png" alt="Upload" draggable="false"></div>
+          <div class="flo" style="--top:8%;--left:-10%;--mtop:4%;--mleft:-5%;--s:88px;--sm:52px;--r:18deg;--d:.8s;--fx:-1"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_instagram-logo-3d-transparent_2026-05.png" alt="Instagram Reel" draggable="false"></div>
+          <div class="chip2"><span class="ping"><i></i><i></i></span>Live AI analysis</div>
+          <div class="scorechip"><b>94</b><span><span class="t">Hook score</span><br><span class="v">First 0.7s</span></span></div>
+        </div>
+      </div>
+    </div>
+
+    <section class="lsec">
+      <div class="lwrap">
+        <div class="sechead">
+          <span class="sectag"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png" alt="">Why things get missed</span>
+          <h2>You are not missing things because you are careless. You are missing them because there are forty of them.</h2>
+          <p>Nobody watches the fortieth Reel the way they watched the first. The hook slips past at seven seconds instead of three. The text sits low enough that the caption covers it, and you saw it full screen in your editor so it looked fine. The brand name lands after most people have gone. None of that survives 2x with three more waiting.</p>
+        </div>
+        <div class="flagwrap">
+          <span class="flaglabel">From a real breakdown</span>
+          <div class="flagrows">
+            <div class="flagrow"><span class="ts">0:07</span><span class="nm">Hook landed late</span><span class="pill flag">Flag</span></div>
+            <div class="flagrow"><span class="ts">0:04</span><span class="nm">Text behind the caption area</span><span class="pill flag">Flag</span></div>
+            <div class="flagrow"><span class="ts">4s</span><span class="nm">Product on screen</span><span class="pill warn">Thin</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="lsec alt">
+      <div class="lwrap">
+        <div class="sechead">
+          <span class="sectag"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png" alt="">What you get</span>
+          <h2>Everything you would check yourself. In 60 seconds.</h2>
+          <p>A score out of 100, then all 24 checks behind it, with a timestamp on every moment that costs you attention, product visibility or a sale.</p>
+        </div>
+        <div class="cards3">
+          <div class="fcard">
+            <div class="viz"><div class="vizring"><span class="r"><svg width="62" height="62" viewBox="0 0 62 62" style="transform:rotate(-90deg)"><circle cx="31" cy="31" r="26" fill="none" stroke="#eef4fd" stroke-width="7"/><circle cx="31" cy="31" r="26" fill="none" stroke="#294ff6" stroke-width="7" stroke-linecap="round" stroke-dasharray="163.4" stroke-dashoffset="29.4"/></svg><span>82</span></span><span class="c"><b>Hook lands 0:02</b><i>Scored frame by frame</i></span></div></div>
+            <div class="txt"><h3>The things you always check</h3><p>Hook timing, product visibility, brand mention, CTA. The checks you run in your head on every Reel, run properly on this one, scored against the patterns from millions of high-performing Reels.</p></div>
+          </div>
+          <div class="fcard">
+            <div class="viz"><div class="vizrows"><div>Caption block<span class="pill flag">Covers text</span></div><div>Action rail<span class="pill pass">Clear</span></div><div>Grid crop<span class="pill flag">Loses subject</span></div></div></div>
+            <div class="txt"><h3>The things Instagram hides</h3><p>Where the caption block, the audio strip and the action rail cover your text. How the frame holds up when it crops to the grid. Things that look fine in your editor and disappear in the feed.</p></div>
+          </div>
+          <div class="fcard">
+            <div class="viz"><div class="vizfix"><span class="vizshot"><img src="https://res.cloudinary.com/dchroynzv/video/upload/so_18/demo/veloure/example-1.jpg" alt="Frame from a creator video"></span><span class="note"><b>0:22 Brand mention</b><i>First mention lands at 0:22, past the point most viewers leave. Say it once in the first five seconds.</i><span class="pill blue" style="align-self:flex-start">Ready to send</span></span></div></div>
+            <div class="txt"><h3>Feedback that names a second</h3><p>Every flag points at the timestamp it happens, with the frame beside it. So when you go back to the creator you send a moment, not a feeling.</p></div>
+          </div>
+        </div>
+        <div class="benefits">
+          <div class="ben"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 18.5v2"/><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"/></svg></span><div><h4>Hook timing to the second</h4><p>Whether it lands in the first three seconds or drifts to seven.</p></div></div>
+          <div class="ben"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9 12 2 2 4-4"/><rect x="3" y="4" width="18" height="16" rx="2.5"/></svg></span><div><h4>Product visibility measured</h4><p>How long the product is actually on screen, not how long it felt.</p></div></div>
+          <div class="ben"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l4-6 4 3 4-7 6 4"/></svg></span><div><h4>Brand mention timing</h4><p>Whether the brand gets said, and whether it gets said before people leave.</p></div></div>
+          <div class="ben"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/></svg></span><div><h4>Watchable on mute</h4><p>Captions and on-screen text checked for sound-off viewers, which is most of them.</p></div></div>
+          <div class="ben"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 20V9"/></svg></span><div><h4>Cover frame check</h4><p>Whether the opening frame holds up as the cover people see in the grid.</p></div></div>
+          <div class="ben"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9 12 2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg></span><div><h4>Claims and copyright flagged</h4><p>Anything risky in the words or the sound, caught while it is still a draft.</p></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="lsec">
+      <div class="lwrap">
+        <div class="sechead">
+          <span class="sectag"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png" alt="">How it works</span>
+          <h2>Three steps. Sixty seconds.</h2>
+          <p>No editing, no download, and no account until you have seen your score.</p>
+        </div>
+        <div class="steps">
+          <div class="step"><span class="no">01</span><div><h3>Paste the Reel URL, or drop the file</h3><p>The link a creator sent you, a Reel already live, or the file straight off your desktop.</p></div></div>
+          <div class="step"><span class="no">02</span><div><h3>24 Review Agents watch it</h3><p>Computer vision walks every frame, speech to text reads the audio. Each agent checks one thing only, scored against the patterns from millions of high-performing Reels.</p></div></div>
+          <div class="step"><span class="no">03</span><div><h3>Get the score and the flags</h3><p>A score out of 100 on screen straight away, then every check with its timestamp in your inbox.</p></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="lsec alt">
+      <div class="lwrap">
+        <div class="sechead">
+          <span class="sectag"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png" alt="">Built for Reels</span>
+          <h2>Instagram covers, crops and rewards differently.</h2>
+          <p>A video that works on TikTok can quietly fall apart as a Reel, because Instagram puts its interface in different places and shows the same video in more than one shape. These are the checks that only matter here.</p>
+        </div>
+        <div class="moments">
+          <div class="moment"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M6 16h9"/></svg></span><h3>The caption and audio strip</h3><p>Instagram&rsquo;s caption block and audio attribution run along the bottom and cover more of the frame than people expect. Text placed low reads fine in the editor and disappears in the feed.</p></div>
+          <div class="moment"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="17.4" cy="8.6" r="1.1"/><circle cx="17.4" cy="12" r="1.1"/><circle cx="17.4" cy="15.4" r="1.1"/></svg></span><h3>The right-hand action rail</h3><p>Like, comment, share and the menu run up the right side. Anything important on that edge competes with buttons.</p></div>
+          <div class="moment"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M3 9h18M9 3v18"/></svg></span><h3>The grid crop</h3><p>Reels get cropped for the profile grid. A composition centred for 9:16 can lose its subject in the grid tile, which is where a lot of people meet your content first.</p></div>
+          <div class="moment"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="m6 17 4-5 3 3.5 2-2.5 3 4"/></svg></span><h3>The cover frame</h3><p>The opening frame does double duty as the cover image. A frame that works as a hook does not always work as a thumbnail.</p></div>
+          <div class="moment"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 18.5v2"/><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"/></svg></span><h3>Original audio versus trending audio</h3><p>Whether the audio choice suits the Reel, and whether the voiceover survives being played against a trending track.</p></div>
+          <div class="moment"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12v16l-6-4.5L6 20Z"/></svg></span><h3>Saves and shares</h3><p>Instagram rewards content people save and send on. The agents flag the moments built for that, and the ones that read as an ad and get scrolled.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="lsec">
+      <div class="lwrap">
+        <div class="sechead">
+          <span class="sectag"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png" alt="">Inside the breakdown</span>
+          <h2>Meet the 24 Review Agents.</h2>
+          <p>One agent, one job. That is why nothing comes back as a vague verdict, and why every flag arrives with a timestamp you can send straight to the creator.</p>
+        </div>
+        <div class="agrid">
+          <div class="agroup"><div class="gh"><h3>Hook and attention</h3><span class="pill blue">5 agents</span></div><div class="achips"><span>Hook quality</span><span>Visual hook</span><span>Scene pacing</span><span>Video length</span><span>Watchable on mute</span></div></div>
+          <div class="agroup"><div class="gh"><h3>Creator and delivery</h3><span class="pill blue">5 agents</span></div><div class="achips"><span>Creator visibility</span><span>Energy and authenticity</span><span>Wardrobe and appearance</span><span>Audio delivery</span><span>Pronunciation</span></div></div>
+          <div class="agroup"><div class="gh"><h3>Production quality</h3><span class="pill blue">8 agents</span></div><div class="achips"><span>Audio clarity</span><span>Music and sound balance</span><span>Lighting and camera</span><span>Setting and background</span><span>Text legibility</span><span>Closed captions</span><span>Safe zones</span><span>Distracting elements</span></div></div>
+          <div class="agroup"><div class="gh"><h3>Brand and conversion</h3><span class="pill blue">6 agents</span></div><div class="achips"><span>Product visibility</span><span>Product usage</span><span>Brand name mentioned</span><span>Brand alignment</span><span>CTA present</span><span>Copyright check</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="lsec alt">
+      <div class="lwrap">
+        <div class="sechead">
+          <span class="sectag"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png" alt="">When to use it</span>
+          <h2>Four moments in a normal week.</h2>
+        </div>
+        <div class="moments">
+          <div class="moment"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h5l2 3h4l2-3h5"/><path d="M5 12 7 5h10l2 7v6a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 18Z"/></svg></span><h3>A creator just sent one in</h3><p>Run it before you watch it, and open it already knowing where the problems are.</p></div>
+          <div class="moment"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20v-11"/></svg></span><h3>Before you put spend behind it</h3><p>Know whether it earns the budget before the budget is gone.</p></div>
+          <div class="moment"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6.5 7L13 9.5 21 18"/><path d="M21 13v5h-5"/></svg></span><h3>When one of them flopped</h3><p>You approved it, it went out, it died. Get the reason instead of the mystery.</p></div>
+          <div class="moment"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16l-1.4 11a2 2 0 0 1-2 1.8H7.4a2 2 0 0 1-2-1.8Z"/><path d="M9 7V5.5a3 3 0 0 1 6 0V7"/></svg></span><h3>Before you send samples to someone new</h3><p>Break down a Reel from their feed and see how they perform on the things you care about.</p></div>
+        </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="lsec">
+      <div class="lwrap">
+        <div class="sechead">
+          <span class="sectag"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png" alt="">Questions</span>
+          <h2>Things people ask before they paste.</h2>
+        </div>
+        <div class="faqlist">
+          <details class="faq"><summary><span>Is the Instagram Reel analyser really free?</span><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></summary><p>Yes. Paste a Reel URL and the score appears without an account. You give a work email only if you want the full check-by-check breakdown from all 24 Review Agents.</p></details>
+          <details class="faq"><summary><span>Can I run a Reel a creator sent me privately?</span><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></summary><p>Yes. Upload the file instead of pasting a link. Nothing needs to be posted first.</p></details>
+          <details class="faq"><summary><span>Does it check the Instagram safe zones?</span><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></summary><p>Yes, and it is the check people find most useful here. The caption block, the audio strip and the action rail all cover parts of the frame, so text that looked fine in your editor can be unreadable in the feed. Every clash is flagged with a timestamp.</p></details>
+          <details class="faq"><summary><span>Will it tell me if the cover frame works?</span><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></summary><p>Yes. The opening frame is checked both as a hook and as the cover people see in the grid, because those are two different jobs.</p></details>
+          <details class="faq"><summary><span>Can I use the flags as feedback for the creator?</span><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></summary><p>That is what most people do with them. Each flag is a timestamp and a one-line reason, so it goes straight into a message without you rewriting it.</p></details>
+          <details class="faq"><summary><span>How long does it take?</span><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></summary><p>Under 60 seconds for most Reels. The 24 agents watch in parallel.</p></details>
+          <details class="faq"><summary><span>Can ChatGPT do this from a link?</span><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></summary><p>No. General assistants can discuss a video you describe to them. This watches the file, times the hook and reports what it found with timestamps.</p></details>
+          <details class="faq"><summary><span>Why do you ask for a work email?</span><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></summary><p>Free email addresses are not accepted. The full breakdown is built for people reviewing other people's content, so the gate keeps it to working inboxes.</p></details>
+          <details class="faq"><summary><span>What is the difference between this and Brieflee?</span><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></summary><p>This is one Reel. Brieflee runs the same 24 Review Agents across every video your creators send you, checked against your brief rather than general best practice, so the pile arrives already sorted. Free for 7 days.</p></details>
+        </div>
+      </div>
+    </section>
+
+    <section class="lsec dark">
+      <span class="blob a"></span><span class="blob b"></span>
+      <div class="lwrap">
+        <div class="finalwrap">
+          <span class="sectag"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png" alt="">Free to use</span>
+          <h2>Start with one. Then decide about the other thirty-nine.</h2>
+          <p>Paste the Reel URL and 24 Review Agents watch it for you. A score out of 100 and a flag on everything you would have caught on a good week. Free, and no account needed to see your score.</p>
+          <div class="logostrip"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_instagram-logo-3d-transparent_2026-05.png" alt="" style="transform:rotate(-6deg)"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_upload-cloud-3d-transparent_2026-05.png" alt="" style="transform:rotate(6deg)"></div>
+          <div class="ctastack" style="margin-top:6px">
+            <button class="btn light">Break down a Reel</button>
+            <a class="btn outline" href="/sign-up">See how Brieflee checks every video</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</section>
+
+<!-- 2 ─────────────────────────────────────────────── -->
+─────────────────────────────────────────────── -->
+<section class="state" data-screen-label="02">
+  <div class="slug"><span class="n">02</span><h4>Processing</h4><span class="note">Runs straight after the paste. No email asked for yet.</span></div>
+  <div class="frame">
+    <div class="proc">
+      <div class="gatevid" style="max-width:380px;margin:0 auto 26px;text-align:left">
+        <span class="gvshot"><img src="https://res.cloudinary.com/dchroynzv/video/upload/so_2/demo/veloure/jas-v1.jpg" alt="The video being watched"></span>
+        <div class="gvmeta">
+          <span class="minilabel">Now watching</span>
+          <b>@lunaroca.studio</b>
+          <span class="gvsub">0:24 · Instagram Reel · pasted just now</span>
+        </div>
+      </div>
+      <div class="halo"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png" alt="Review Agents"></div>
+      <h2>24 agents watching</h2>
+      <p class="status" id="statusLine">Checking your hook...</p>
+      <div class="bar-ind"></div>
+      <div class="dots" id="dots"></div>
+      <p class="cnt">Usually takes under a minute. Keep this tab open.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 3 ─────────────────────────────────────────────── -->
+<section class="state" data-screen-label="03">
+  <div class="slug"><span class="n">03</span><h4>Score reveal, then the gate</h4><span class="note">Score renders with no account. The gate sits under it, never in front of it.</span></div>
+  <div class="frame">
+    <div class="pad">
+      <div class="scoreside">
+        <div>
+          <div class="scard">
+            <div class="top">
+              <div class="thumb"><img src="https://res.cloudinary.com/dchroynzv/video/upload/so_2/demo/veloure/jas-v1.jpg" alt="Scored video"><b>0:24</b></div>
+              <div class="ring">
+                <svg width="126" height="126" viewBox="0 0 126 126"><circle cx="63" cy="63" r="54" fill="none" stroke="#eef4fd" stroke-width="11"/><circle cx="63" cy="63" r="54" fill="none" stroke="url(#g1)" stroke-width="11" stroke-linecap="round" stroke-dasharray="339.3" stroke-dashoffset="61.1"/><defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#879cf7"/><stop offset="1" stop-color="#294ff6"/></linearGradient></defs></svg>
+                <div class="val"><b>82</b><span>/ 100</span></div>
+              </div>
+            </div>
+            <div class="metarow">
+              <span class="lbl">Reel score</span>
+              <span class="h">@lunaroca.studio</span>
+              <span class="sm">19 of 24 checks passed</span>
+            </div>
+            <p class="verdict">Hook lands, pacing is clean. Your text sits where the caption covers it from 0:04.</p>
+            <div class="checks">
+              <div class="row"><span class="nm">Hook in first 3 seconds</span><span class="pill pass">Pass</span></div>
+              <div class="row"><span class="nm">Product visibility</span><span class="pill pass">Pass</span></div>
+              <div class="row"><span class="nm">Safe zones</span><span class="pill flag">Flag</span></div>
+              <div class="row"><span class="nm">Watchable on mute</span><span class="pill pass">Pass</span></div>
+              <div class="row"><span class="nm">CTA present</span><span class="pill flag">Flag</span></div>
+            </div>
+            <div class="mark">
+              <span class="l"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png" alt=""><b>Scored by Brieflee</b></span>
+              <span class="r">brieflee.com/score</span>
+            </div>
+          </div>
+          <div class="cropnote"><span>Shareable crop ends at the watermark edge.</span></div>
+        </div>
+        <div class="aside">
+          <div class="sectionhead" style="align-items:flex-start;text-align:left"><h2>See all 24 checks</h2><p>Every flag with a timestamp and the frame beside it, so your feedback to the creator names a second instead of a feeling.</p></div>
+          <div class="card" style="padding:20px">
+            <div class="field">
+              <span class="fieldlabel" style="margin-bottom:0">Your work email</span>
+              <div class="input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7 8.5 6 8.5-6"/></svg><span class="txt">you@company.com</span></div>
+              <button class="btn">Send my full breakdown</button>
+              <p class="microcopy">Free email addresses are not accepted, so use the one you use for the business.</p>
+              <label class="optin"><i></i><span>Send me Brieflee's guides on briefing creators. Unsubscribe anytime.</span></label>
+            </div>
+          </div>
+          <div class="trust"><span><i></i>24 Review Agents</span><span><i></i>Under 60 seconds</span><span><i></i>Free</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 ─────────────────────────────────────────────── -->
+<section class="state" data-screen-label="04">
+  <div class="slug"><span class="n">04</span><h4>Full breakdown</h4><span class="note">All 24 agents, grouped. Also emailed.</span></div>
+  <div class="frame">
+    <div class="pad">
+      <div class="band" style="margin-bottom:16px">
+        <span class="num">82<sup>/100</sup></span>
+        <span class="txt">19 of 24 checks passed</span>
+        <span class="track"><b></b></span>
+      </div>
+
+      <div class="groups">
+        <details class="grp" open>
+          <summary><span class="gname">Hook and attention</span><span class="pill blue">4 of 5 passed</span><svg class="chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="agents">
+            <div class="agent"><div class="shot"><img src="https://res.cloudinary.com/dchroynzv/video/upload/so_1/demo/veloure/jas-v1.jpg" alt="Watchable on mute check frame"></div><div class="bd"><div class="hd"><span class="an">Hook quality</span><span class="pill pass">Pass</span><span class="score">9/10</span><span class="chip">0:00</span></div><p class="cm">You open on the problem before the product, which is the reason people stay past the first second.</p></div></div>
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Visual hook</span><span class="pill pass">Pass</span><span class="score">8/10</span><span class="chip">0:01</span></div><p class="cm">Movement in the first frame, and your face fills enough of the screen to read on a phone.</p></div></div>
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Scene pacing</span><span class="pill pass">Pass</span><span class="score">8/10</span></div><p class="cm">Cuts land every two to three seconds, fast enough to hold without feeling frantic.</p></div></div>
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Video length</span><span class="pill pass">Pass</span><span class="chip">0:24</span></div></div></div>
+            <div class="agent"><div class="shot"><img src="https://res.cloudinary.com/dchroynzv/video/upload/so_7/demo/veloure/jas-v2.jpg" alt="Text legibility check frame"></div><div class="bd"><div class="hd"><span class="an">Watchable on mute</span><span class="pill flag">Flag</span><span class="score">4/10</span><span class="chip">0:11</span></div><p class="cm">The middle section carries the whole point in voiceover only. Add on-screen text for the two lines from 0:11.</p></div></div>
+          </div>
+        </details>
+
+        <details class="grp">
+          <summary><span class="gname">Creator and delivery</span><span class="pill blue">5 of 5 passed</span><svg class="chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="agents">
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Creator visibility</span><span class="pill pass">Pass</span><span class="score">9/10</span></div><p class="cm">You are on camera for most of the video, which is what makes this feel like a person and not an ad.</p></div></div>
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Energy and authenticity</span><span class="pill pass">Pass</span><span class="score">9/10</span></div><p class="cm">Conversational throughout. Nothing here sounds read off a page.</p></div></div>
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Wardrobe and appearance</span><span class="pill pass">Pass</span></div><p class="cm">Plain top, no busy pattern competing with the product.</p></div></div>
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Audio delivery</span><span class="pill pass">Pass</span><span class="score">8/10</span></div><p class="cm">Steady pace with clear emphasis on the benefit line.</p></div></div>
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Pronunciation</span><span class="pill pass">Pass</span></div><p class="cm">Product name said correctly each time.</p></div></div>
+          </div>
+        </details>
+
+        <details class="grp">
+          <summary><span class="gname">Production quality</span><span class="pill blue">6 of 8 passed</span><svg class="chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="agents">
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Audio clarity</span><span class="pill pass">Pass</span><span class="score">8/10</span></div><p class="cm">Voice sits well above the room. No clipping.</p></div></div>
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Music and sound balance</span><span class="pill pass">Pass</span><span class="score">7/10</span></div><p class="cm">Track stays under the voice the whole way through.</p></div></div>
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Lighting and camera</span><span class="pill pass">Pass</span><span class="score">8/10</span></div><p class="cm">Soft front light, steady handheld, focus holds on your face.</p></div></div>
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Setting and background</span><span class="pill pass">Pass</span></div><p class="cm">Kitchen counter reads as real and stays tidy.</p></div></div>
+            <div class="agent"><div class="shot"><img src="https://res.cloudinary.com/dchroynzv/video/upload/so_19/demo/veloure/talia-v1.jpg" alt="Safe zones check frame"></div><div class="bd"><div class="hd"><span class="an">Text legibility</span><span class="pill flag">Flag</span><span class="score">5/10</span><span class="chip">0:07</span></div><p class="cm">White caption over the pale worktop drops out. Add a shadow or a solid caption background.</p></div></div>
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Closed captions</span><span class="pill pass">Pass</span></div><p class="cm">Burned-in captions run the full length and match the audio.</p></div></div>
+            <div class="agent"><div class="shot"><img src="https://res.cloudinary.com/dchroynzv/video/upload/so_18/demo/veloure/example-1.jpg" alt="Brand mention check frame"></div><div class="bd"><div class="hd"><span class="an">Safe zones</span><span class="pill flag">Flag</span><span class="chip">0:19</span></div><p class="cm">The closing line sits under Instagram&rsquo;s caption block and audio strip. Move it up about 12 percent of frame height.</p></div></div>
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Distracting elements</span><span class="pill pass">Pass</span></div></div></div>
+          </div>
+        </details>
+
+        <details class="grp">
+          <summary><span class="gname">Brand and conversion</span><span class="pill blue">4 of 6 passed</span><svg class="chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="agents">
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Product visibility</span><span class="pill pass">Pass</span><span class="score">8/10</span><span class="chip">0:05</span></div><p class="cm">Front of pack is readable in three separate shots.</p></div></div>
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Product usage</span><span class="pill pass">Pass</span><span class="score">9/10</span></div><p class="cm">You use it on camera rather than holding it up, which is the version that converts.</p></div></div>
+            <div class="agent"><div class="shot"><img src="https://res.cloudinary.com/dchroynzv/video/upload/so_4/demo/veloure/example-2.jpg" alt="Brand mention check frame"></div><div class="bd"><div class="hd"><span class="an">Brand name mentioned</span><span class="pill flag">Flag</span><span class="chip">0:18</span></div><p class="cm">First mention lands at 0:18, past the point most viewers leave. Say it once in the first five seconds.</p></div></div>
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Brand alignment</span><span class="pill pass">Pass</span></div><p class="cm">Tone matches the brand's warm, plain-spoken style.</p></div></div>
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">CTA present</span><span class="pill pass">Pass</span><span class="score">7/10</span><span class="chip">0:21</span></div><p class="cm">Clear ask at the end. Naming the exact place to tap would lift it further.</p></div></div>
+            <div class="agent"><div class="bd"><div class="hd"><span class="an">Copyright check</span><span class="pill flag">Flag</span></div><p class="cm">The track is not on the commercial sound library. Swap it before this runs as an ad.</p></div></div>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 ─────────────────────────────────────────────── -->
+<section class="state" data-screen-label="05">
+  <div class="slug"><span class="n">05</span><h4>Share moment</h4><span class="note">One screen height. Closes on the Brieflee trial.</span></div>
+  <div class="frame">
+    <div class="closing">
+      <img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png" alt="" style="width:74px;height:74px">
+      <h2>That is one video. You have a hundred.</h2>
+      <p class="s">Brieflee runs all 24 Review Agents across every creator video you get sent, and tells you which ones are ready.</p>
+      <div class="sharerow" style="justify-content:center;margin-top:0">
+        <button class="btn sm ghost">Download image</button>
+        <button class="btn sm ghost">Copy link</button>
+        <button class="btn sm ghost">Share</button>
+      </div>
+      <div class="ctastack">
+        <a class="btn" href="/sign-up">Review all your creator content with Brieflee. Free for 7 days.</a>
+        <button class="btn ghost">Break down another Reel</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 ─────────────────────────────────────────────── -->
+<section class="state" data-screen-label="06">
+  <div class="slug"><span class="n">06</span><h4>Failure</h4><span class="note">Same visual language, no alarm styling.</span></div>
+  <div class="frame">
+    <div class="errwrap">
+      <div class="card errcard">
+        <span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 8.5v4"/><circle cx="12" cy="16" r=".6" fill="currentColor"/><circle cx="12" cy="12" r="9"/></svg></span>
+        <h3>We couldn't read that video</h3>
+        <p>The link may be private, deleted, or region locked. Try uploading the file instead.</p>
+        <button class="btn sm">Try again</button>
+        <div class="drop" style="width:100%;margin-top:2px">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7a93ff" stroke-width="1.8" stroke-linecap="round"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+          <span class="t">Upload a video</span>
+          <span class="s">MP4 or MOV, up to 200MB</span>
+        </div>
+      </div>
+      <p class="crosslink">Still stuck? <a href="#">Tell us what happened</a></p>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<script>
+(function(){
+ var b=document.body;
+ function seg(id,attr){var el=document.getElementById(id);el.addEventListener('click',function(e){var t=e.target.closest('button');if(!t)return;b.setAttribute('data-'+attr,t.getAttribute('data-'+attr));[].forEach.call(el.querySelectorAll('button'),function(x){x.setAttribute('aria-pressed',String(x===t))})})}
+ seg('wSeg','w');
+ var lines=["Detecting hook timing and opening frame...","Measuring how long the product is on screen...","Checking the Reels safe zones...","Watching it on mute...","Listening for the brand mention..."];
+ var el=document.getElementById('statusLine'),dots=document.getElementById('dots'),i=0;
+ for(var k=0;k<24;k++){dots.appendChild(document.createElement('i'))}
+ var ds=dots.children;
+ setInterval(function(){i++;el.textContent=lines[i%lines.length];for(var j=0;j<ds.length;j++){ds[j].className=(j<=(i*3)%25)?'on':''}},1800);
+ el.textContent=lines[0];for(var j=0;j<7;j++){ds[j].className='on'}
+ var tabs=document.getElementById('inputTabs');
+ tabs.addEventListener('click',function(e){var t=e.target.closest('button');if(!t)return;var k=t.getAttribute('data-tab');
+  [].forEach.call(tabs.querySelectorAll('button'),function(x){x.setAttribute('aria-selected',String(x===t))});
+  [].forEach.call(document.querySelectorAll('.tabpanel'),function(p){p.hidden=p.getAttribute('data-panel')!==k})});
+ function cycle(id,words){var wEl=document.getElementById(id),wi=0,ci=0,mode='type';
+  (function tick(){var w=words[wi];
+   if(mode==='type'){ci++;wEl.textContent=w.slice(0,ci);if(ci>=w.length){mode='hold';return setTimeout(tick,1400)}return setTimeout(tick,70)}
+   if(mode==='hold'){mode='del';return setTimeout(tick,0)}
+   ci--;wEl.textContent=w.slice(0,ci);if(ci<=0){wi=(wi+1)%words.length;mode='type'}
+   setTimeout(tick,35)})()}
+ cycle('typeWordB',["Creator Reels","UGC Videos","Partnership Ads","Branded Content","Organic Reels"]);
+})();
+</script>
+</body></html>

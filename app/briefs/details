@@ -1,0 +1,3786 @@
+// =====================================================================
+// /app/briefs/details — Brief detail (editable) · Vibe Code block.
+//
+// Lives inside the "Brief & Content" tab container as the first tab.
+// Per-record block — reads the brief whose recordId is in the page URL
+// via useCurrentRecordId + useRecord (no dependency on the page's
+// source-filter setting).
+//
+// Sections (collapsible, in order):
+//   1. Overview          — thumbnail, name, status, category, review mode
+//   2. Brief             — description JSON parsed into editable cards
+//   3. Inspiration       — 3 review picks · 3 swipe picks · 3 URLs
+//   4. Details           — production specs (platform, duration, etc.)
+//   5. Quality Assurance — Review Agents + 9 thresholds
+//   6. Brief context     — target, filmer, channel, awareness, angle
+//
+// Vibe Code notes:
+//   - `updateFields` lists every field this block writes. Adding a
+//     field here without a write path breaks the analyser.
+//   - LOOKUPs (brand_blueprint, website, accounts, etc.) only ever
+//     live in `select`, never in `updateFields`.
+//   - All data constants live AFTER Block() so the analyser hits
+//     useRecordUpdate before its byte budget.
+// =====================================================================
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useRecord, useCurrentRecordId, useRecordUpdate, useUpload, q,
+} from "@/lib/datasource";
+import { useCurrentUser } from "@/lib/user";
+import {
+  ChevronDown, ChevronRight, Info, Lock, LockOpen, Pencil,
+  Upload as UploadIcon, Check, Eye, Plus, Trash2, X,
+  ExternalLink, Image as ImageIcon, Link2, Calendar,
+  Share2, UserCircle2, Mail, Copy, UserPlus, Inbox,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+
+// ─── Brand palette ────────────────────────────────────────────
+const NAVY_DEEP = "#001364";
+const PERIWINKLE = "#879CF7";
+const PERIWINKLE_HOVER = "#294FF6";
+const MUTED = "#6B7A99";
+const SOFT_MUTED = "#9aa6c3";
+const BORDER = "rgba(217, 224, 255, 0.55)";
+const TRACK = "rgba(217, 224, 255, 0.6)";
+const SURFACE = "#FAFBFF";
+const TAG_BG = "rgba(135, 156, 247, 0.10)";
+const SUBTLE_BG = "rgba(135, 156, 247, 0.04)";
+
+// ─── briefs table — full read schema ──────────────────────────
+const select = q.select({
+  // Identity + state
+  name:                          "z3lpx",
+  description:                   "FCBU5",
+  status:                        "71Oud",
+  generated:                     "n4tCi",
+  private_mode:                  "umIL6",
+  seo_index:                     "pikoI", // CHECKBOX — kept in sync with private_mode (public ↔ indexable)
+  live_link:                     "4ztXt", // FORMULA — legacy /brief/details/live URL (fallback only)
+  slug:                          "zMVpa", // FORMULA (kebab-case of brief name) — used to build /brief/<slug>
+  // Project linkage — drives the blocking project-assignment modal.
+  // Vibe Code can't auto-map this from URL on create, so briefs land
+  // here unassigned and the modal forces a pick before editing.
+  projects:                      "yrYvH", // LINKED_RECORD → projects
+  // Visual identity
+  thumbnail:                     "BHWP7",
+  image_url:                     "FVDgz",
+  project_thumbnail:             "8SR2k",
+  logo_file:                     "jdtgI",
+  logo_url:                      "CBKVE",
+  first_format:                  "0oeqf",
+  format:                        "7Qmlq",
+  // Brand context (LOOKUPs — READ-ONLY)
+  brand_blueprint:               "f6xjx",
+  website:                       "nFzdP",
+  accounts:                      "EhzVx",
+  // Gate answers
+  product:                       "hLQlR",
+  feature:                       "yVygW",
+  feature_url:                   "MNiJ7",
+  // Claude-generated summary of what this brief targets — written
+  // by the AI workflow's custom code (data.product_feature_description).
+  product_feature_description:   "CSvl8",
+  // Creative direction
+  creator_type:                  "N1vCS",
+  channel:                       "nbZAV",
+  awareness:                     "PrB4W",
+  angle:                         "DXjSg",
+  ai_mode:                       "wm1jM",
+  // Production specs
+  platform:                      "1lPXC",
+  duration:                      "SleHY",
+  duration_threshold:            "9lwe4",
+  aspect_ratio:                  "Z8kno",
+  content_type:                  "EO7S4",
+  content_delivery:              "U9Cyn",
+  submission_open_date:          "tdVjp",
+  submission_close_date:         "M4hMa",
+  // Review Agents + thresholds
+  qa_checklist:                  "OFoS6",
+  product_screen_time_threshold: "7Zpeo",
+  hook_speed_threshold:          "CEkkg",
+  brand_mention_count_threshold: "rD3qK",
+  face_time_threshold:           "jSDeR",
+  engagement_pacing_threshold:   "15284",
+  cta_placement_threshold:       "zo9Fo",
+  visual_hook_threshold:         "Drp5T",
+  text_legibility_threshold:     "aHH2x",
+  audio_clarity_threshold:       "zXqtt",
+  // Files
+  attachment:                    "dgOkq",
+  brief_document_url:            "Oe8ta",
+  // Inspiration slots
+  example:                       "EyiRa",
+  example_2:                     "otWB7",
+  example_3:                     "V9N3b",
+  videos:                        "xt7vi",
+  videos_2:                      "UrAjm",
+  videos_3:                      "K7cP2",
+  example_video_1:               "5QlsA",
+  example_video_2:               "1uPS0",
+  example_video_3:               "VyB9m",
+  // Direct video URLs LOOKED-UP from each linked review slot.
+  // Used in Inspiration to render an inline <video> preview.
+  // example_X_video_url is a chained LOOKUP into the reviews table
+  // that returns an HTML iframe string built by a FORMULA. The code
+  // parses the URL back out of the iframe — see resolveLookupVideoUrl.
+  example_1_video_url:           "xevIN",
+  example_2_video_url:           "r7blt",
+  example_3_video_url:           "8GNLn",
+  // swipe_X_video_url LOOKUPs return the raw Video URL field from
+  // each linked swipe-file (videos) record. No iframe wrapper.
+  swipe_1_video_url:             "kuuiz",
+  swipe_2_video_url:             "bD0Aw",
+  swipe_3_video_url:             "w0jHW",
+  // Creator assignment
+  creator_name:                  "oIsFn",
+  creator_email:                 "Rogsr",
+});
+
+// ─── briefs table — WRITE schema ──────────────────────────────
+// Every field below must have at least one write path inside Block().
+// LOOKUPs are excluded by definition.
+const updateFields = q.select({
+  // Overview
+  name:                          "z3lpx",
+  status:                        "71Oud",
+  private_mode:                  "umIL6",
+  seo_index:                     "pikoI",
+  thumbnail:                     "BHWP7",
+  ai_mode:                       "wm1jM",
+  // Project assignment (written via the blocking modal)
+  projects:                      "yrYvH",
+  // Brief section
+  description:                   "FCBU5",
+  attachment:                    "dgOkq",
+  brief_document_url:            "Oe8ta",
+  // Creator assignment (Overview)
+  creator_name:                  "oIsFn",
+  creator_email:                 "Rogsr",
+  // Inspiration URLs
+  example_video_1:               "5QlsA",
+  example_video_2:               "1uPS0",
+  example_video_3:               "VyB9m",
+  // Inspiration linked-record slots — written via the picker
+  // postMessages (brieflee:inspo-pick / brieflee:swipe-pick).
+  example:                       "EyiRa",
+  example_2:                     "otWB7",
+  example_3:                     "V9N3b",
+  videos:                        "xt7vi",
+  videos_2:                      "UrAjm",
+  videos_3:                      "K7cP2",
+  // Details section
+  platform:                      "1lPXC",
+  duration:                      "SleHY",
+  duration_threshold:            "9lwe4",
+  aspect_ratio:                  "Z8kno",
+  content_type:                  "EO7S4",
+  content_delivery:              "U9Cyn",
+  submission_open_date:          "tdVjp",
+  submission_close_date:         "M4hMa",
+  // Quality Assurance section
+  qa_checklist:                  "OFoS6",
+  product_screen_time_threshold: "7Zpeo",
+  hook_speed_threshold:          "CEkkg",
+  brand_mention_count_threshold: "rD3qK",
+  face_time_threshold:           "jSDeR",
+  engagement_pacing_threshold:   "15284",
+  cta_placement_threshold:       "zo9Fo",
+  visual_hook_threshold:         "Drp5T",
+  text_legibility_threshold:     "aHH2x",
+  audio_clarity_threshold:       "zXqtt",
+  // Brief context section
+  creator_type:                  "N1vCS",
+  channel:                       "nbZAV",
+  awareness:                     "PrB4W",
+  angle:                         "DXjSg",
+  product:                       "hLQlR",
+  feature:                       "yVygW",
+  feature_url:                   "MNiJ7",
+  product_feature_description:   "CSvl8",
+});
+
+// ─── Tiny option arrays needed up top ────────────────────────
+const STATUS_OPTIONS = [
+  { id: "775ba6ba-5fda-4d17-bd02-53be5e9ea2ca", label: "Draft",   color: "#c2e9d7" },
+  { id: "8a32a8b7-097d-469b-ab14-d8898d9beaeb", label: "Active",  color: "#c9e4ff" },
+  { id: "f33070b8-805b-4f70-a47d-58fafc0ab772", label: "Closed",  color: "#ffbcb3" },
+  { id: "7aa751f6-9a0f-454a-a8b7-db8ab34863df", label: "Archive", color: "#cccfd4" },
+];
+// Patch the typo: the real Archive id pulled fresh from briefs.
+const ARCHIVE_ID = "7aa751f6-9a0f-456e-87c8-ad0e02d6dc49";
+STATUS_OPTIONS[3].id = ARCHIVE_ID;
+const AI_MODE_OPTIONS = [
+  { id: "6e5d9ac3-07f5-4d54-89d5-52028ee0f0d5", label: "Autonomous" },
+  { id: "f140d402-6521-4271-b465-d5dff63f4de0", label: "Hybrid" },
+  { id: "e27d263d-66ad-41ed-83d3-7b2b680f7336", label: "Manual" },
+];
+const GENERATED_LABEL = {
+  "beb6ff69-51d6-417b-abfa-c8dbac6ec760": "AI",
+  "fb42ab04-6a0a-4855-90db-5300ab0f0464": "Chat",
+  "598d6f2e-9830-4790-9d3b-c04005deb5f3": "Manual",
+};
+
+// ─── Helpers ──────────────────────────────────────────────────
+function unwrap(raw) {
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw.trim();
+  if (Array.isArray(raw)) return raw.map(unwrap).filter(Boolean).join(", ");
+  if (typeof raw === "object") return raw.label || raw.value || raw.name || "";
+  return String(raw);
+}
+function selectLabel(raw) {
+  if (!raw) return "";
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw)) return raw.map(selectLabel).filter(Boolean).join(", ");
+  return raw.label || "";
+}
+function statusFor(record) {
+  const raw = record?.fields?.status;
+  if (!raw) return null;
+  if (Array.isArray(raw)) return raw[0] || null;
+  return raw;
+}
+function extractThumbUrl(raw) {
+  if (!raw) return null;
+  if (typeof raw === "string") return raw;
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  if (!first) return null;
+  if (typeof first === "string") return first;
+  return first.thumbnailUrl || first.url || null;
+}
+function resolveBriefThumb(fields) {
+  // Hierarchy: own thumbnail → AI-scraped image_url → project's
+  // thumbnail → account's uploaded logo → Brieflee mascot fallback.
+  // logo_url (Google favicon formula) is INTENTIONALLY skipped —
+  // 128px favicons blur when scaled up to fill the card.
+  const own = extractThumbUrl(fields.thumbnail);
+  if (own) return own;
+  if (typeof fields.image_url === "string" && fields.image_url) return fields.image_url;
+  const proj = extractThumbUrl(fields.project_thumbnail);
+  if (proj) return proj;
+  const logoFile = extractThumbUrl(fields.logo_file);
+  if (logoFile) return logoFile;
+  return DEFAULT_THUMB;
+}
+function openCreatorPreview(briefId) {
+  if (typeof window === "undefined" || !briefId) return;
+  const url = `/brief/details/live?recordId=${encodeURIComponent(briefId)}`;
+  if (typeof window.openSwModal === "function") window.openSwModal(url, "xl");
+  else window.location.href = url;
+}
+// Public brief URL — SEO-friendly slug, points at the live creator page.
+// /brief/<slug> is configured in Softr Studio with "Find record by → slug".
+function creatorUrlFor(slug) {
+  if (!slug) return "";
+  return `https://brieflee.co/brief/${encodeURIComponent(slug)}`;
+}
+// Editor URL — for team members. Includes the recordId since the editor
+// page is filtered by recordId-in-page-URL.
+function teamUrlFor(briefId) {
+  if (!briefId) return "";
+  return `https://brieflee.co/briefs/details?recordId=${encodeURIComponent(briefId)}`;
+}
+function openBriefInvite(briefId) {
+  if (typeof window === "undefined" || !briefId) return;
+  const url = `/brief-invite?recordId=${encodeURIComponent(briefId)}`;
+  if (typeof window.openSwModal === "function") window.openSwModal(url, "md");
+  else window.location.href = url;
+}
+// kebab-case the name + append a 6-char briefId suffix for uniqueness.
+// Same shape as the backfill script that ran when the slug field was added.
+function generateSlug(name, briefId) {
+  if (!briefId) return "";
+  const base = String(name || "untitled")
+    .toLowerCase()
+    .replace(/['‘’“”]/g, "")
+    .replace(/[^\w\s-]/g, " ")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 60);
+  const suffix = briefId.slice(-6).toLowerCase();
+  return base ? `${base}-${suffix}` : suffix;
+}
+async function copyToClipboard(text) {
+  if (!text) return false;
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    return true;
+  } catch (e) {
+    console.error("Copy failed:", e);
+    return false;
+  }
+}
+// Softr's openSwModal strips query strings on modals, so the picker
+// can't read `?slot=` reliably from the URL. We persist the context
+// to sessionStorage first; the picker reads sessionStorage primarily
+// and falls back to URL. Same convention used by /swipe-picker and
+// /briefs/inspo-picker today.
+function persistPickerCtx(storageKey, slot) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(storageKey, JSON.stringify({ slot }));
+  } catch { /* sessionStorage disabled */ }
+}
+function openInspoPicker(briefId, slot) {
+  if (typeof window === "undefined" || !briefId) return;
+  persistPickerCtx("brieflee:inspo-picker-ctx", slot);
+  const url = `/briefs/inspo-picker?briefId=${encodeURIComponent(briefId)}&slot=${slot}`;
+  if (typeof window.openSwModal === "function") window.openSwModal(url, "lg");
+  else window.location.href = url;
+}
+function openSwipePicker(briefId, slot) {
+  if (typeof window === "undefined" || !briefId) return;
+  persistPickerCtx("brieflee:swipe-picker-ctx", slot);
+  const url = `/swipe-picker?briefId=${encodeURIComponent(briefId)}&slot=${slot}`;
+  if (typeof window.openSwModal === "function") window.openSwModal(url, "lg");
+  else window.location.href = url;
+}
+function extractJson(raw) {
+  if (!raw) return null;
+  const s = String(raw);
+  const match = s.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try { return JSON.parse(match[0]); } catch { return null; }
+}
+// Pull just the "Brand bio" section out of the brand_blueprint
+// LOOKUP, which concatenates `Brand bio: … \n\nCTA: … \n\nBrand
+// voice: …` etc on the accounts table.
+function extractBrandBio(blueprint) {
+  const s = unwrap(blueprint);
+  if (!s) return "";
+  const m = s.match(/Brand bio:\s*([\s\S]*?)(?:\n\s*(?:CTA|Brand voice|Niche|Audience|Pain points|Target audience):|$)/i);
+  return m ? m[1].trim() : s.trim();
+}
+// LOOKUP video fields can return either a raw URL or an HTML <iframe>
+// string (from a FORMULA on the linked table). Normalise both into a
+// playable URL string we can drop straight into <video src=…>.
+function resolveLookupVideoUrl(raw) {
+  if (!raw) return "";
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  if (!first) return "";
+  const s = typeof first === "string"
+    ? first
+    : (first.url || first.value || first.label || "");
+  if (!s || typeof s !== "string") return "";
+  const trimmed = s.trim();
+  if (trimmed.startsWith("<")) {
+    const m = trimmed.match(/src=['"]([^'"]+)['"]/i);
+    return m ? m[1] : "";
+  }
+  return trimmed;
+}
+// TikTok / Instagram / YouTube URLs need to be transformed into an
+// embed iframe src. Plain hostnames (raw cloudinary mp4, vimeo plain
+// URL) don't get embedded — we render them as <video> instead.
+function detectExternalEmbed(url) {
+  if (!url || typeof url !== "string") return null;
+  const u = url.trim();
+  // TikTok video page → /embed/v2/<id>
+  const tt = u.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/i);
+  if (tt) return { type: "tiktok", src: `https://www.tiktok.com/embed/v2/${tt[1]}`, aspect: "vertical" };
+  // Instagram reel / post / igtv → /<id>/embed/
+  const ig = u.match(/instagram\.com\/(?:reel|reels|p|tv)\/([A-Za-z0-9_-]+)/i);
+  if (ig) return { type: "instagram", src: `https://www.instagram.com/p/${ig[1]}/embed/`, aspect: "vertical" };
+  // YouTube watch / share / shorts → /embed/<id>
+  const ytShorts = u.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]+)/i);
+  if (ytShorts) return { type: "youtube", src: `https://www.youtube.com/embed/${ytShorts[1]}`, aspect: "vertical" };
+  const yt = u.match(/youtube\.com\/watch\?v=([A-Za-z0-9_-]+)/i) || u.match(/youtu\.be\/([A-Za-z0-9_-]+)/i);
+  if (yt) return { type: "youtube", src: `https://www.youtube.com/embed/${yt[1]}`, aspect: "horizontal" };
+  return null;
+}
+// Quick MP4/MOV/WebM check so we can render plain video files inline.
+function isDirectVideoUrl(s) {
+  if (!s || typeof s !== "string") return false;
+  return /\.(mp4|mov|webm|m4v)(\?|$)/i.test(s);
+}
+// PDF detection — used to decide whether a brief_document_url URL can
+// be embedded with an inline iframe preview.
+function isPdfUrl(s) {
+  if (!s || typeof s !== "string") return false;
+  return /\.pdf(\?|$)/i.test(s);
+}
+function asArray(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (raw == null) return [];
+  return [raw];
+}
+function asArrayIds(raw) {
+  return asArray(raw).map((x) => (typeof x === "string" ? x : x?.id || "")).filter(Boolean);
+}
+function asArrayLabels(raw) {
+  return asArray(raw).map((x) => (typeof x === "string" ? x : x?.label || "")).filter(Boolean);
+}
+// Used to decide which sections auto-collapse on first load. Returns
+// true when the section has no meaningful content to show. Treats
+// "None" threshold options as empty since they're the defaults.
+function isSectionEmpty(sectionKey, f) {
+  if (!f) return false;
+  if (sectionKey === "brief") {
+    return !f.description || !String(f.description).trim();
+  }
+  if (sectionKey === "inspiration") {
+    const linked = ["example", "example_2", "example_3", "videos", "videos_2", "videos_3"];
+    const urls = ["example_video_1", "example_video_2", "example_video_3"];
+    const anyLinked = linked.some((k) => asArray(f[k]).length > 0);
+    const anyUrl = urls.some((k) => typeof f[k] === "string" && f[k].trim());
+    return !anyLinked && !anyUrl;
+  }
+  if (sectionKey === "details") {
+    const fields = ["platform", "duration", "duration_threshold", "aspect_ratio",
+                    "content_type", "content_delivery", "submission_open_date",
+                    "submission_close_date"];
+    return fields.every((k) => {
+      const v = f[k];
+      if (v == null || v === "") return true;
+      if (Array.isArray(v) && v.length === 0) return true;
+      return false;
+    });
+  }
+  if (sectionKey === "qa") {
+    const hasAgents = asArray(f.qa_checklist).length > 0;
+    const hasThresholds = ["product_screen_time_threshold", "hook_speed_threshold",
+                           "visual_hook_threshold", "cta_placement_threshold",
+                           "face_time_threshold", "text_legibility_threshold",
+                           "audio_clarity_threshold", "engagement_pacing_threshold",
+                           "brand_mention_count_threshold"].some((k) => {
+      const v = f[k];
+      if (!v) return false;
+      const label = (v && (v.label || v)) || "";
+      // Treat "None" / "None (no CTA required)" as empty defaults.
+      return label && !/^none\b/i.test(String(label));
+    });
+    return !hasAgents && !hasThresholds;
+  }
+  return false;
+}
+// DATETIME → "YYYY-MM-DDTHH:mm" for <input type="datetime-local">
+function toDateInput(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch { return ""; }
+}
+function fromDateInput(local) {
+  if (!local) return "";
+  try { return new Date(local).toISOString(); } catch { return ""; }
+}
+
+// =====================================================================
+// MAIN BLOCK
+// =====================================================================
+export default function Block() {
+  const user = useCurrentUser();
+  const briefId = useCurrentRecordId() || "";
+  const { data: record, refetch } = useRecord({ recordId: briefId, select });
+  const updateRecord = useRecordUpdate({ fields: updateFields });
+  const upload = useUpload();
+
+  const f = record?.fields || {};
+  const briefName       = unwrap(f.name) || "Untitled brief";
+  const briefStatus     = statusFor(record);
+  const isPrivate       = f.private_mode === true;
+  const generatedId     = (f.generated && (f.generated.id || f.generated)) || "";
+  const generatedLabel  = GENERATED_LABEL[generatedId] || "";
+  const firstFormatLabel = selectLabel(f.first_format) || selectLabel(f.format);
+  const thumbUrl        = resolveBriefThumb(f);
+
+  // ─── Generic field-save helper ────────────────────────────
+  // Single entry point for every per-field write. Wraps the mutate
+  // with optimistic refetch + toast on error.
+  const saveField = async (patch, label = "") => {
+    try {
+      await updateRecord.mutateAsync({ recordId: briefId, fields: patch });
+      await refetch?.();
+    } catch (e) {
+      console.error(`${label} save failed:`, e);
+      toast.error(`Couldn't save${label ? ` ${label}` : ""}`, { description: e?.message });
+    }
+  };
+
+  // ─── Project assignment (Softr /assign-brief modal) ──────
+  // Vibe Code can't auto-map a project linked record on create, so
+  // briefs created via the chat land here unassigned. We open Bev's
+  // Softr-native /assign-brief page in a modal, which is sourced
+  // from projects so its form can write `projects: [{id}]` straight
+  // onto the brief via the project linked-record field. The page
+  // postMessages `brieflee:brief-assigned` back on success.
+  //
+  // Behaviour:
+  //   - Brief loads with no project → modal opens automatically.
+  //   - User picks + assigns → page posts back → brief refetches →
+  //     modal closes (Softr) and the page becomes editable.
+  //   - User dismisses without assigning → an inline banner stays
+  //     pinned at the top with a button to reopen the modal, so we
+  //     never trap them but also never let them edit unassigned.
+  const isUnassigned = useMemo(() => {
+    if (!record) return false; // wait for brief to load before deciding
+    const raw = f.projects;
+    if (!raw) return true;
+    if (Array.isArray(raw)) return raw.length === 0;
+    return false;
+  }, [record, f.projects]);
+  const openAssignBrief = useCallback(() => {
+    if (typeof window === "undefined" || !briefId) return;
+    const url = `/assign-brief?recordId=${encodeURIComponent(briefId)}`;
+    if (typeof window.openSwModal === "function") {
+      window.openSwModal(url, "md");
+    } else {
+      window.location.href = url;
+    }
+  }, [briefId]);
+  // Auto-open the picker the first time we detect an unassigned brief
+  // on this page load. Tracked via a ref so we don't reopen on every
+  // refetch — once the user dismisses the modal, the banner takes over.
+  const assignOpenedRef = useRef(false);
+  useEffect(() => {
+    if (!isUnassigned || assignOpenedRef.current) return;
+    assignOpenedRef.current = true;
+    openAssignBrief();
+  }, [isUnassigned, openAssignBrief]);
+  // Listen for picker success pings.
+  //   brieflee:brief-assigned → refetch (assignment modal closed).
+  //   brieflee:inspo-pick     → write the picked review to
+  //                             example / example_2 / example_3.
+  //   brieflee:swipe-pick     → write the picked video to
+  //                             videos / videos_2 / videos_3.
+  // Slot is 1-indexed from this page (matches what openInspoPicker /
+  // openSwipePicker pass), so slot N → field at index N-1.
+  useEffect(() => {
+    if (typeof window === "undefined" || !briefId) return;
+    const INSPO_SLOT_FIELDS = ["example", "example_2", "example_3"];
+    const SWIPE_SLOT_FIELDS = ["videos", "videos_2", "videos_3"];
+    const onMessage = async (event) => {
+      const data = event?.data;
+      const t = data?.type || data;
+      if (t === "brieflee:brief-assigned") {
+        refetch?.();
+        return;
+      }
+      if (t === "brieflee:inspo-pick") {
+        const idx = Number(data?.slot) - 1;
+        const fieldAlias = INSPO_SLOT_FIELDS[idx];
+        const reviewId = data?.review?.id;
+        if (!fieldAlias || !reviewId) return;
+        try {
+          await updateRecord.mutateAsync({
+            recordId: briefId,
+            fields: { [fieldAlias]: [{ id: reviewId }] },
+          });
+          await refetch?.();
+          toast.success("Review pick saved");
+        } catch (e) {
+          console.error("Inspo pick save failed:", e);
+          toast.error("Couldn't save pick", { description: e?.message });
+        }
+        return;
+      }
+      if (t === "brieflee:swipe-pick") {
+        const idx = Number(data?.slot) - 1;
+        const fieldAlias = SWIPE_SLOT_FIELDS[idx];
+        const videoId = data?.video?.id;
+        if (!fieldAlias || !videoId) return;
+        try {
+          await updateRecord.mutateAsync({
+            recordId: briefId,
+            fields: { [fieldAlias]: [{ id: videoId }] },
+          });
+          await refetch?.();
+          toast.success("Swipe video saved");
+        } catch (e) {
+          console.error("Swipe pick save failed:", e);
+          toast.error("Couldn't save pick", { description: e?.message });
+        }
+        return;
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [refetch, briefId, updateRecord]);
+
+  // ─── Collapsible section state ────────────────────────────
+  // Initial state respects sessionStorage if the user has toggled
+  // anything on this brief. Otherwise empty sections auto-collapse so
+  // the page opens focused on the parts that actually have content.
+  const STORAGE_KEY = `bl-brief-details-collapsed:${briefId || "anon"}`;
+  const [collapsed, setCollapsed] = useState({ context: true });
+  const initRef = useRef(false);
+  useEffect(() => {
+    if (initRef.current) return;
+    if (typeof window === "undefined") return;
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        setCollapsed(JSON.parse(raw));
+        initRef.current = true;
+        return;
+      }
+    } catch {}
+    // No saved state — wait for record to load, then auto-collapse empties.
+    if (!record) return;
+    setCollapsed({
+      context:     true,
+      brief:       isSectionEmpty("brief",       record.fields),
+      inspiration: isSectionEmpty("inspiration", record.fields),
+      details:     isSectionEmpty("details",     record.fields),
+      qa:          isSectionEmpty("qa",          record.fields),
+    });
+    initRef.current = true;
+  }, [STORAGE_KEY, record]);
+  useEffect(() => {
+    if (typeof window === "undefined" || !initRef.current) return;
+    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(collapsed)); } catch {}
+  }, [collapsed, STORAGE_KEY]);
+  const toggle = (key) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
+
+  // ─── Inline name edit ────────────────────────────────────
+  const [nameDraft, setNameDraft] = useState(briefName);
+  const [editingName, setEditingName] = useState(false);
+  const [nameSaving, setNameSaving] = useState(false);
+  useEffect(() => { setNameDraft(briefName); }, [briefName]);
+  const commitName = async () => {
+    const next = nameDraft.trim();
+    if (!next || next === briefName) { setEditingName(false); return; }
+    setNameSaving(true);
+    await saveField({ name: next }, "name");
+    setEditingName(false);
+    setNameSaving(false);
+  };
+
+  // ─── Overview quick-edits ────────────────────────────────
+  const [statusSaving, setStatusSaving] = useState(false);
+  const commitStatus = async (optionId) => {
+    if (!optionId || optionId === briefStatus?.id) return;
+    const opt = STATUS_OPTIONS.find((o) => o.id === optionId);
+    if (!opt) return;
+    setStatusSaving(true);
+    await saveField({ status: { id: opt.id, label: opt.label } }, "status");
+    setStatusSaving(false);
+  };
+  const [privacySaving, setPrivacySaving] = useState(false);
+  const togglePrivacy = async () => {
+    // Keep Seo:index in lockstep with public/private. A private brief
+    // shouldn't be SEO-indexed; making one public flips it on, making
+    // it private flips it off. The user can still override Seo:index
+    // independently in Softr Tables if they really need the edge case.
+    const nextPrivate = !isPrivate;
+    setPrivacySaving(true);
+    await saveField({
+      private_mode: nextPrivate,
+      seo_index:    !nextPrivate,
+    }, "privacy");
+    setPrivacySaving(false);
+  };
+  const [reviewModeSaving, setReviewModeSaving] = useState(false);
+  const reviewModeLabel = selectLabel(f.ai_mode) || "";
+  const commitReviewMode = async (label) => {
+    if (label === reviewModeLabel) return;
+    const opt = AI_MODE_OPTIONS.find((o) => o.label === label);
+    if (!opt) return;
+    setReviewModeSaving(true);
+    await saveField({ ai_mode: { id: opt.id, label: opt.label } }, "review mode");
+    setReviewModeSaving(false);
+  };
+
+  // ─── Thumbnail upload ────────────────────────────────────
+  const thumbFileRef = useRef(null);
+  const [thumbSaving, setThumbSaving] = useState(false);
+  const handleThumbnailFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setThumbSaving(true);
+    try {
+      const uploaded = await upload.mutateAsync(file);
+      const value = Array.isArray(uploaded) ? uploaded : [uploaded];
+      await saveField({ thumbnail: value }, "thumbnail");
+      toast.success("Thumbnail updated");
+    } catch (err) {
+      console.error("Thumbnail upload failed:", err);
+      toast.error("Couldn't upload thumbnail", { description: err?.message });
+    } finally {
+      setThumbSaving(false);
+      if (thumbFileRef.current) thumbFileRef.current.value = "";
+    }
+  };
+
+  // ─── Slug auto-generation ────────────────────────────────
+  // Seo:slug is now a FORMULA on the briefs table — kebab-case of
+  // the brief name. No JS auto-generation, no manual editor. If you
+  // need a custom slug per brief, add a SINGLE_LINE_TEXT override
+  // field and update the formula to prefer it.
+  const existingSlug = typeof f.slug === "string" ? f.slug.trim() : "";
+
+  // ─── Share popover ───────────────────────────────────────
+  // Tabbed: Team (editor URL for collaborators) + Creator (live
+  // SEO URL for submitters). Each tab shows the right link with copy
+  // + open actions, plus access toggle and Add people on the
+  // Creator tab (which is the audience that needs invites).
+  const [shareOpen, setShareOpen] = useState(false);
+  const creatorUrl = creatorUrlFor(existingSlug || generateSlug(unwrap(f.name), briefId));
+  const teamUrl    = teamUrlFor(briefId);
+
+  // ─── Publish ─────────────────────────────────────────────
+  const [publishSaving, setPublishSaving] = useState(false);
+  const publish = async () => {
+    if (briefStatus?.label === "Active") return;
+    const active = STATUS_OPTIONS.find((o) => o.label === "Active");
+    if (!active) return;
+    setPublishSaving(true);
+    await saveField({ status: { id: active.id, label: active.label } }, "publish");
+    toast.success("Brief is live");
+    setPublishSaving(false);
+  };
+
+  // ─── Brief body (description JSON) ───────────────────────
+  const saveDescription = async (nextJson) => {
+    await saveField({ description: JSON.stringify(nextJson) }, "brief body");
+  };
+
+  // ─── Brief document (URL or PDF upload) ──────────────────
+  const pdfFileRef = useRef(null);
+  const [pdfSaving, setPdfSaving] = useState(false);
+  const handlePdfFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPdfSaving(true);
+    try {
+      const uploaded = await upload.mutateAsync(file);
+      const value = Array.isArray(uploaded) ? uploaded : [uploaded];
+      await saveField({ attachment: value }, "PDF");
+      toast.success("PDF uploaded");
+    } catch (err) {
+      console.error("PDF upload failed:", err);
+      toast.error("Couldn't upload PDF", { description: err?.message });
+    } finally {
+      setPdfSaving(false);
+      if (pdfFileRef.current) pdfFileRef.current.value = "";
+    }
+  };
+
+  // ─── Details section: SELECT field commits ───────────────
+  const commitSelect = async (fieldAlias, value) => {
+    // value is a single { id, label } or null
+    if (value == null) {
+      await saveField({ [fieldAlias]: null }, FIELD_LABELS[fieldAlias] || fieldAlias);
+    } else {
+      await saveField({ [fieldAlias]: { id: value.id, label: value.label } }, FIELD_LABELS[fieldAlias] || fieldAlias);
+    }
+  };
+  const commitMultiSelect = async (fieldAlias, options) => {
+    // options is an array of { id, label }
+    await saveField({ [fieldAlias]: options.map((o) => ({ id: o.id, label: o.label })) }, FIELD_LABELS[fieldAlias] || fieldAlias);
+  };
+  const commitDate = async (fieldAlias, isoString) => {
+    await saveField({ [fieldAlias]: isoString }, FIELD_LABELS[fieldAlias] || fieldAlias);
+  };
+  const commitText = async (fieldAlias, text) => {
+    await saveField({ [fieldAlias]: text }, fieldAlias);
+  };
+
+  // ─── Render ───────────────────────────────────────────────
+  return (
+    <>
+      <Style />
+
+      <div className="bl-bd container mx-auto px-4 w-full">
+
+        {/* Inline banner shown when the brief has no project linked.
+            The picker modal auto-opens on page load; if the user
+            dismisses it, this banner stays visible until they pick
+            a project. Clicking reopens the modal. */}
+        {isUnassigned && (
+          <div className="bl-bd-assign-banner" role="status">
+            <div className="bl-bd-assign-banner-icon" aria-hidden="true">
+              <Inbox size={18} strokeWidth={1.75} />
+            </div>
+            <div className="bl-bd-assign-banner-text">
+              <strong>This brief needs a project.</strong>
+              <span>Assign it to one of your projects to start editing.</span>
+            </div>
+            <button
+              type="button"
+              className="bl-bd-assign-banner-btn"
+              onClick={openAssignBrief}
+            >
+              Assign to a project
+            </button>
+          </div>
+        )}
+
+
+        {/* ============ 1. Overview ============ */}
+        <SectionCard
+          title={SECTION_INTRO.overview[0]}
+          subtitle={SECTION_INTRO.overview[1]}
+          collapsed={!!collapsed.overview}
+          onToggle={() => toggle("overview")}
+          right={
+            <div className="bl-bd-header-actions">
+              <button
+                type="button"
+                onClick={() => openCreatorPreview(briefId)}
+                className="bl-bd-preview-btn"
+                disabled={!briefId}
+                title="See the creator's view of this brief"
+              >
+                <Eye size={14} />
+                Preview
+              </button>
+              <SharePopover
+                briefId={briefId}
+                creatorUrl={creatorUrl}
+                teamUrl={teamUrl}
+                isPrivate={isPrivate}
+                privacySaving={privacySaving}
+                onTogglePrivacy={togglePrivacy}
+                onAddPeople={() => openBriefInvite(briefId)}
+                open={shareOpen}
+                setOpen={setShareOpen}
+              />
+              <Button
+                onClick={publish}
+                disabled={publishSaving || briefStatus?.label === "Active"}
+                style={{ backgroundColor: PERIWINKLE, color: "#fff" }}
+                className="bl-bd-publish-btn"
+              >
+                {publishSaving ? "Publishing…" : briefStatus?.label === "Active" ? "Published" : "Publish"}
+              </Button>
+            </div>
+          }
+        >
+          <div className="bl-bd-overview">
+            <div className="bl-bd-thumb-wrap">
+              <img src={thumbUrl} alt={briefName} className="bl-bd-thumb" draggable={false} />
+              <input
+                ref={thumbFileRef}
+                type="file"
+                accept="image/*"
+                onChange={handleThumbnailFile}
+                style={{ display: "none" }}
+              />
+              <button
+                type="button"
+                className="bl-bd-thumb-edit"
+                onClick={() => thumbFileRef.current?.click()}
+                disabled={thumbSaving}
+                aria-label="Replace thumbnail"
+                title="Replace thumbnail"
+              >
+                {thumbSaving ? "…" : <UploadIcon size={14} />}
+              </button>
+            </div>
+
+            <div className="bl-bd-identity">
+              <div className="bl-bd-name-row">
+                {editingName ? (
+                  <>
+                    <Input
+                      value={nameDraft}
+                      onChange={(e) => setNameDraft(e.target.value)}
+                      autoFocus
+                      disabled={nameSaving}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitName();
+                        if (e.key === "Escape") { setNameDraft(briefName); setEditingName(false); }
+                      }}
+                      onBlur={commitName}
+                      className="bl-bd-name-input"
+                    />
+                    {nameSaving && <span className="bl-bd-saving">Saving…</span>}
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="bl-bd-name"
+                    onClick={() => setEditingName(true)}
+                    title="Click to rename"
+                  >
+                    {briefName}
+                    <Pencil size={13} className="bl-bd-name-pencil" />
+                  </button>
+                )}
+              </div>
+
+              <div className="bl-bd-tag-row">
+                {firstFormatLabel && <span className="bl-bd-tag">{firstFormatLabel}</span>}
+                <StatusPicker
+                  value={briefStatus?.id || ""}
+                  saving={statusSaving}
+                  onChange={commitStatus}
+                />
+                <button
+                  type="button"
+                  className={`bl-bd-priv ${isPrivate ? "is-private" : "is-public"}`}
+                  onClick={togglePrivacy}
+                  disabled={privacySaving}
+                  title="Click to toggle privacy"
+                >
+                  {isPrivate ? <Lock size={11} /> : <LockOpen size={11} />}
+                  {isPrivate ? "Private" : "Public"}
+                </button>
+                {generatedLabel && (
+                  <span className="bl-bd-gen-badge" title={`Generated via ${generatedLabel}`}>
+                    {generatedLabel}
+                  </span>
+                )}
+              </div>
+
+              <CreatorRow
+                name={typeof f.creator_name === "string" ? f.creator_name : ""}
+                email={typeof f.creator_email === "string" ? f.creator_email : ""}
+                onSave={async ({ name, email }) => {
+                  const patch = {};
+                  if (typeof name === "string")  patch.creator_name = name;
+                  if (typeof email === "string") patch.creator_email = email;
+                  await saveField(patch, "creator");
+                }}
+              />
+
+              <div className="bl-bd-review-row">
+                <span className="bl-bd-row-label">
+                  Review Mode
+                  <TooltipIcon text={TOOLTIPS.ai_mode} />
+                </span>
+                <div className="bl-bd-segmented">
+                  {AI_MODE_OPTIONS.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      className={`bl-bd-segmented-btn ${o.label === reviewModeLabel ? "is-active" : ""}`}
+                      onClick={() => commitReviewMode(o.label)}
+                      disabled={reviewModeSaving}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+
+        {/* ============ 2. Brief body ============ */}
+        <SectionCard
+          title={SECTION_INTRO.brief[0]}
+          subtitle={SECTION_INTRO.brief[1]}
+          collapsed={!!collapsed.brief}
+          onToggle={() => toggle("brief")}
+        >
+          <div className="bl-bd-brief-stack">
+            <BrandBioCard value={extractBrandBio(f.brand_blueprint)} />
+            <ProductSummaryCard
+              value={typeof f.product_feature_description === "string" ? f.product_feature_description : ""}
+              onSave={(v) => commitText("product_feature_description", v)}
+            />
+            <BriefBodyEditor
+              description={f.description}
+              onSave={saveDescription}
+            />
+          </div>
+          <PdfRow
+            url={f.brief_document_url}
+            attachment={f.attachment}
+            uploading={pdfSaving}
+            onSaveUrl={(url) => commitText("brief_document_url", url)}
+            onClickUpload={() => pdfFileRef.current?.click()}
+            onClear={async () => {
+              if (f.attachment) await saveField({ attachment: null }, "PDF");
+              if (f.brief_document_url) await saveField({ brief_document_url: "" }, "PDF link");
+            }}
+          />
+          <input
+            ref={pdfFileRef}
+            type="file"
+            accept="application/pdf"
+            onChange={handlePdfFile}
+            style={{ display: "none" }}
+          />
+        </SectionCard>
+
+        {/* ============ 3. Inspiration ============ */}
+        <SectionCard
+          title={SECTION_INTRO.inspiration[0]}
+          subtitle={SECTION_INTRO.inspiration[1]}
+          collapsed={!!collapsed.inspiration}
+          onToggle={() => toggle("inspiration")}
+        >
+          <div className="bl-bd-inspo">
+            <div className="bl-bd-inspo-group">
+              <div className="bl-bd-inspo-label">Brieflee examples (review picks)</div>
+              <div className="bl-bd-inspo-row">
+                {[
+                  { linked: "example",   videoLookup: "example_1_video_url" },
+                  { linked: "example_2", videoLookup: "example_2_video_url" },
+                  { linked: "example_3", videoLookup: "example_3_video_url" },
+                ].map(({ linked, videoLookup }, i) => (
+                  <InspoReviewSlot
+                    key={linked}
+                    label={`Example ${i + 1}`}
+                    value={f[linked]}
+                    videoUrl={resolveLookupVideoUrl(f[videoLookup])}
+                    onOpen={() => openInspoPicker(briefId, i + 1)}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="bl-bd-inspo-group">
+              <div className="bl-bd-inspo-label">Swipe file picks (videos)</div>
+              <div className="bl-bd-inspo-row">
+                {[
+                  { linked: "videos",   videoLookup: "swipe_1_video_url" },
+                  { linked: "videos_2", videoLookup: "swipe_2_video_url" },
+                  { linked: "videos_3", videoLookup: "swipe_3_video_url" },
+                ].map(({ linked, videoLookup }, i) => (
+                  <InspoReviewSlot
+                    key={linked}
+                    label={`Swipe ${i + 1}`}
+                    value={f[linked]}
+                    videoUrl={resolveLookupVideoUrl(f[videoLookup])}
+                    onOpen={() => openSwipePicker(briefId, i + 1)}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="bl-bd-inspo-group">
+              <div className="bl-bd-inspo-label">External URLs (TikTok, Instagram, etc.)</div>
+              <div className="bl-bd-inspo-row">
+                {[
+                  { alias: "example_video_1", label: "URL 1" },
+                  { alias: "example_video_2", label: "URL 2" },
+                  { alias: "example_video_3", label: "URL 3" },
+                ].map(({ alias, label }) => (
+                  <UrlSlot
+                    key={alias}
+                    label={label}
+                    value={typeof f[alias] === "string" ? f[alias] : ""}
+                    onSave={(v) => commitText(alias, v)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+
+        {/* ============ 4. Details ============ */}
+        <SectionCard
+          title={SECTION_INTRO.details[0]}
+          subtitle={SECTION_INTRO.details[1]}
+          collapsed={!!collapsed.details}
+          onToggle={() => toggle("details")}
+        >
+          <div className="bl-bd-fields-grid">
+            <MultiSelectField
+              label={FIELD_LABELS.platform}
+              tooltip={TOOLTIPS.platform}
+              options={PLATFORM_OPTIONS}
+              value={asArrayIds(f.platform)}
+              onChange={(ids) => commitMultiSelect("platform", PLATFORM_OPTIONS.filter((o) => ids.includes(o.id)))}
+            />
+            <SelectField
+              label="Video length"
+              tooltip="Target length for the finished video."
+              options={DURATION_OPTIONS}
+              valueId={f.duration?.id || ""}
+              onChange={(opt) => commitSelect("duration", opt)}
+              suffix={
+                <SelectField
+                  inline
+                  options={DURATION_THRESHOLD_OPTIONS}
+                  valueId={f.duration_threshold?.id || ""}
+                  onChange={(opt) => commitSelect("duration_threshold", opt)}
+                />
+              }
+            />
+            <SelectField
+              label={FIELD_LABELS.aspect_ratio}
+              tooltip={TOOLTIPS.aspect_ratio}
+              options={ASPECT_RATIO_OPTIONS}
+              valueId={f.aspect_ratio?.id || ""}
+              onChange={(opt) => commitSelect("aspect_ratio", opt)}
+            />
+            <SelectField
+              label={FIELD_LABELS.content_delivery}
+              tooltip={TOOLTIPS.content_delivery}
+              options={CONTENT_DELIVERY_OPTIONS}
+              valueId={f.content_delivery?.id || ""}
+              onChange={(opt) => commitSelect("content_delivery", opt)}
+            />
+            <MultiSelectField
+              label={FIELD_LABELS.content_type}
+              tooltip={TOOLTIPS.content_type}
+              options={CONTENT_TYPE_OPTIONS}
+              value={asArrayIds(f.content_type)}
+              onChange={(ids) => commitMultiSelect("content_type", CONTENT_TYPE_OPTIONS.filter((o) => ids.includes(o.id)))}
+            />
+            <DateTimeField
+              label={FIELD_LABELS.submission_open_date}
+              tooltip={TOOLTIPS.submission_open_date}
+              value={f.submission_open_date || ""}
+              onSave={(iso) => commitDate("submission_open_date", iso)}
+            />
+            <DateTimeField
+              label={FIELD_LABELS.submission_close_date}
+              tooltip={TOOLTIPS.submission_close_date}
+              value={f.submission_close_date || ""}
+              onSave={(iso) => commitDate("submission_close_date", iso)}
+            />
+          </div>
+        </SectionCard>
+
+        {/* ============ 5. Quality Assurance ============ */}
+        <SectionCard
+          title={SECTION_INTRO.qa[0]}
+          subtitle={SECTION_INTRO.qa[1]}
+          collapsed={!!collapsed.qa}
+          onToggle={() => toggle("qa")}
+        >
+          <ReviewAgentsField
+            tooltip={TOOLTIPS.qa_checklist}
+            options={QA_AGENT_OPTIONS}
+            value={asArrayIds(f.qa_checklist)}
+            onChange={(ids) => commitMultiSelect("qa_checklist", QA_AGENT_OPTIONS.filter((o) => ids.includes(o.id)))}
+          />
+          <div className="bl-bd-thresholds">
+            {THRESHOLD_FIELDS.map(({ alias }) => (
+              <SelectField
+                key={alias}
+                label={FIELD_LABELS[alias]}
+                tooltip={TOOLTIPS[alias]}
+                options={THRESHOLD_OPTIONS[alias]}
+                valueId={f[alias]?.id || ""}
+                onChange={(opt) => commitSelect(alias, opt)}
+              />
+            ))}
+          </div>
+        </SectionCard>
+
+        {/* ============ 6. Brief context (collapsed by default) ============ */}
+        <SectionCard
+          title={SECTION_INTRO.context[0]}
+          subtitle={SECTION_INTRO.context[1]}
+          collapsed={!!collapsed.context}
+          onToggle={() => toggle("context")}
+        >
+          <div className="bl-bd-fields-grid">
+            <SelectField
+              label="Filmer"
+              tooltip="Who's filming this brief — UGC Creator, Influencer, Founder, Customer, or Employee."
+              options={CREATOR_TYPE_OPTIONS}
+              valueId={f.creator_type?.id || ""}
+              onChange={(opt) => commitSelect("creator_type", opt)}
+            />
+            <SelectField
+              label="Channel"
+              tooltip="Paid runs ad-style with disclosures. Organic feels native to the creator's feed."
+              options={CHANNEL_OPTIONS}
+              valueId={f.channel?.id || ""}
+              onChange={(opt) => commitSelect("channel", opt)}
+            />
+            <SelectField
+              label="Awareness stage"
+              tooltip="Where the viewer is in their journey — affects how the hook is written."
+              options={AWARENESS_OPTIONS}
+              valueId={f.awareness?.id || ""}
+              onChange={(opt) => commitSelect("awareness", opt)}
+            />
+            <SelectField
+              label="Angle"
+              tooltip="The through-line that ties the hook, talking points, and CTA together."
+              options={ANGLE_OPTIONS}
+              valueId={f.angle?.id || ""}
+              onChange={(opt) => commitSelect("angle", opt)}
+            />
+            <TextSlot
+              label="Product URL"
+              tooltip="Set when the brief targets a specific product page."
+              placeholder="https://brand.com/products/…"
+              value={typeof f.product === "string" ? f.product : ""}
+              onSave={(v) => commitText("product", v)}
+            />
+            <TextSlot
+              label="Feature URL"
+              tooltip="Set when the brief targets a specific feature page."
+              placeholder="https://brand.com/features/…"
+              value={typeof f.feature_url === "string" ? f.feature_url : ""}
+              onSave={(v) => commitText("feature_url", v)}
+            />
+            <TextareaSlot
+              label="Feature description"
+              tooltip="What the feature does and who it's for. Used by the AI as additional context."
+              value={typeof f.feature === "string" ? f.feature : ""}
+              onSave={(v) => commitText("feature", v)}
+              fullWidth
+            />
+          </div>
+        </SectionCard>
+      </div>
+    </>
+  );
+}
+
+// =====================================================================
+// SECTION CARD + COLLAPSE
+// =====================================================================
+function SectionCard({ title, subtitle, collapsed, onToggle, right, children }) {
+  return (
+    <section className={`bl-bd-section ${collapsed ? "is-collapsed" : ""}`}>
+      <header className="bl-bd-section-head">
+        <button
+          type="button"
+          className="bl-bd-section-toggle"
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+        >
+          {collapsed ? <ChevronRight size={18} /> : <ChevronDown size={18} />}
+          <div className="bl-bd-section-titles">
+            <h2 className="bl-bd-section-title">{title}</h2>
+            {subtitle && <p className="bl-bd-section-sub">{subtitle}</p>}
+          </div>
+        </button>
+        {right && <div className="bl-bd-section-right">{right}</div>}
+      </header>
+      {!collapsed && <div className="bl-bd-section-body">{children}</div>}
+    </section>
+  );
+}
+
+// =====================================================================
+// STATUS PICKER
+// =====================================================================
+function StatusPicker({ value, saving, onChange }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+  const current = STATUS_OPTIONS.find((o) => o.id === value) || STATUS_OPTIONS[0];
+  const tone = (current.color || "#cccfd4") + "33";
+  const border = (current.color || "#cccfd4") + "66";
+  const label = current.label === "Archive" ? "Inactive" : current.label;
+  return (
+    <div className="bl-bd-status-wrap" ref={wrapRef}>
+      <button
+        type="button"
+        className="bl-bd-status-pill"
+        style={{ backgroundColor: tone, borderColor: border }}
+        onClick={() => setOpen((c) => !c)}
+        disabled={saving}
+        title="Click to change status"
+      >
+        {label}{saving ? " …" : ""}
+      </button>
+      {open && (
+        <div className="bl-bd-status-menu" role="menu">
+          {STATUS_OPTIONS.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              role="menuitem"
+              className={`bl-bd-status-menu-item ${o.id === value ? "is-active" : ""}`}
+              onClick={() => { onChange(o.id); setOpen(false); }}
+            >
+              <span className="bl-bd-status-dot" style={{ backgroundColor: o.color }} />
+              {o.label === "Archive" ? "Inactive" : o.label}
+              {o.id === value && <Check size={12} className="bl-bd-status-check" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =====================================================================
+// TOOLTIP ICON
+// =====================================================================
+function TooltipIcon({ text }) {
+  if (!text) return null;
+  return (
+    <span className="bl-bd-tip-wrap" tabIndex={0}>
+      <Info size={12} className="bl-bd-tip-icon" />
+      <span className="bl-bd-tip-text" role="tooltip">{text}</span>
+    </span>
+  );
+}
+
+// =====================================================================
+// SELECT FIELD (single)
+// =====================================================================
+function SelectField({ label, tooltip, options, valueId, onChange, inline, suffix }) {
+  const [saving, setSaving] = useState(false);
+  const current = options.find((o) => o.id === valueId);
+  const handle = async (e) => {
+    const id = e.target.value;
+    const opt = options.find((o) => o.id === id);
+    setSaving(true);
+    try { await onChange(opt || null); } finally { setSaving(false); }
+  };
+  if (inline) {
+    return (
+      <select
+        className="bl-bd-select bl-bd-select-inline"
+        value={valueId}
+        onChange={handle}
+        disabled={saving}
+      >
+        <option value="">—</option>
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>{o.label}</option>
+        ))}
+      </select>
+    );
+  }
+  return (
+    <div className="bl-bd-field">
+      <label className="bl-bd-field-label">
+        {label}
+        <TooltipIcon text={tooltip} />
+      </label>
+      <div className="bl-bd-field-value">
+        <select
+          className="bl-bd-select"
+          value={valueId}
+          onChange={handle}
+          disabled={saving}
+        >
+          <option value="">Pick one…</option>
+          {options.map((o) => (
+            <option key={o.id} value={o.id}>{o.label}</option>
+          ))}
+        </select>
+        {suffix}
+        {saving && <span className="bl-bd-saving">Saving…</span>}
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// MULTI-SELECT FIELD (tag picker)
+// =====================================================================
+function MultiSelectField({ label, tooltip, options, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+  const selected = options.filter((o) => value.includes(o.id));
+  const toggle = async (id) => {
+    const next = value.includes(id) ? value.filter((v) => v !== id) : [...value, id];
+    setSaving(true);
+    try { await onChange(next); } finally { setSaving(false); }
+  };
+  return (
+    <div className="bl-bd-field" ref={wrapRef}>
+      <label className="bl-bd-field-label">
+        {label}
+        <TooltipIcon text={tooltip} />
+      </label>
+      <div className="bl-bd-multi">
+        <button
+          type="button"
+          className="bl-bd-multi-trigger"
+          onClick={() => setOpen((c) => !c)}
+        >
+          {selected.length === 0 && <span className="bl-bd-multi-placeholder">Pick options…</span>}
+          {selected.map((o) => (
+            <span key={o.id} className="bl-bd-chip">{o.label}</span>
+          ))}
+          <ChevronDown size={14} className="bl-bd-multi-caret" />
+        </button>
+        {saving && <span className="bl-bd-saving">Saving…</span>}
+        {open && (
+          <div className="bl-bd-multi-menu">
+            {options.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                className={`bl-bd-multi-item ${value.includes(o.id) ? "is-active" : ""}`}
+                onClick={() => toggle(o.id)}
+              >
+                <span className="bl-bd-check-box">
+                  {value.includes(o.id) && <Check size={12} />}
+                </span>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// REVIEW AGENTS — multi-select with agent icon + per-agent tooltip
+// =====================================================================
+function ReviewAgentsField({ tooltip, options, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+  const selected = options.filter((o) => value.includes(o.id));
+  const toggle = async (id) => {
+    const next = value.includes(id) ? value.filter((v) => v !== id) : [...value, id];
+    setSaving(true);
+    try { await onChange(next); } finally { setSaving(false); }
+  };
+  return (
+    <div className="bl-bd-field bl-bd-agents-field" ref={wrapRef}>
+      <label className="bl-bd-field-label">
+        Review Agents
+        <TooltipIcon text={tooltip} />
+      </label>
+      <button
+        type="button"
+        className="bl-bd-agents-trigger"
+        onClick={() => setOpen((c) => !c)}
+      >
+        {selected.length === 0 ? (
+          <span className="bl-bd-multi-placeholder">Add agents…</span>
+        ) : (
+          selected.map((o) => (
+            <span key={o.id} className="bl-bd-agent-chip" title={AGENT_TOOLTIPS[o.label] || ""}>
+              <img src={AGENTS_ICON_URL} alt="" className="bl-bd-agent-icon" />
+              {o.label}
+            </span>
+          ))
+        )}
+        <Plus size={14} className="bl-bd-multi-caret" />
+      </button>
+      {saving && <span className="bl-bd-saving">Saving…</span>}
+      {open && (
+        <div className="bl-bd-agents-menu">
+          <div className="bl-bd-agents-grid">
+            {options.map((o) => {
+              const active = value.includes(o.id);
+              const tip = AGENT_TOOLTIPS[o.label] || "";
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  className={`bl-bd-agent-card ${active ? "is-active" : ""}`}
+                  onClick={() => toggle(o.id)}
+                >
+                  <span className="bl-bd-agent-card-check">
+                    {active && <Check size={12} strokeWidth={3} />}
+                  </span>
+                  <img
+                    src={AGENTS_ICON_URL}
+                    alt=""
+                    className="bl-bd-agent-card-icon"
+                    draggable={false}
+                  />
+                  <span className="bl-bd-agent-card-name">{o.label}</span>
+                  {tip && <span className="bl-bd-agent-card-desc">{tip}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =====================================================================
+// DATETIME FIELD
+// =====================================================================
+function DateTimeField({ label, tooltip, value, onSave }) {
+  const [draft, setDraft] = useState(toDateInput(value));
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setDraft(toDateInput(value)); }, [value]);
+  const commit = async () => {
+    if (draft === toDateInput(value)) return;
+    setSaving(true);
+    try { await onSave(fromDateInput(draft)); } finally { setSaving(false); }
+  };
+  return (
+    <div className="bl-bd-field">
+      <label className="bl-bd-field-label">
+        {label}
+        <TooltipIcon text={tooltip} />
+      </label>
+      <div className="bl-bd-field-value">
+        <input
+          type="datetime-local"
+          className="bl-bd-input"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          disabled={saving}
+        />
+        {saving && <span className="bl-bd-saving">Saving…</span>}
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// TEXT SLOT (URL / short text)
+// =====================================================================
+function TextSlot({ label, tooltip, placeholder, value, onSave }) {
+  const [draft, setDraft] = useState(value || "");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setDraft(value || ""); }, [value]);
+  const commit = async () => {
+    if ((draft || "") === (value || "")) return;
+    setSaving(true);
+    try { await onSave(draft.trim()); } finally { setSaving(false); }
+  };
+  return (
+    <div className="bl-bd-field">
+      <label className="bl-bd-field-label">
+        {label}
+        <TooltipIcon text={tooltip} />
+      </label>
+      <div className="bl-bd-field-value">
+        <Input
+          className="bl-bd-input"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder={placeholder}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") commit(); }}
+          disabled={saving}
+        />
+        {saving && <span className="bl-bd-saving">Saving…</span>}
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// TEXTAREA SLOT (long text)
+// =====================================================================
+function TextareaSlot({ label, tooltip, value, onSave, fullWidth }) {
+  const [draft, setDraft] = useState(value || "");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setDraft(value || ""); }, [value]);
+  const commit = async () => {
+    if ((draft || "") === (value || "")) return;
+    setSaving(true);
+    try { await onSave(draft); } finally { setSaving(false); }
+  };
+  return (
+    <div className={`bl-bd-field ${fullWidth ? "is-full" : ""}`}>
+      <label className="bl-bd-field-label">
+        {label}
+        <TooltipIcon text={tooltip} />
+      </label>
+      <div className="bl-bd-field-value">
+        <Textarea
+          className="bl-bd-textarea"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={3}
+          onBlur={commit}
+          disabled={saving}
+        />
+        {saving && <span className="bl-bd-saving">Saving…</span>}
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// INSPIRATION SLOTS
+// =====================================================================
+function SharePopover({
+  briefId, creatorUrl, teamUrl, isPrivate, privacySaving,
+  onTogglePrivacy, onAddPeople, open, setOpen,
+}) {
+  const wrapRef = useRef(null);
+  const [tab, setTab] = useState("creator"); // 'creator' | 'team'
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open, setOpen]);
+
+  const isCreator = tab === "creator";
+  const url = isCreator ? creatorUrl : teamUrl;
+  const copy = async () => {
+    if (!url) return;
+    const ok = await copyToClipboard(url);
+    if (ok) toast.success("Link copied");
+    else toast.error("Couldn't copy link", { description: url });
+  };
+  const openInNewTab = () => {
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  return (
+    <div className="bl-bd-share-wrap" ref={wrapRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((c) => !c)}
+        className="bl-bd-preview-btn"
+        disabled={!briefId}
+        title="Share this brief"
+      >
+        <Share2 size={14} />
+        Share
+      </button>
+      {open && (
+        <div
+          className="bl-bd-share-panel"
+          role="dialog"
+          aria-label="Share brief"
+          // Stop native mousedown bubbling — otherwise the document-
+          // level "close on outside click" listener fires before the
+          // inner button's React onClick runs, the panel unmounts
+          // mid-click, and the click never lands on the button.
+          // This is the same fix browsers ship for dropdowns, etc.
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {/* Tabs */}
+          <div className="bl-bd-share-tabs">
+            <button
+              type="button"
+              className={`bl-bd-share-tab ${isCreator ? "is-active" : ""}`}
+              onClick={() => setTab("creator")}
+            >
+              Creator
+            </button>
+            <button
+              type="button"
+              className={`bl-bd-share-tab ${!isCreator ? "is-active" : ""}`}
+              onClick={() => setTab("team")}
+            >
+              Team
+            </button>
+          </div>
+
+          {/* Description + link */}
+          <div className="bl-bd-share-title">
+            {isCreator ? "Public brief link" : "Editor link"}
+          </div>
+          <div className="bl-bd-share-helper">
+            {isCreator
+              ? "For people who'll film and submit. SEO-friendly, public unless you set it to Private."
+              : "For team members on this account. They land in the editable view and can change anything."}
+          </div>
+          <div className="bl-bd-share-link-row">
+            <input
+              type="text"
+              readOnly
+              value={url || ""}
+              className="bl-bd-share-link-input"
+              onClick={(e) => e.target.select()}
+            />
+            <button
+              type="button"
+              className="bl-bd-share-icon-btn"
+              onClick={copy}
+              title="Copy link"
+              disabled={!url}
+            >
+              <Copy size={13} />
+            </button>
+            <button
+              type="button"
+              className="bl-bd-share-icon-btn"
+              onClick={openInNewTab}
+              title="Open in new tab"
+              disabled={!url}
+            >
+              <ExternalLink size={13} />
+            </button>
+          </div>
+
+          {/* Creator-tab-only: access toggle + add-people */}
+          {isCreator && (
+            <>
+              <div className="bl-bd-share-divider" />
+              <div className="bl-bd-share-row">
+                <div className="bl-bd-share-row-title">
+                  <span>Access</span>
+                  <span className="bl-bd-share-row-helper">
+                    {isPrivate
+                      ? "Only people you add can open the link."
+                      : "Anyone with the link can open the brief."}
+                  </span>
+                </div>
+                <div className="bl-bd-segmented">
+                  <button
+                    type="button"
+                    className={`bl-bd-segmented-btn ${!isPrivate ? "is-active" : ""}`}
+                    onClick={() => { if (isPrivate) onTogglePrivacy(); }}
+                    disabled={privacySaving}
+                  >
+                    Public
+                  </button>
+                  <button
+                    type="button"
+                    className={`bl-bd-segmented-btn ${isPrivate ? "is-active" : ""}`}
+                    onClick={() => { if (!isPrivate) onTogglePrivacy(); }}
+                    disabled={privacySaving}
+                  >
+                    Private
+                  </button>
+                </div>
+              </div>
+              <div className="bl-bd-share-divider" />
+              <button
+                type="button"
+                className="bl-bd-share-invite-btn"
+                onClick={() => { onAddPeople(); setOpen(false); }}
+                disabled={!briefId}
+              >
+                <UserPlus size={14} />
+                Add people to this brief
+              </button>
+            </>
+          )}
+
+          {/* Team-tab-only: helper note about access */}
+          {!isCreator && (
+            <div className="bl-bd-share-team-note">
+              Team members already have access. They'll find this brief in their dashboard — this is just the direct link.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CreatorRow({ name, email, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name || "");
+  const [emailDraft, setEmailDraft] = useState(email || "");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setNameDraft(name || ""); }, [name]);
+  useEffect(() => { setEmailDraft(email || ""); }, [email]);
+
+  const commit = async () => {
+    const nextName = nameDraft.trim();
+    const nextEmail = emailDraft.trim();
+    if (nextName === (name || "") && nextEmail === (email || "")) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try { await onSave({ name: nextName, email: nextEmail }); }
+    finally { setSaving(false); setEditing(false); }
+  };
+  const cancel = () => {
+    setNameDraft(name || "");
+    setEmailDraft(email || "");
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="bl-bd-creator-row bl-bd-creator-editing">
+        <Input
+          className="bl-bd-input bl-bd-creator-name-input"
+          value={nameDraft}
+          onChange={(e) => setNameDraft(e.target.value)}
+          placeholder="Creator name"
+          autoFocus
+        />
+        <Input
+          className="bl-bd-input bl-bd-creator-email-input"
+          value={emailDraft}
+          onChange={(e) => setEmailDraft(e.target.value)}
+          placeholder="email@brand.com"
+          type="email"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") cancel();
+          }}
+        />
+        <button type="button" className="bl-bd-creator-save" onClick={commit} disabled={saving}>
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <button type="button" className="bl-bd-creator-cancel" onClick={cancel} disabled={saving}>
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
+  const has = !!(name || email);
+  if (!has) {
+    return (
+      <button
+        type="button"
+        className="bl-bd-creator-empty"
+        onClick={() => setEditing(true)}
+      >
+        <UserCircle2 size={13} />
+        Add a creator
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="bl-bd-creator-row"
+      onClick={() => setEditing(true)}
+      title="Click to edit"
+    >
+      <span className="bl-bd-creator-label">For</span>
+      {name && (
+        <span className="bl-bd-creator-name">
+          <UserCircle2 size={11} />
+          {name}
+        </span>
+      )}
+      {email && (
+        <span className="bl-bd-creator-email">
+          <Mail size={11} />
+          {email}
+        </span>
+      )}
+      <Pencil size={11} className="bl-bd-creator-pencil" />
+    </button>
+  );
+}
+
+function InspoReviewSlot({ label, value, videoUrl, onOpen }) {
+  const items = asArray(value);
+  const has = items.length > 0;
+  if (has && videoUrl) {
+    return (
+      <div className="bl-bd-inspo-video">
+        <video
+          src={videoUrl}
+          controls
+          preload="metadata"
+          className="bl-bd-inspo-video-el"
+        />
+        <button
+          type="button"
+          className="bl-bd-inspo-video-change"
+          onClick={onOpen}
+          title="Pick a different review"
+        >
+          <Pencil size={12} />
+          Change
+        </button>
+        <div className="bl-bd-inspo-video-caption">
+          {items[0]?.label || label}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <InspoLinkedSlot label={label} value={value} onOpen={onOpen} />
+  );
+}
+
+function InspoLinkedSlot({ label, value, onOpen }) {
+  const items = asArray(value);
+  const has = items.length > 0;
+  return (
+    <button
+      type="button"
+      className={`bl-bd-inspo-slot ${has ? "is-filled" : "is-empty"}`}
+      onClick={onOpen}
+    >
+      {has ? (
+        <>
+          <ImageIcon size={14} />
+          <span className="bl-bd-inspo-slot-label">{items[0]?.label || label}</span>
+          <Pencil size={12} className="bl-bd-inspo-edit-icon" />
+        </>
+      ) : (
+        <>
+          <Plus size={14} />
+          <span className="bl-bd-inspo-slot-label">{label}</span>
+        </>
+      )}
+    </button>
+  );
+}
+
+function UrlSlot({ label, value, onSave }) {
+  const [draft, setDraft] = useState(value || "");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setDraft(value || ""); }, [value]);
+  const commit = async () => {
+    if ((draft || "") === (value || "")) return;
+    setSaving(true);
+    try { await onSave(draft.trim()); } finally { setSaving(false); }
+  };
+  const clear = async () => {
+    if (!value) return;
+    setSaving(true);
+    try { await onSave(""); setDraft(""); } finally { setSaving(false); }
+  };
+  // Live preview off the SAVED value, not the draft — embeds shouldn't
+  // jump around while the user types. Re-runs on save.
+  const embed = detectExternalEmbed(value);
+  const directVideo = !embed && isDirectVideoUrl(value);
+  return (
+    <div className="bl-bd-url-slot">
+      <span className="bl-bd-url-slot-label">{label}</span>
+      <div className="bl-bd-url-slot-input-row">
+        <Input
+          className="bl-bd-input"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Paste TikTok / Instagram URL"
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") commit(); }}
+          disabled={saving}
+        />
+        {value && (
+          <button
+            type="button"
+            className="bl-bd-url-clear"
+            onClick={clear}
+            title="Clear URL"
+            disabled={saving}
+          >
+            <X size={12} />
+          </button>
+        )}
+      </div>
+      {saving && <span className="bl-bd-saving">Saving…</span>}
+      {embed && (
+        <div className={`bl-bd-url-embed bl-bd-url-embed-${embed.aspect}`}>
+          <iframe
+            src={embed.src}
+            title={label}
+            allow="autoplay; encrypted-media; picture-in-picture; clipboard-write; web-share"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+            loading="lazy"
+          />
+        </div>
+      )}
+      {directVideo && (
+        <div className="bl-bd-url-embed bl-bd-url-embed-vertical">
+          <video src={value} controls preload="metadata" />
+        </div>
+      )}
+      {value && !embed && !directVideo && (
+        <a
+          className="bl-bd-url-fallback"
+          href={value}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <ExternalLink size={11} />
+          Open link
+        </a>
+      )}
+    </div>
+  );
+}
+
+// =====================================================================
+// BRIEF BODY EDITOR — parses description JSON, renders editable cards
+// for each sub-section. Saves the whole JSON back on every edit.
+// =====================================================================
+function BriefBodyEditor({ description, onSave }) {
+  const parsed = useMemo(() => {
+    if (!description || typeof description !== "string" || !description.trim()) return null;
+    return extractJson(description);
+  }, [description]);
+
+  // Fallback for non-JSON descriptions: single textarea.
+  if (!parsed) {
+    return (
+      <BriefBodyPlainText
+        description={description}
+        onSave={(text) => onSave({ description: text })}
+      />
+    );
+  }
+
+  // Pull each known sub-section. Defensive on missing.
+  const sections = [
+    { key: "personal_experiences", title: "Personal experiences",   helper: "First-person scenarios in the buyer's voice." },
+    { key: "hook",                 title: "Hooks",                  helper: "Three opening lines for the first 3 seconds." },
+    { key: "talking_points",       title: "Talking points",         helper: "Bullet points to say in the creator's own words." },
+    { key: "cta",                  title: "CTAs",                   helper: "Three ways to close the video." },
+    { key: "dos",                  title: "Dos",                    helper: "Best practices when filming this format." },
+    { key: "donts",                title: "Don'ts",                 helper: "What to avoid. Compliance and brand safety." },
+  ];
+
+  const patchKey = async (key, nextArr) => {
+    const next = { ...parsed, [key]: nextArr };
+    await onSave(next);
+  };
+  const patchStoryboard = async (nextArr) => {
+    const next = { ...parsed, storyboard: nextArr };
+    await onSave(next);
+  };
+
+  return (
+    <div className="bl-bd-brief-body">
+      {sections.map(({ key, title, helper }) => (
+        <StringArrayCard
+          key={key}
+          title={title}
+          helper={helper}
+          items={asArray(parsed[key])}
+          onChange={(items) => patchKey(key, items)}
+        />
+      ))}
+      <StoryboardCard
+        items={asArray(parsed.storyboard)}
+        onChange={patchStoryboard}
+      />
+    </div>
+  );
+}
+
+function BriefBodyPlainText({ description, onSave }) {
+  const [draft, setDraft] = useState(description || "");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setDraft(description || ""); }, [description]);
+  const commit = async () => {
+    if ((draft || "") === (description || "")) return;
+    setSaving(true);
+    try { await onSave(draft); } finally { setSaving(false); }
+  };
+  return (
+    <div className="bl-bd-brief-plain">
+      <Textarea
+        className="bl-bd-textarea"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        rows={12}
+        placeholder="Write the brief here, or use the AI route to generate one."
+        onBlur={commit}
+        disabled={saving}
+      />
+      {saving && <span className="bl-bd-saving">Saving…</span>}
+    </div>
+  );
+}
+
+function StringArrayCard({ title, helper, items, onChange }) {
+  const [busy, setBusy] = useState(false);
+  const update = async (next) => {
+    setBusy(true);
+    try { await onChange(next); } finally { setBusy(false); }
+  };
+  const addItem = () => update([...(items || []), ""]);
+  const editItem = (idx, text) => {
+    const next = [...items];
+    next[idx] = text;
+    update(next);
+  };
+  const removeItem = (idx) => {
+    const next = items.filter((_, i) => i !== idx);
+    update(next);
+  };
+  return (
+    <div className="bl-bd-brief-card">
+      <div className="bl-bd-brief-card-head">
+        <h3 className="bl-bd-brief-card-title">{title}</h3>
+        <span className="bl-bd-brief-card-helper">{helper}</span>
+      </div>
+      <ul className="bl-bd-brief-list">
+        {items.map((text, i) => (
+          <BriefArrayItem
+            key={i}
+            value={text}
+            onSave={(v) => editItem(i, v)}
+            onDelete={() => removeItem(i)}
+          />
+        ))}
+        {items.length === 0 && (
+          <li className="bl-bd-brief-empty">Nothing here yet.</li>
+        )}
+      </ul>
+      <button
+        type="button"
+        className="bl-bd-add-line"
+        onClick={addItem}
+        disabled={busy}
+      >
+        <Plus size={12} /> Add line
+      </button>
+    </div>
+  );
+}
+
+function BriefArrayItem({ value, onSave, onDelete }) {
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setDraft(value); }, [value]);
+  const commit = async () => {
+    if (draft === value) return;
+    setSaving(true);
+    try { await onSave(draft); } finally { setSaving(false); }
+  };
+  return (
+    <li className="bl-bd-brief-line">
+      <Textarea
+        className="bl-bd-textarea bl-bd-textarea-line"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        rows={2}
+        onBlur={commit}
+        disabled={saving}
+      />
+      <button
+        type="button"
+        className="bl-bd-line-delete"
+        onClick={onDelete}
+        title="Delete this line"
+        aria-label="Delete"
+      >
+        <Trash2 size={13} />
+      </button>
+    </li>
+  );
+}
+
+function StoryboardCard({ items, onChange }) {
+  const [busy, setBusy] = useState(false);
+  const update = async (next) => {
+    setBusy(true);
+    try { await onChange(next); } finally { setBusy(false); }
+  };
+  const editRow = (idx, key, val) => {
+    const next = [...items];
+    next[idx] = { ...next[idx], [key]: val };
+    update(next);
+  };
+  const addRow = () => update([...items, { section: "Hook", visual: "", script: "" }]);
+  const removeRow = (idx) => update(items.filter((_, i) => i !== idx));
+  return (
+    <div className="bl-bd-brief-card">
+      <div className="bl-bd-brief-card-head">
+        <h3 className="bl-bd-brief-card-title">Storyboard</h3>
+        <span className="bl-bd-brief-card-helper">Shot by shot. Each row tagged by scene type.</span>
+      </div>
+      <div className="bl-bd-storyboard">
+        {items.map((row, i) => (
+          <StoryboardRow
+            key={i}
+            row={row}
+            onSection={(v) => editRow(i, "section", v)}
+            onVisual={(v) => editRow(i, "visual", v)}
+            onScript={(v) => editRow(i, "script", v)}
+            onDelete={() => removeRow(i)}
+          />
+        ))}
+        {items.length === 0 && (
+          <div className="bl-bd-brief-empty">No shots yet.</div>
+        )}
+      </div>
+      <button
+        type="button"
+        className="bl-bd-add-line"
+        onClick={addRow}
+        disabled={busy}
+      >
+        <Plus size={12} /> Add shot
+      </button>
+    </div>
+  );
+}
+
+function StoryboardRow({ row, onSection, onVisual, onScript, onDelete }) {
+  const [visualDraft, setVisualDraft] = useState(row.visual || "");
+  const [scriptDraft, setScriptDraft] = useState(row.script || "");
+  useEffect(() => { setVisualDraft(row.visual || ""); }, [row.visual]);
+  useEffect(() => { setScriptDraft(row.script || ""); }, [row.script]);
+  return (
+    <div className="bl-bd-storyboard-row">
+      <select
+        className="bl-bd-select bl-bd-storyboard-section"
+        value={row.section || "Hook"}
+        onChange={(e) => onSection(e.target.value)}
+      >
+        {STORYBOARD_SECTIONS.map((s) => (
+          <option key={s} value={s}>{s}</option>
+        ))}
+      </select>
+      <Textarea
+        className="bl-bd-textarea bl-bd-storyboard-visual"
+        value={visualDraft}
+        onChange={(e) => setVisualDraft(e.target.value)}
+        onBlur={() => visualDraft !== row.visual && onVisual(visualDraft)}
+        rows={2}
+        placeholder="Visual direction"
+      />
+      <Input
+        className="bl-bd-input bl-bd-storyboard-script"
+        value={scriptDraft}
+        onChange={(e) => setScriptDraft(e.target.value)}
+        onBlur={() => scriptDraft !== row.script && onScript(scriptDraft)}
+        placeholder="Script line"
+      />
+      <button
+        type="button"
+        className="bl-bd-line-delete"
+        onClick={onDelete}
+        title="Delete this shot"
+        aria-label="Delete"
+      >
+        <Trash2 size={13} />
+      </button>
+    </div>
+  );
+}
+
+// =====================================================================
+// Brand bio card — read-only summary pulled from the account-level
+// brand_blueprint LOOKUP. Hidden when empty (e.g. brief has no project
+// yet, so no account context to read from).
+// =====================================================================
+function BrandBioCard({ value }) {
+  if (!value) return null;
+  return (
+    <div className="bl-bd-brief-card">
+      <div className="bl-bd-brief-card-head">
+        <h3 className="bl-bd-brief-card-title">About the brand</h3>
+        <span className="bl-bd-brief-card-helper">From this brief's account. Edit on the account page, not here.</span>
+      </div>
+      <p className="bl-bd-context-paragraph">{value}</p>
+    </div>
+  );
+}
+
+// =====================================================================
+// Product summary card — Claude-generated 1-2 sentence summary of what
+// this brief targets. Editable on click. Visually matches the other
+// brief body cards (Personal experiences, Hook, Talking points, etc).
+// =====================================================================
+function ProductSummaryCard({ value, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value || "");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setDraft(value || ""); }, [value]);
+  const commit = async () => {
+    const next = draft.trim();
+    if (next === (value || "").trim()) { setEditing(false); return; }
+    setSaving(true);
+    try { await onSave(next); } finally { setSaving(false); setEditing(false); }
+  };
+  const cancel = () => { setDraft(value || ""); setEditing(false); };
+  return (
+    <div className="bl-bd-brief-card">
+      <div className="bl-bd-brief-card-head">
+        <h3 className="bl-bd-brief-card-title">About the product / feature</h3>
+        <span className="bl-bd-brief-card-helper">A short summary of what this brief is targeting.</span>
+      </div>
+      {editing ? (
+        <div className="bl-bd-context-edit">
+          <Textarea
+            className="bl-bd-textarea"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={3}
+            autoFocus
+            disabled={saving}
+            placeholder="1-2 sentence summary of the product or feature this brief is about."
+            onKeyDown={(e) => {
+              if (e.key === "Escape") cancel();
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) commit();
+            }}
+          />
+          <div className="bl-bd-context-edit-actions">
+            <button type="button" className="bl-bd-context-cancel" onClick={cancel} disabled={saving}>
+              Cancel
+            </button>
+            <button type="button" className="bl-bd-context-save" onClick={commit} disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className={`bl-bd-context-trigger ${value ? "" : "is-empty"}`}
+          onClick={() => setEditing(true)}
+          title="Click to edit"
+        >
+          <span className="bl-bd-context-paragraph">
+            {value || "Click to add a summary."}
+          </span>
+          <Pencil size={12} className="bl-bd-context-pencil" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+// =====================================================================
+// PDF row — alternation: URL OR file upload, with inline iframe preview
+//
+// PDFs render in an embedded iframe so the user doesn't have to leave
+// the page to read the brief. Browsers handle application/pdf natively
+// via the PDF viewer plugin. Falls back to a plain link if the pasted
+// URL clearly isn't a PDF (e.g. someone drops a Notion / Google Doc).
+// =====================================================================
+function PdfRow({ url, attachment, uploading, onSaveUrl, onClickUpload, onClear }) {
+  const [editingUrl, setEditingUrl] = useState(false);
+  const [draftUrl, setDraftUrl] = useState(url || "");
+  useEffect(() => { setDraftUrl(url || ""); }, [url]);
+  const uploadHref = extractThumbUrl(attachment);
+  const hasUpload = !!uploadHref;
+  const hasUrl = !!(url && String(url).trim());
+  // Prefer the uploaded file (always a PDF) over the pasted URL.
+  // Pasted URLs only get embedded if we're confident they're PDFs.
+  const previewSrc =
+    hasUpload ? uploadHref :
+    (hasUrl && isPdfUrl(url) ? url : "");
+  const externalHref = hasUpload ? uploadHref : (hasUrl ? url : "");
+  const linkLabel = hasUpload
+    ? "Open in new tab"
+    : (hasUrl && url.length > 60 ? url.slice(0, 57) + "…" : (hasUrl ? url : ""));
+  return (
+    <div className="bl-bd-pdf-row">
+      <div className="bl-bd-pdf-label">
+        Brief PDF
+        <TooltipIcon text="Optional. Drop a PDF version of the brief or paste a link to one. PDFs preview inline so you don't have to leave the page." />
+      </div>
+      {previewSrc && (
+        <div className="bl-bd-pdf-embed">
+          <iframe
+            src={previewSrc}
+            title="Brief PDF preview"
+            loading="lazy"
+          />
+        </div>
+      )}
+      {hasUpload ? (
+        <div className="bl-bd-pdf-filled">
+          <a className="bl-bd-pdf-link" href={externalHref} target="_blank" rel="noreferrer">
+            <ExternalLink size={13} />
+            {linkLabel}
+          </a>
+          <button
+            type="button"
+            className="bl-bd-pdf-clear"
+            onClick={onClear}
+            title="Remove PDF"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      ) : hasUrl && !editingUrl ? (
+        <div className="bl-bd-pdf-filled">
+          <a className="bl-bd-pdf-link" href={externalHref} target="_blank" rel="noreferrer">
+            <Link2 size={13} />
+            {linkLabel}
+          </a>
+          <button
+            type="button"
+            className="bl-bd-pdf-edit"
+            onClick={() => setEditingUrl(true)}
+            title="Edit URL"
+          >
+            <Pencil size={13} />
+          </button>
+          <button
+            type="button"
+            className="bl-bd-pdf-clear"
+            onClick={onClear}
+            title="Remove PDF link"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      ) : editingUrl ? (
+        <div className="bl-bd-pdf-edit-row">
+          <Input
+            className="bl-bd-input"
+            value={draftUrl}
+            onChange={(e) => setDraftUrl(e.target.value)}
+            placeholder="https://…"
+            autoFocus
+            onKeyDown={async (e) => {
+              if (e.key === "Enter") { await onSaveUrl(draftUrl.trim()); setEditingUrl(false); }
+              if (e.key === "Escape") { setDraftUrl(url || ""); setEditingUrl(false); }
+            }}
+          />
+          <button
+            type="button"
+            className="bl-bd-pdf-save"
+            onClick={async () => { await onSaveUrl(draftUrl.trim()); setEditingUrl(false); }}
+          >
+            Save
+          </button>
+        </div>
+      ) : (
+        <div className="bl-bd-pdf-empty">
+          <button
+            type="button"
+            className="bl-bd-pdf-action"
+            onClick={onClickUpload}
+            disabled={uploading}
+          >
+            <UploadIcon size={13} /> {uploading ? "Uploading…" : "Upload PDF"}
+          </button>
+          <span className="bl-bd-pdf-or">or</span>
+          <button
+            type="button"
+            className="bl-bd-pdf-action"
+            onClick={() => setEditingUrl(true)}
+          >
+            <Link2 size={13} /> Paste a link
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =====================================================================
+// Data constants — placed AFTER Block() so the analyser hits
+// useRecordUpdate before its byte budget. Do not move back to top.
+// =====================================================================
+const DEFAULT_THUMB =
+  "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_brand_isometric-smiley-face-tilted-disc-blue-outline-cream-mark_2026-03.png";
+
+const AGENTS_ICON_URL =
+  "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png";
+
+const FIELD_LABELS = {
+  platform:                      "Platform(s)",
+  aspect_ratio:                  "Aspect Ratio",
+  content_delivery:              "File Delivery",
+  content_type:                  "Content style",
+  submission_open_date:          "Submission Open",
+  submission_close_date:         "Submission Close",
+  product_screen_time_threshold: "Product visibility",
+  hook_speed_threshold:          "Audio Hook timing",
+  visual_hook_threshold:         "Visual Hook",
+  cta_placement_threshold:       "Call-to-action timing",
+  face_time_threshold:           "Creator visibility",
+  text_legibility_threshold:     "Text on screen",
+  audio_clarity_threshold:       "Audio quality",
+  engagement_pacing_threshold:   "Scene changes",
+  brand_mention_count_threshold: "Brand mentions",
+  description:                   "Description",
+  qa_checklist:                  "Review Agents",
+  ai_mode:                       "Review Mode",
+};
+
+const TOOLTIPS = {
+  platform:                      "Where will this content be posted? Select all that apply",
+  aspect_ratio:                  "What orientation should the video be? Select all that apply",
+  content_delivery:              "What format do you need?",
+  content_type:                  "What type of content do you want? Select all that apply",
+  submission_open_date:          "When can creators submit content?",
+  submission_close_date:         "When are submissions closed?",
+  product_screen_time_threshold: "Minimum percentage of video that must show the product clearly",
+  hook_speed_threshold:          "How quickly must the video grab attention and show the product?",
+  visual_hook_threshold:         "How quickly must the video visually grab attention and show the product?",
+  cta_placement_threshold:       "When should the CTA appear in the video?",
+  face_time_threshold:           "Minimum percentage of video showing the creator's face",
+  text_legibility_threshold:     "How readable must any text overlays be?",
+  audio_clarity_threshold:       "How clear must the audio be?",
+  engagement_pacing_threshold:   "How often should the video change scenes or angles?",
+  brand_mention_count_threshold: "How many times must the brand name be mentioned?",
+  description:                   "Explain what you want creators to produce. Include key messaging, tone, and any specific requirements",
+  qa_checklist:                  "Pick which Review Agents you want watching this brief. Each agent reviews one specific thing on every submission.",
+  ai_mode:                       "How submissions get reviewed. Autonomous: agents decide. Hybrid: agents recommend, you decide. Manual: you review every submission yourself.",
+};
+
+const AGENT_TOOLTIPS = {
+  "Brand alignment":       "Watches that the video matches the brand's voice, look, and feel.",
+  "Hook quality":          "Watches the first 3 seconds to make sure it grabs attention without sounding like an ad.",
+  "Watchable on mute":     "Watches that the video still makes sense when the sound is off.",
+  "Scene pacing":          "Watches that the video changes scenes often enough to keep viewers from scrolling.",
+  "Audio delivery":        "Listens to the spoken script to make sure it's clear, natural, and on-brand.",
+  "Visual hook":           "Watches the first 3 seconds for a visual moment strong enough to stop the scroll.",
+  "Lighting & camera":     "Watches that the video is bright enough and the camera is steady and in focus.",
+  "Closed captions":       "Reads the captions to make sure they're accurate and easy to follow.",
+  "Energy & authenticity": "Watches that the creator feels engaging and real, not scripted or flat.",
+  "Text legibility":       "Reads any on-screen text to make sure it's big enough and easy to see.",
+  "Setting & background":  "Watches that the background is tidy, on-brand, and not distracting.",
+  "Product visibility":    "Watches that the product shows clearly enough times across the video.",
+  "Pronunciation":         "Listens for the brand and product names to make sure they're said the right way.",
+  "Copyright check":       "Checks the music, fonts, and clips for anything that could break copyright rules.",
+  "Music & sound balance": "Listens that the music doesn't drown out the voice.",
+  "Wardrobe & appearance": "Watches that the creator's outfit fits the brand and looks intentional.",
+  "Product usage":         "Watches that the product is shown being used the way it's meant to be.",
+  "Brand name mentioned":  "Listens for the brand name to be said the agreed number of times.",
+  "Audio clarity":         "Listens that the audio is clean — no background noise, echo, or hum.",
+  "Follows the brief":     "Reads the brief and checks that the video matches what was asked for.",
+  "Distracting elements":  "Watches for anything in frame that pulls attention away from the product.",
+  "Safe zones":            "Watches that important content stays inside the platform's safe zones (away from edges and overlays).",
+  "Video length":          "Checks that the video runs for the right amount of time for the chosen format.",
+  "CTA present":           "Watches for a call to action in the video — a clear ask to the viewer.",
+  "Inspiration link match":"Compares the video to the inspiration examples you linked on the brief.",
+  "Creator visability":    "Minimum percentage of video showing the creator's face (same as Creator visibility).",
+};
+
+const SECTION_INTRO = {
+  overview:    ["Overview",          "Your brief at a glance. Edit the name, status, and review mode here."],
+  brief:       ["Brief",             "The brief itself. Edit any line, drop a PDF, or rewrite from scratch."],
+  inspiration: ["Inspiration",       "Add videos from your Brieflee library to use as reference for creators."],
+  details:     ["Details",           "Set the basics for this brief: platform, format, and delivery requirements."],
+  qa:          ["Quality Assurance", "Pick the Review Agents that watch every submission for this brief, and set the standards they review against. Anything that misses the mark gets flagged."],
+  context:     ["Brief context",     "What this brief is for. Set during AI generation — edit if needed."],
+};
+
+// ─── SELECT options (briefs table option IDs, pulled fresh) ──
+const PLATFORM_OPTIONS = [
+  { id: "25558459-6369-42f2-81ec-5948551e5b36", label: "TikTok" },
+  { id: "ca31e322-1080-4d95-8172-ae73273aec9c", label: "Instagram" },
+  { id: "5c83fc93-a646-4007-9c44-702c3e58fed8", label: "YouTube" },
+  { id: "c308e328-5dc0-402c-93b4-0d7f7b4fc96e", label: "Facebook" },
+  { id: "8d457ca8-21e3-4379-94d2-5527544eafd3", label: "Twitter/X" },
+  { id: "6ad7fab3-74b1-435b-9032-f6e7a18b2c32", label: "LinkedIn" },
+  { id: "2e269f77-2443-4815-82f4-151dcb1b1ed3", label: "Other" },
+];
+const DURATION_OPTIONS = [
+  { id: "8eff2d4f-d36e-4d03-9875-08827b635fcc", label: "15 seconds" },
+  { id: "a04ee330-355c-43b0-acf7-16ade1c8c194", label: "30 seconds" },
+  { id: "bb0060f6-9605-44ca-b71c-da6e42e2e804", label: "45 seconds" },
+  { id: "d9ea06db-138a-44e6-94ae-f44a9200479f", label: "60 seconds" },
+  { id: "06f8b79c-b927-468b-910c-518eddaff77f", label: "90 seconds" },
+  { id: "8e1cee0e-a5ce-485f-a000-573c2f203ce6", label: "120 seconds" },
+];
+const DURATION_THRESHOLD_OPTIONS = [
+  { id: "1930c46b-a6ff-4d6d-9fc1-9bfe6d194631", label: "min" },
+  { id: "4a227411-cf9b-43f6-b5ab-17b805890e23", label: "max" },
+];
+const ASPECT_RATIO_OPTIONS = [
+  { id: "3e0c1cb5-4f72-4c79-9b50-b31b522adc7c", label: "9:16 (Vertical)" },
+  { id: "a3a79d52-d607-4d2e-820d-dd38fa7adbe4", label: "1:1 (Square)" },
+  { id: "752d40c5-3f8c-4b18-90d0-0f9abdfefa99", label: "16:9 (Horizontal)" },
+];
+const CONTENT_TYPE_OPTIONS = [
+  { id: "148efe00-4a01-4f32-80bf-510009adcf92", label: "Product demo" },
+  { id: "1aa3942b-d3d8-4a94-bc66-1e26b408c657", label: "Educational" },
+  { id: "ffb25a43-37c2-4ad8-bebc-92192df5fc5a", label: "Direct sales" },
+  { id: "a1951d4b-f34d-408f-8c63-e2594b9ed302", label: "Testimonial" },
+  { id: "cefdd1a6-db70-4454-9717-b5807ffff8ba", label: "Behind the scenes" },
+  { id: "cfbfd531-434f-4541-8106-15b230f8d423", label: "Unboxing" },
+  { id: "b291f409-e6ce-4272-9606-bf3b9ba4d16c", label: "Tutorial" },
+  { id: "eb5d95ad-0e78-4f4f-a3b3-ed73c521419c", label: "Lifestyle" },
+];
+const CONTENT_DELIVERY_OPTIONS = [
+  { id: "1148e7d3-a842-4119-ad1f-e8be01508ce7", label: "Raw" },
+  { id: "3c505b73-6c40-4012-b4be-4c118267a913", label: "Edited" },
+];
+
+const QA_AGENT_OPTIONS = [
+  { id: "e1ec4a2a-296f-498d-b4db-a7ee34cd0b4a", label: "Brand alignment" },
+  { id: "e004b609-b228-4ad4-9059-a5127eb8cf0d", label: "Hook quality" },
+  { id: "5e173f41-8b57-4bd8-8d1d-3224d7f5e632", label: "Visual hook" },
+  { id: "d17106f1-11f4-4974-b909-551a8d2d24f6", label: "Watchable on mute" },
+  { id: "c5eb65dc-73ad-48c8-8ad2-f5f71a6e6dfd", label: "Scene pacing" },
+  { id: "94a38177-20d1-4914-b782-9355b5387f3c", label: "Audio delivery" },
+  { id: "06cf18d0-39c8-4dc5-a4a9-ff25e83241df", label: "Audio clarity" },
+  { id: "3334dd25-72f8-46c2-aa04-f7e64d755a97", label: "Music & sound balance" },
+  { id: "e2a95018-742f-4c9f-bc06-41402c55071b", label: "Pronunciation" },
+  { id: "2c6f1900-15b8-46fe-a5b7-493aac30c21b", label: "Lighting & camera" },
+  { id: "f2d21ff6-8fa3-4db0-bf11-6978c340acd0", label: "Setting & background" },
+  { id: "a75cf968-8b30-475c-9253-32fb7fc8a3bb", label: "Distracting elements" },
+  { id: "d72c6246-e66d-4976-8aae-0bfbe2d18455", label: "Text legibility" },
+  { id: "91c11efd-d37a-4e27-b831-cbe23425d23c", label: "Closed captions" },
+  { id: "eb50e8f8-c014-44ee-b23f-7b39eb4fff0d", label: "Safe zones" },
+  { id: "d215d5c1-1eba-4e76-a155-a576a92a65b8", label: "Video length" },
+  { id: "20c847f5-7a3a-4349-bc9a-d31e3b1fa6b2", label: "Product visibility" },
+  { id: "714e1e9d-7e02-47e5-86c8-c42da09b1ce6", label: "Product usage" },
+  { id: "e066946c-ea40-4e98-b184-032fb6beba4b", label: "Creator visibility" },
+  { id: "b1e16483-3184-45b6-b064-11db0806e186", label: "Energy & authenticity" },
+  { id: "f938727a-64b3-4771-b960-6d342d0975fc", label: "Wardrobe & appearance" },
+  { id: "94b67c53-233c-4c3f-b39e-047ad8a00c79", label: "CTA present" },
+  { id: "f4f6d16e-f321-48b8-a9e5-f1d7899c9514", label: "Brand name mentioned" },
+  { id: "c84ffee1-c63d-4dd1-baf5-a92d5a41ad76", label: "Copyright check" },
+  { id: "43a98f9d-f8c8-4a3a-ad5c-623cc406d1be", label: "Inspiration link match" },
+  { id: "a80e1445-70bf-4896-b745-24578c26ba23", label: "Follows the brief" },
+];
+
+const THRESHOLD_OPTIONS = {
+  product_screen_time_threshold: [
+    { id: "0782d67c-5e8b-4675-8c7a-37dc6b5b1c9a", label: "40%" },
+    { id: "16c12b2f-2517-4122-bde1-032c26761cb5", label: "50%" },
+    { id: "a2d57355-aef9-4639-88e8-a8608fcef113", label: "60%" },
+    { id: "4a167218-ffad-4238-b1ad-fb3bd61dade4", label: "70%" },
+    { id: "8926bf08-5eba-467c-96fd-aa495d9204c4", label: "80%" },
+    { id: "cc4b45c8-a860-414a-a9e9-7f4b4c1e8709", label: "90%" },
+    { id: "52ba73cb-78fa-49ce-ac63-68cde993772a", label: "100%" },
+    { id: "0449d5f7-0853-4de7-8d08-7bec059a739a", label: "None" },
+  ],
+  hook_speed_threshold: [
+    { id: "aafbd5e1-f1aa-44c9-adb9-49c298478ac0", label: "1 second" },
+    { id: "d716ab93-13ab-4d77-b97d-653f0dece8de", label: "2 seconds" },
+    { id: "95df5f04-f1d9-4507-a861-238f489a28f6", label: "3 seconds" },
+    { id: "d9f6209d-b6f7-40bd-8433-19bfd60d689a", label: "4 seconds" },
+    { id: "92e07b79-c9f2-4177-8949-70fe21d7e1eb", label: "5 seconds" },
+    { id: "d7ac2f9c-dff8-4c21-b312-2bfdb496770e", label: "None" },
+  ],
+  visual_hook_threshold: [
+    { id: "f8740774-45c3-4f37-ad01-a0ee2576fb0e", label: "60%" },
+    { id: "c682501e-3aaf-49f0-b047-10a9310b106d", label: "65%" },
+    { id: "b02a5916-3729-44af-81f5-2595e31889c0", label: "70%" },
+    { id: "bdcf2250-eba1-456b-9dbf-9bcbc57cb666", label: "75%" },
+    { id: "a51dd363-5ef1-4dc2-8666-c4526b311ebc", label: "80%" },
+    { id: "7e7b63f2-acdf-4994-90c2-ff31ca526f44", label: "85%" },
+    { id: "62e984eb-fcc5-4c3d-8a40-1ddb03adf6de", label: "90%" },
+    { id: "c927d78b-5cec-4a0d-b894-fed840b25375", label: "None" },
+  ],
+  cta_placement_threshold: [
+    { id: "f39dc570-41a2-4612-ac37-eda9ac326e7b", label: "First 5 seconds" },
+    { id: "e0b5b67c-63f1-45fb-9203-82d2011fb2dd", label: "First 10 seconds" },
+    { id: "68c341df-926d-4600-b390-796a159ba6e4", label: "Last 3 seconds" },
+    { id: "b90d2e4c-2461-4d14-a681-0f95544cc5b6", label: "Last 5 seconds" },
+    { id: "af92ff09-27c2-4804-9cac-fb9acf5ebe36", label: "Last 7 seconds" },
+    { id: "b3316874-ab1b-4627-b0fc-ff859cd08e66", label: "Last 10 seconds" },
+    { id: "b4af4a36-4338-40dc-b2c4-8a6653cb6f8a", label: "Throughout video (multiple CTAs)" },
+    { id: "c2097d76-659b-4875-9504-1aec712343c7", label: "None (no CTA required)" },
+  ],
+  face_time_threshold: [
+    { id: "6f39dfce-a900-4543-a91d-5a3e9f9f13a7", label: "20%" },
+    { id: "a760d0e0-3e7c-493a-ac80-9e52ae5d6aec", label: "30%" },
+    { id: "4c5e683e-5711-47e1-b71c-c0925b897857", label: "40%" },
+    { id: "d9f32664-7bf2-4ec8-9083-9158b89195ac", label: "50%" },
+    { id: "51521314-2547-4dc2-9e0a-7d41fc96e7bb", label: "60%" },
+    { id: "bc78336a-0a86-438c-a483-47cc75553c9f", label: "70%" },
+    { id: "fa917c5a-dbd6-4622-8ddb-a1a4a63091b6", label: "80%" },
+    { id: "2a81aa43-e442-4a68-b9a0-73d414533c66", label: "90%" },
+    { id: "8d58b426-a9c2-4e53-ae33-e0a3a3434f9b", label: "None" },
+  ],
+  text_legibility_threshold: [
+    { id: "3ac03877-72c7-4f47-88bd-7698827485df", label: "70%" },
+    { id: "ece46efd-aff5-4a10-992f-7ee2b61e88b3", label: "80%" },
+    { id: "0090c1e5-859a-4916-a163-153fc633e09f", label: "90%" },
+    { id: "4a018f2a-f5d2-4839-a459-869e2e3e09c1", label: "100%" },
+    { id: "92ae4c79-bfea-4b68-8eaf-abb9bfde08ff", label: "None" },
+  ],
+  audio_clarity_threshold: [
+    { id: "767348d5-aea6-4e38-a73c-7deeeb304f08", label: "70%" },
+    { id: "2381c11b-1c23-43e7-8d36-e42975bddd74", label: "80%" },
+    { id: "6e5ad35d-ed61-443e-b278-89a1ba5daebe", label: "90%" },
+    { id: "6c6cab1b-26a5-4cff-9689-eca86ddd06a9", label: "100%" },
+    { id: "86547f5f-caf8-493a-ac21-ead32127b6a3", label: "None" },
+  ],
+  engagement_pacing_threshold: [
+    { id: "aab757cb-1a89-4d53-a38a-bec6e5c93804", label: "Every 2 seconds" },
+    { id: "3e7b4f40-2a90-4627-abcf-cf63f1d018cd", label: "Every 3 seconds" },
+    { id: "286b5f77-fe0c-46db-82ee-6be6e65c5c0e", label: "Every 4 seconds" },
+    { id: "9093a4a1-f052-4a12-8f6f-90b7826080b5", label: "Every 5 seconds" },
+    { id: "5321a67a-a001-44dc-8626-c9c4eb808374", label: "None" },
+  ],
+  brand_mention_count_threshold: [
+    { id: "70816131-ed29-4231-b37a-55c6d993a19d", label: "0" },
+    { id: "0b79a84c-f017-4b4b-9d2e-89df3603450d", label: "1" },
+    { id: "ace1f38d-1cc2-453a-8257-3c474cd06fe4", label: "2" },
+    { id: "a78f70cd-4208-4cf5-96b2-2470f2d78d97", label: "3" },
+    { id: "84b371ac-b430-4420-84e4-8ef883fdc75f", label: "4+" },
+  ],
+};
+const THRESHOLD_FIELDS = [
+  { alias: "product_screen_time_threshold" },
+  { alias: "hook_speed_threshold" },
+  { alias: "visual_hook_threshold" },
+  { alias: "cta_placement_threshold" },
+  { alias: "face_time_threshold" },
+  { alias: "text_legibility_threshold" },
+  { alias: "audio_clarity_threshold" },
+  { alias: "engagement_pacing_threshold" },
+  { alias: "brand_mention_count_threshold" },
+];
+
+const CREATOR_TYPE_OPTIONS = [
+  { id: "7adfce93-0c2f-4cec-af91-c7a4c99d64d3", label: "Influencer" },
+  { id: "5a290e3b-2905-41b6-9bbb-1b98964dcbf0", label: "UGC Creator" },
+  { id: "437357f6-a391-4acd-afb2-2c6698ff87fd", label: "Founder" },
+  { id: "a06a4342-d693-4013-a4ef-26fede8289f7", label: "Customer" },
+  { id: "cf25288c-918f-444a-afbe-bc8c7b4aab82", label: "Employee" },
+];
+const CHANNEL_OPTIONS = [
+  { id: "ba9af748-7695-46b2-b5e3-f9c58b5b8288", label: "Organic" },
+  { id: "2c767823-7430-4f24-9fdb-69485d1ff1b3", label: "Paid" },
+];
+const AWARENESS_OPTIONS = [
+  { id: "d47eeeb1-8d84-4e1c-8495-a62436736323", label: "Unaware" },
+  { id: "e29615eb-267a-41a2-ad0b-ac6c9333531a", label: "Problem Aware" },
+  { id: "0c2cfd22-ceba-437b-8a50-1a06546079ec", label: "Solution Aware" },
+  { id: "be427ade-d4e0-40e9-878f-37c34d75381b", label: "Product Aware" },
+  { id: "b4763d3f-c405-459b-b2e0-99c9b32de710", label: "Most Aware" },
+];
+const ANGLE_OPTIONS = [
+  { id: "28fa5fbd-42c9-4c21-a917-03fa587f68ab", label: "Pattern Interrupt" },
+  { id: "49afd786-798a-4004-bdc2-6deecaa1b145", label: "Curiosity Gap" },
+  { id: "5fa3f262-763b-47a6-97fe-ab8df2dfa67e", label: "Story Setup" },
+  { id: "4c2c76cb-5082-40ec-acd0-781efa62536a", label: "Statistics / Numbers" },
+  { id: "e343b35a-d9c9-47c2-8d2e-152bfdbe0c61", label: "Relatability" },
+  { id: "a59fb434-69f5-4202-b1bc-1ae913a03078", label: "Pain / Problem" },
+  { id: "ee73f098-3963-429d-97a6-647802e5d503", label: "Confession / Vulnerability" },
+  { id: "9376f1f3-e982-44a1-be43-775fb3998c44", label: "Direct Question" },
+  { id: "a3306b32-119c-43b0-b7bb-967f4e226351", label: "Contrarian" },
+  { id: "3091c27b-df0d-4fd6-b158-1bb40be1890c", label: "Before / After" },
+  { id: "c9dfb7a4-a7d1-4a47-ae4c-1bc1b1d4a9d3", label: "Revelation / Secret" },
+  { id: "4b928415-17bc-4383-8d7f-3a43d114a878", label: "Authority / Credibility" },
+  { id: "145fafb1-0865-4b8f-aded-93b679d60def", label: "Social Proof" },
+  { id: "0298ee4b-a7a2-4566-a8f8-2f973dc80604", label: "Enemy / Comparison" },
+  { id: "34d4132a-a8f9-4a94-81c1-74ea091235f4", label: "Urgency / Scarcity" },
+  { id: "6cee00b0-2c9f-4089-9d88-a1512f9bdbfd", label: "Challenge / Dare" },
+];
+const STORYBOARD_SECTIONS = [
+  "Hook", "On-ramp", "Problem", "Agitation", "Motivator", "Solution Intro",
+  "Product Intro", "Demonstration", "Education", "Proof", "Trust Builder",
+  "Offer Stack", "Persuasion Levers", "Engagement", "Community",
+  "Call To Action", "Outro", "Urgency",
+];
+
+// =====================================================================
+// Style
+// =====================================================================
+function Style() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+      .bl-bd, .bl-bd * { font-family: 'League Spartan', sans-serif; box-sizing: border-box; }
+      .bl-bd {
+        background: ${SURFACE};
+        padding: 12px 0 64px;
+        max-width: 1140px;
+        margin: 0 auto;
+      }
+
+      /* Section card */
+      .bl-bd-section {
+        background: #FFFFFF;
+        border: 1px solid ${BORDER};
+        border-radius: 14px;
+        margin-bottom: 12px;
+        overflow: visible;
+        transition: border-color 0.15s;
+      }
+      .bl-bd-section:hover:not(.is-collapsed) {
+        border-color: rgba(135, 156, 247, 0.4);
+      }
+      .bl-bd-section-head {
+        display: flex; align-items: flex-start; gap: 12px;
+        padding: 18px 20px 14px;
+      }
+      .bl-bd-section-toggle {
+        flex: 1 1 auto;
+        display: flex; align-items: flex-start; gap: 10px;
+        background: transparent; border: none; cursor: pointer;
+        padding: 0; text-align: left; color: ${NAVY_DEEP};
+      }
+      .bl-bd-section-toggle:hover .bl-bd-section-title { color: ${PERIWINKLE_HOVER}; }
+      .bl-bd-section-toggle > svg { margin-top: 2px; color: ${MUTED}; flex-shrink: 0; }
+      .bl-bd-section-titles { flex: 1 1 auto; }
+      .bl-bd-section-title {
+        font-size: 18px; font-weight: 600; color: ${NAVY_DEEP};
+        margin: 0 0 4px; letter-spacing: -0.01em; transition: color 0.15s;
+      }
+      .bl-bd-section-sub {
+        font-size: 13px; color: ${MUTED}; line-height: 1.45; margin: 0;
+      }
+      .bl-bd-section-right { flex: 0 0 auto; display: inline-flex; align-items: center; }
+      .bl-bd-section-body {
+        padding: 0 20px 20px;
+        border-top: 1px solid rgba(135, 156, 247, 0.10);
+        margin-top: 4px; padding-top: 16px;
+      }
+
+      /* Overview */
+      .bl-bd-overview { display: flex; align-items: flex-start; gap: 18px; }
+      .bl-bd-thumb-wrap {
+        position: relative; flex: 0 0 96px;
+        width: 96px; height: 96px;
+        border-radius: 12px; overflow: hidden;
+        background: ${TRACK}; border: 1px solid ${BORDER};
+      }
+      .bl-bd-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .bl-bd-thumb-edit {
+        position: absolute; bottom: 6px; right: 6px;
+        width: 26px; height: 26px; border-radius: 8px;
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid ${BORDER}; color: ${NAVY_DEEP};
+        cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+        box-shadow: 0 2px 8px -2px rgba(0, 15, 77, 0.20);
+      }
+      .bl-bd-thumb-edit:hover { background: #FFFFFF; color: ${PERIWINKLE_HOVER}; }
+      .bl-bd-thumb-edit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      .bl-bd-identity {
+        flex: 1 1 auto; display: flex; flex-direction: column; gap: 10px; min-width: 0;
+      }
+      .bl-bd-name-row { display: flex; align-items: center; gap: 10px; }
+      .bl-bd-name {
+        font-size: 22px; font-weight: 600; color: ${NAVY_DEEP};
+        background: transparent; border: none;
+        padding: 4px 6px; margin: -4px -6px;
+        border-radius: 8px; cursor: text;
+        display: inline-flex; align-items: center; gap: 8px;
+        letter-spacing: -0.01em; line-height: 1.2; text-align: left;
+      }
+      .bl-bd-name:hover { background: rgba(135, 156, 247, 0.08); }
+      .bl-bd-name-pencil { opacity: 0; transition: opacity 0.15s; color: ${MUTED}; }
+      .bl-bd-name:hover .bl-bd-name-pencil { opacity: 1; }
+      .bl-bd-name-input {
+        font-size: 22px !important; font-weight: 600 !important;
+        color: ${NAVY_DEEP} !important; height: 38px;
+      }
+      .bl-bd-saving { font-size: 11px; color: ${MUTED}; font-style: italic; }
+
+      .bl-bd-tag-row { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .bl-bd-tag {
+        display: inline-flex; align-items: center;
+        padding: 4px 10px; background: ${TAG_BG};
+        color: ${PERIWINKLE_HOVER}; font-size: 11px; font-weight: 500;
+        border-radius: 999px; letter-spacing: 0.02em;
+      }
+
+      .bl-bd-status-wrap { position: relative; }
+      .bl-bd-status-pill {
+        display: inline-flex; align-items: center;
+        padding: 3px 11px; border-radius: 999px;
+        font-size: 11px; font-weight: 500; letter-spacing: 0.02em;
+        cursor: pointer; border-width: 1px; border-style: solid; color: ${NAVY_DEEP};
+      }
+      .bl-bd-status-pill:disabled { cursor: wait; opacity: 0.65; }
+      .bl-bd-status-menu {
+        position: absolute; top: calc(100% + 6px); left: 0;
+        min-width: 160px; background: #FFFFFF;
+        border: 1px solid ${BORDER}; border-radius: 12px;
+        box-shadow: 0 16px 36px -16px rgba(0, 15, 77, 0.25);
+        padding: 6px; z-index: 30;
+        display: flex; flex-direction: column; gap: 2px;
+      }
+      .bl-bd-status-menu-item {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 8px 10px; background: transparent; border: none;
+        border-radius: 8px; font-size: 13px; font-weight: 500;
+        color: ${NAVY_DEEP}; text-align: left; cursor: pointer;
+        transition: background 0.12s;
+      }
+      .bl-bd-status-menu-item:hover { background: rgba(135, 156, 247, 0.10); }
+      .bl-bd-status-menu-item.is-active { color: ${PERIWINKLE_HOVER}; }
+      .bl-bd-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+      .bl-bd-status-check { margin-left: auto; color: ${PERIWINKLE_HOVER}; }
+
+      .bl-bd-priv {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 3px 11px; background: ${TAG_BG};
+        border: 1px solid ${BORDER}; color: ${NAVY_DEEP};
+        font-size: 11px; font-weight: 500; border-radius: 999px;
+        letter-spacing: 0.02em; cursor: pointer; transition: border-color 0.15s;
+      }
+      .bl-bd-priv:hover { border-color: ${PERIWINKLE}; }
+      .bl-bd-priv:disabled { cursor: wait; opacity: 0.65; }
+
+      .bl-bd-gen-badge {
+        display: inline-flex; align-items: center;
+        padding: 3px 10px; background: ${PERIWINKLE};
+        color: #FFFFFF; font-size: 10px; font-weight: 600;
+        border-radius: 999px; letter-spacing: 0.04em;
+        box-shadow: 0 4px 10px -4px rgba(135, 156, 247, 0.55);
+      }
+
+      .bl-bd-review-row {
+        display: inline-flex; align-items: center; gap: 12px; margin-top: 6px;
+      }
+      .bl-bd-row-label {
+        font-size: 13px; font-weight: 500; color: ${MUTED};
+        display: inline-flex; align-items: center; gap: 4px;
+      }
+      .bl-bd-segmented {
+        display: inline-flex; align-items: center; padding: 2px;
+        background: ${TAG_BG}; border: 1px solid ${BORDER}; border-radius: 999px;
+      }
+      .bl-bd-segmented-btn {
+        background: transparent; border: none;
+        padding: 5px 12px; border-radius: 999px;
+        font-size: 12px; font-weight: 500; color: ${MUTED};
+        cursor: pointer; transition: background 0.15s, color 0.15s;
+      }
+      .bl-bd-segmented-btn:hover:not(.is-active):not(:disabled) { color: ${NAVY_DEEP}; }
+      .bl-bd-segmented-btn.is-active {
+        background: #FFFFFF; color: ${NAVY_DEEP};
+        box-shadow: 0 2px 6px -2px rgba(0, 15, 77, 0.18);
+      }
+      .bl-bd-segmented-btn:disabled { cursor: wait; opacity: 0.6; }
+
+      .bl-bd-header-actions { display: inline-flex; align-items: center; gap: 8px; }
+
+      /* Share popover */
+      .bl-bd-share-wrap { position: relative; }
+      .bl-bd-share-panel {
+        position: absolute; top: calc(100% + 8px); right: 0;
+        width: 360px; max-width: calc(100vw - 32px);
+        background: #FFFFFF;
+        border: 1px solid ${BORDER};
+        border-radius: 14px;
+        box-shadow: 0 24px 60px -16px rgba(0, 15, 77, 0.30);
+        padding: 16px;
+        z-index: 60;
+      }
+      .bl-bd-share-tabs {
+        display: flex;
+        gap: 4px;
+        padding: 3px;
+        margin: -4px -4px 14px;
+        background: ${TAG_BG};
+        border-radius: 999px;
+      }
+      .bl-bd-share-tab {
+        flex: 1 1 auto;
+        padding: 6px 12px;
+        background: transparent;
+        border: none;
+        border-radius: 999px;
+        font-size: 12px; font-weight: 500;
+        color: ${MUTED};
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+      }
+      .bl-bd-share-tab:hover:not(.is-active) { color: ${NAVY_DEEP}; }
+      .bl-bd-share-tab.is-active {
+        background: #FFFFFF;
+        color: ${NAVY_DEEP};
+        box-shadow: 0 2px 6px -2px rgba(0, 15, 77, 0.18);
+      }
+      .bl-bd-share-team-note {
+        margin-top: 14px;
+        padding: 10px 12px;
+        background: ${SUBTLE_BG};
+        border: 1px solid ${BORDER};
+        border-radius: 10px;
+        font-size: 11px;
+        line-height: 1.45;
+        color: ${MUTED};
+      }
+      .bl-bd-share-title {
+        font-size: 13px; font-weight: 600; color: ${NAVY_DEEP};
+        margin: 0 0 2px;
+      }
+      .bl-bd-share-helper {
+        font-size: 11px; color: ${MUTED}; margin-bottom: 10px;
+      }
+      .bl-bd-share-link-row {
+        display: flex; align-items: stretch; gap: 6px;
+      }
+      .bl-bd-share-link-input {
+        flex: 1 1 auto; min-width: 0;
+        height: 34px; padding: 0 10px;
+        background: ${SURFACE};
+        border: 1px solid ${BORDER};
+        border-radius: 8px;
+        font-size: 12px; color: ${NAVY_DEEP};
+        outline: none;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      .bl-bd-share-link-input:focus { border-color: ${PERIWINKLE}; }
+      .bl-bd-share-icon-btn {
+        flex: 0 0 34px;
+        width: 34px; height: 34px;
+        background: #FFFFFF;
+        border: 1px solid ${BORDER};
+        border-radius: 8px;
+        color: ${NAVY_DEEP};
+        cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+        transition: border-color 0.15s, color 0.15s;
+      }
+      .bl-bd-share-icon-btn:hover:not(:disabled) {
+        border-color: ${PERIWINKLE}; color: ${PERIWINKLE_HOVER};
+      }
+      .bl-bd-share-icon-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+      .bl-bd-share-divider {
+        height: 1px;
+        background: ${BORDER};
+        margin: 14px -16px;
+      }
+      .bl-bd-share-row {
+        display: flex; align-items: center; gap: 12px;
+        justify-content: space-between;
+      }
+      .bl-bd-share-row-title {
+        display: flex; flex-direction: column; gap: 2px;
+        font-size: 12px; font-weight: 500; color: ${NAVY_DEEP};
+      }
+      .bl-bd-share-row-helper {
+        font-size: 11px; color: ${MUTED}; font-weight: 400;
+      }
+      .bl-bd-share-invite-btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        width: 100%;
+        height: 38px;
+        background: ${PERIWINKLE};
+        color: #FFFFFF;
+        border: none;
+        border-radius: 10px;
+        font-size: 13px; font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .bl-bd-share-invite-btn:hover:not(:disabled) { background: ${PERIWINKLE_HOVER}; }
+      .bl-bd-share-invite-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+      .bl-bd-preview-btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        height: 36px; padding: 0 14px;
+        background: #FFFFFF; border: 1px solid ${BORDER};
+        border-radius: 10px; color: ${NAVY_DEEP};
+        font-size: 13px; font-weight: 500; cursor: pointer;
+        transition: border-color 0.15s, color 0.15s;
+      }
+      .bl-bd-preview-btn:hover:not(:disabled) {
+        border-color: ${PERIWINKLE}; color: ${PERIWINKLE_HOVER};
+      }
+      .bl-bd-preview-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+      .bl-bd-publish-btn {
+        height: 36px; border-radius: 10px;
+        font-size: 13px; font-weight: 500; padding: 0 16px;
+      }
+      .bl-bd-publish-btn:hover:not(:disabled) {
+        background-color: ${PERIWINKLE_HOVER} !important;
+      }
+      .bl-bd-publish-btn:disabled { opacity: 0.55; }
+
+      /* Tooltip */
+      .bl-bd-tip-wrap { position: relative; display: inline-flex; align-items: center; margin-left: 4px; }
+      .bl-bd-tip-icon { color: ${MUTED}; cursor: help; transition: color 0.15s; }
+      .bl-bd-tip-wrap:hover .bl-bd-tip-icon,
+      .bl-bd-tip-wrap:focus .bl-bd-tip-icon { color: ${PERIWINKLE_HOVER}; }
+      .bl-bd-tip-text {
+        position: absolute; bottom: calc(100% + 6px); left: 50%;
+        transform: translateX(-50%);
+        background: ${NAVY_DEEP}; color: #FFFFFF;
+        font-size: 11px; font-weight: 400; line-height: 1.4;
+        padding: 6px 10px; border-radius: 8px;
+        white-space: normal; width: 240px;
+        opacity: 0; visibility: hidden; pointer-events: none; z-index: 100;
+        box-shadow: 0 12px 28px -12px rgba(0, 15, 77, 0.55);
+      }
+      .bl-bd-tip-wrap:hover .bl-bd-tip-text,
+      .bl-bd-tip-wrap:focus .bl-bd-tip-text { opacity: 1; visibility: visible; }
+
+      /* Field grid */
+      .bl-bd-fields-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+      .bl-bd-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+        position: relative; /* anchor for absolute-positioned popovers (multi-select menu, agents menu) */
+      }
+      .bl-bd-field.is-full { grid-column: span 2; }
+      .bl-bd-field-label {
+        font-size: 12px; font-weight: 500; color: ${NAVY_DEEP};
+        display: inline-flex; align-items: center; gap: 4px;
+        letter-spacing: 0.01em;
+      }
+      .bl-bd-field-value {
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      }
+      .bl-bd-input {
+        height: 36px; font-size: 13px;
+        background: #FFFFFF; border: 1px solid ${BORDER};
+        border-radius: 10px; padding: 0 12px; color: ${NAVY_DEEP};
+        outline: none; transition: border-color 0.15s; width: 100%;
+      }
+      .bl-bd-input:focus { border-color: ${PERIWINKLE}; }
+      .bl-bd-textarea {
+        font-size: 13px; line-height: 1.45;
+        background: #FFFFFF; border: 1px solid ${BORDER};
+        border-radius: 10px; padding: 10px 12px; color: ${NAVY_DEEP};
+        width: 100%; outline: none; transition: border-color 0.15s;
+        font-family: inherit; resize: vertical;
+      }
+      .bl-bd-textarea:focus { border-color: ${PERIWINKLE}; }
+      .bl-bd-select {
+        height: 36px; font-size: 13px;
+        background: #FFFFFF url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7A99' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>") no-repeat right 10px center / 14px;
+        border: 1px solid ${BORDER}; border-radius: 10px;
+        padding: 0 32px 0 12px; color: ${NAVY_DEEP};
+        outline: none; appearance: none; cursor: pointer;
+        transition: border-color 0.15s;
+        flex: 1 1 auto; min-width: 0;
+      }
+      .bl-bd-select:focus { border-color: ${PERIWINKLE}; }
+      .bl-bd-select-inline {
+        flex: 0 0 100px; height: 36px; max-width: 100px;
+      }
+
+      /* Multi-select */
+      .bl-bd-multi { position: relative; width: 100%; }
+      .bl-bd-multi-trigger {
+        display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+        width: 100%; min-height: 36px;
+        padding: 5px 36px 5px 10px;
+        background: #FFFFFF; border: 1px solid ${BORDER};
+        border-radius: 10px; cursor: pointer; text-align: left;
+        position: relative;
+        transition: border-color 0.15s;
+      }
+      .bl-bd-multi-trigger:hover { border-color: ${PERIWINKLE}; }
+      .bl-bd-multi-placeholder { color: ${SOFT_MUTED}; font-size: 12px; }
+      .bl-bd-multi-caret {
+        position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+        color: ${MUTED};
+      }
+      .bl-bd-chip {
+        display: inline-flex; align-items: center;
+        padding: 3px 10px; background: ${TAG_BG};
+        color: ${PERIWINKLE_HOVER}; font-size: 11px; font-weight: 500;
+        border-radius: 999px;
+      }
+      .bl-bd-multi-menu, .bl-bd-agents-menu {
+        position: absolute; top: calc(100% + 6px); left: 0;
+        max-height: 360px; overflow: auto;
+        background: #FFFFFF; border: 1px solid ${BORDER};
+        border-radius: 12px;
+        box-shadow: 0 16px 36px -16px rgba(0, 15, 77, 0.30);
+        padding: 6px; z-index: 40;
+      }
+      .bl-bd-multi-menu { min-width: 100%; max-width: 100%; }
+      .bl-bd-agents-menu {
+        /* Wider than the multi-select menu since each agent renders as
+           a card with icon + name + description. Caps at viewport so
+           it never escapes a narrow tab. */
+        width: 720px;
+        max-width: calc(100vw - 48px);
+        max-height: 480px;
+        padding: 10px;
+      }
+      .bl-bd-agents-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 8px;
+      }
+      .bl-bd-agent-card {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 6px;
+        padding: 14px 12px 12px;
+        background: #FFFFFF;
+        border: 1px solid ${BORDER};
+        border-radius: 12px;
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s, transform 0.15s;
+      }
+      .bl-bd-agent-card:hover {
+        border-color: ${PERIWINKLE};
+        background: ${SUBTLE_BG};
+        transform: translateY(-1px);
+      }
+      .bl-bd-agent-card.is-active {
+        border-color: ${PERIWINKLE};
+        background: ${TAG_BG};
+        box-shadow: 0 0 0 1px ${PERIWINKLE} inset;
+      }
+      .bl-bd-agent-card-check {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 18px;
+        height: 18px;
+        border-radius: 6px;
+        background: #FFFFFF;
+        border: 1px solid ${BORDER};
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #FFFFFF;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .bl-bd-agent-card.is-active .bl-bd-agent-card-check {
+        background: ${PERIWINKLE};
+        border-color: ${PERIWINKLE};
+      }
+      .bl-bd-agent-card-icon {
+        width: 56px;
+        height: 56px;
+        margin-top: 2px;
+        flex-shrink: 0;
+        filter: drop-shadow(0 6px 12px rgba(135, 156, 247, 0.25));
+      }
+      .bl-bd-agent-card-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: ${NAVY_DEEP};
+        line-height: 1.25;
+        letter-spacing: -0.005em;
+      }
+      .bl-bd-agent-card-desc {
+        font-size: 11px;
+        color: ${MUTED};
+        line-height: 1.4;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .bl-bd-multi-item {
+        display: inline-flex; align-items: center; gap: 8px;
+        width: 100%; padding: 8px 10px;
+        background: transparent; border: none; border-radius: 8px;
+        font-size: 13px; font-weight: 500; color: ${NAVY_DEEP};
+        text-align: left; cursor: pointer; transition: background 0.12s;
+      }
+      .bl-bd-multi-item:hover { background: rgba(135, 156, 247, 0.10); }
+      .bl-bd-multi-item.is-active { color: ${PERIWINKLE_HOVER}; }
+      .bl-bd-check-box {
+        width: 14px; height: 14px; border-radius: 4px;
+        border: 1px solid ${BORDER}; background: #FFFFFF;
+        display: inline-flex; align-items: center; justify-content: center;
+        color: ${PERIWINKLE_HOVER}; flex-shrink: 0;
+      }
+      .bl-bd-multi-item.is-active .bl-bd-check-box {
+        background: ${PERIWINKLE}; border-color: ${PERIWINKLE}; color: #FFFFFF;
+      }
+
+      /* Review Agents */
+      .bl-bd-agents-field { grid-column: span 2; }
+      .bl-bd-agents-trigger {
+        display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+        width: 100%; min-height: 44px;
+        padding: 8px 36px 8px 10px;
+        background: #FFFFFF; border: 1px solid ${BORDER};
+        border-radius: 12px; cursor: pointer; text-align: left;
+        position: relative; transition: border-color 0.15s;
+      }
+      .bl-bd-agents-trigger:hover { border-color: ${PERIWINKLE}; }
+      .bl-bd-agent-chip {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 4px 10px 4px 4px;
+        background: ${TAG_BG}; color: ${NAVY_DEEP};
+        font-size: 11px; font-weight: 500; border-radius: 999px;
+      }
+      .bl-bd-agent-icon {
+        width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+      }
+      .bl-bd-agent-row {
+        display: flex; align-items: center; gap: 10px;
+        width: 100%; padding: 8px 10px;
+        background: transparent; border: none; border-radius: 8px;
+        font-size: 13px; color: ${NAVY_DEEP};
+        text-align: left; cursor: pointer; transition: background 0.12s;
+      }
+      .bl-bd-agent-row:hover { background: rgba(135, 156, 247, 0.08); }
+      .bl-bd-agent-row .bl-bd-agent-icon {
+        width: 22px; height: 22px;
+      }
+      .bl-bd-agent-name {
+        font-weight: 500;
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .bl-bd-agent-tip {
+        /* Hidden inline — tooltip text now shows via the row's title=
+           attribute on hover (native browser tooltip), keeping the
+           menu compact and readable at any width. */
+        display: none;
+      }
+      .bl-bd-agent-row.is-active { background: ${SUBTLE_BG}; }
+
+      /* Thresholds grid (subset of fields grid) */
+      .bl-bd-thresholds {
+        margin-top: 16px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .bl-bd-thresholds .bl-bd-field { gap: 4px; }
+
+      /* Brief body */
+      .bl-bd-brief-body { display: flex; flex-direction: column; gap: 14px; }
+      .bl-bd-brief-plain { margin-top: 4px; }
+      .bl-bd-brief-card {
+        background: ${SURFACE}; border: 1px solid ${BORDER};
+        border-radius: 12px; padding: 14px 16px;
+      }
+      .bl-bd-brief-card-head {
+        display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px;
+      }
+      .bl-bd-brief-card-title {
+        font-size: 14px; font-weight: 600; color: ${NAVY_DEEP}; margin: 0;
+      }
+      .bl-bd-brief-card-helper {
+        font-size: 11px; color: ${MUTED};
+      }
+      .bl-bd-brief-list {
+        list-style: none; padding: 0; margin: 0;
+        display: flex; flex-direction: column; gap: 8px;
+      }
+      .bl-bd-brief-line {
+        display: flex; align-items: flex-start; gap: 8px;
+      }
+      .bl-bd-textarea-line { min-height: 38px; }
+      .bl-bd-line-delete {
+        flex: 0 0 28px; height: 28px; border-radius: 6px;
+        background: transparent; border: none; color: ${MUTED};
+        cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+        margin-top: 4px;
+        transition: background 0.12s, color 0.12s;
+      }
+      .bl-bd-line-delete:hover { background: rgba(217, 38, 38, 0.08); color: #d92626; }
+      .bl-bd-brief-empty {
+        padding: 10px 4px; font-size: 12px; color: ${SOFT_MUTED}; font-style: italic;
+      }
+      .bl-bd-add-line {
+        margin-top: 10px;
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 5px 10px; font-size: 12px; font-weight: 500;
+        background: transparent; color: ${PERIWINKLE_HOVER};
+        border: 1px dashed rgba(135, 156, 247, 0.55);
+        border-radius: 999px; cursor: pointer;
+        transition: background 0.12s, border-color 0.12s;
+      }
+      .bl-bd-add-line:hover { background: rgba(135, 156, 247, 0.08); border-color: ${PERIWINKLE}; }
+
+      /* Storyboard */
+      .bl-bd-storyboard {
+        display: flex; flex-direction: column; gap: 10px;
+      }
+      .bl-bd-storyboard-row {
+        display: grid;
+        grid-template-columns: 140px 1fr 1fr 28px;
+        gap: 8px; align-items: start;
+      }
+      .bl-bd-storyboard-section { height: 38px; }
+      .bl-bd-storyboard-visual { min-height: 38px; }
+      .bl-bd-storyboard-script { height: 38px; }
+
+      /* Brief section card stack — ensures Brand bio + Product
+         summary + the brief body editor all sit with the same 14px
+         gap that bl-bd-brief-body uses internally between Personal
+         experiences / Hook / etc. */
+      .bl-bd-brief-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      /* Context cards (Brand bio + Product summary) — visually
+         identical to bl-bd-brief-card, so they sit inline with the
+         Personal experiences / Hook / Talking points cards. */
+      .bl-bd-context-paragraph {
+        font-size: 13px; line-height: 1.5;
+        color: ${NAVY_DEEP};
+        margin: 0;
+        white-space: pre-wrap;
+      }
+      .bl-bd-context-trigger {
+        width: 100%;
+        background: transparent;
+        border: none;
+        padding: 0;
+        text-align: left;
+        cursor: pointer;
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        position: relative;
+      }
+      .bl-bd-context-trigger.is-empty .bl-bd-context-paragraph {
+        color: ${SOFT_MUTED};
+        font-style: italic;
+      }
+      .bl-bd-context-pencil {
+        flex: 0 0 12px;
+        margin-top: 4px;
+        color: ${MUTED};
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
+      .bl-bd-context-trigger:hover .bl-bd-context-pencil { opacity: 1; }
+      .bl-bd-context-edit {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .bl-bd-context-edit-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        align-self: flex-end;
+      }
+      .bl-bd-context-cancel {
+        height: 32px;
+        padding: 0 12px;
+        background: transparent;
+        color: ${MUTED};
+        border: none;
+        border-radius: 8px;
+        font-size: 12px; font-weight: 500;
+        cursor: pointer;
+      }
+      .bl-bd-context-cancel:hover:not(:disabled) { color: ${NAVY_DEEP}; }
+      .bl-bd-context-cancel:disabled { opacity: 0.55; cursor: not-allowed; }
+      .bl-bd-context-save {
+        height: 32px;
+        padding: 0 14px;
+        background: ${PERIWINKLE};
+        color: #FFFFFF;
+        border: none;
+        border-radius: 8px;
+        font-size: 12px; font-weight: 500;
+        cursor: pointer;
+      }
+      .bl-bd-context-save:hover:not(:disabled) { background: ${PERIWINKLE_HOVER}; }
+      .bl-bd-context-save:disabled { opacity: 0.55; cursor: not-allowed; }
+
+      /* PDF row */
+      .bl-bd-pdf-row {
+        margin-top: 14px;
+        background: ${SURFACE}; border: 1px solid ${BORDER};
+        border-radius: 12px; padding: 12px 14px;
+        display: flex; flex-direction: column; gap: 8px;
+      }
+      .bl-bd-pdf-label {
+        font-size: 12px; font-weight: 500; color: ${NAVY_DEEP};
+        display: inline-flex; align-items: center;
+      }
+      .bl-bd-pdf-filled {
+        display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      }
+      .bl-bd-pdf-link {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 10px;
+        background: #FFFFFF; border: 1px solid ${BORDER};
+        border-radius: 8px; color: ${NAVY_DEEP};
+        font-size: 12px; font-weight: 500; text-decoration: none;
+        transition: border-color 0.15s, color 0.15s;
+      }
+      .bl-bd-pdf-link:hover { border-color: ${PERIWINKLE}; color: ${PERIWINKLE_HOVER}; }
+      .bl-bd-pdf-edit, .bl-bd-pdf-clear {
+        width: 28px; height: 28px; border-radius: 6px;
+        background: transparent; border: 1px solid ${BORDER};
+        color: ${MUTED}; cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+        transition: border-color 0.15s, color 0.15s;
+      }
+      .bl-bd-pdf-edit:hover { border-color: ${PERIWINKLE}; color: ${PERIWINKLE_HOVER}; }
+      .bl-bd-pdf-clear:hover { border-color: #d92626; color: #d92626; }
+      .bl-bd-pdf-edit-row { display: inline-flex; gap: 8px; align-items: center; flex: 1; }
+      .bl-bd-pdf-edit-row .bl-bd-input { flex: 1; }
+      .bl-bd-pdf-save {
+        height: 36px; padding: 0 14px;
+        background: ${PERIWINKLE}; color: #FFFFFF;
+        border: none; border-radius: 8px;
+        font-size: 12px; font-weight: 500; cursor: pointer;
+      }
+      .bl-bd-pdf-save:hover { background: ${PERIWINKLE_HOVER}; }
+      .bl-bd-pdf-empty { display: inline-flex; align-items: center; gap: 8px; }
+      .bl-bd-pdf-action {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 10px;
+        background: #FFFFFF; border: 1px dashed rgba(135, 156, 247, 0.55);
+        border-radius: 8px; color: ${PERIWINKLE_HOVER};
+        font-size: 12px; font-weight: 500; cursor: pointer;
+        transition: background 0.12s, border-color 0.12s;
+      }
+      .bl-bd-pdf-action:hover { background: rgba(135, 156, 247, 0.08); border-color: ${PERIWINKLE}; }
+      .bl-bd-pdf-action:disabled { opacity: 0.55; cursor: not-allowed; }
+      .bl-bd-pdf-or { font-size: 12px; color: ${SOFT_MUTED}; }
+
+      /* Creator row in Overview */
+      .bl-bd-creator-row {
+        display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        background: transparent; border: none;
+        padding: 4px 8px; margin: -4px -8px;
+        border-radius: 10px; cursor: pointer;
+        font-size: 12px; color: ${MUTED};
+        text-align: left;
+        transition: background 0.12s;
+      }
+      .bl-bd-creator-row:hover { background: rgba(135, 156, 247, 0.08); }
+      .bl-bd-creator-label {
+        font-size: 11px; font-weight: 500; color: ${SOFT_MUTED};
+        text-transform: uppercase; letter-spacing: 0.06em;
+      }
+      .bl-bd-creator-name {
+        display: inline-flex; align-items: center; gap: 4px;
+        font-size: 12px; font-weight: 500; color: ${NAVY_DEEP};
+      }
+      .bl-bd-creator-email {
+        display: inline-flex; align-items: center; gap: 4px;
+        font-size: 12px; color: ${MUTED};
+      }
+      .bl-bd-creator-pencil { opacity: 0; transition: opacity 0.15s; color: ${MUTED}; }
+      .bl-bd-creator-row:hover .bl-bd-creator-pencil { opacity: 1; }
+      .bl-bd-creator-empty {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 4px 12px;
+        background: transparent;
+        color: ${PERIWINKLE_HOVER};
+        font-size: 12px; font-weight: 500;
+        border: 1px dashed rgba(135, 156, 247, 0.55);
+        border-radius: 999px; cursor: pointer;
+        transition: background 0.12s, border-color 0.12s;
+        align-self: flex-start;
+      }
+      .bl-bd-creator-empty:hover {
+        background: rgba(135, 156, 247, 0.08); border-color: ${PERIWINKLE};
+      }
+      .bl-bd-creator-editing {
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        background: ${SUBTLE_BG}; padding: 8px 10px; border-radius: 10px;
+        cursor: default;
+      }
+      .bl-bd-creator-editing:hover { background: ${SUBTLE_BG}; }
+      .bl-bd-creator-name-input  { flex: 1 1 160px; min-width: 140px; }
+      .bl-bd-creator-email-input { flex: 1 1 200px; min-width: 180px; }
+      .bl-bd-creator-save {
+        height: 32px; padding: 0 14px;
+        background: ${PERIWINKLE}; color: #FFFFFF;
+        border: none; border-radius: 8px;
+        font-size: 12px; font-weight: 500; cursor: pointer;
+      }
+      .bl-bd-creator-save:hover:not(:disabled) { background: ${PERIWINKLE_HOVER}; }
+      .bl-bd-creator-save:disabled { opacity: 0.6; }
+      .bl-bd-creator-cancel {
+        height: 32px; padding: 0 12px;
+        background: transparent; color: ${MUTED};
+        border: none; border-radius: 8px;
+        font-size: 12px; font-weight: 500; cursor: pointer;
+      }
+      .bl-bd-creator-cancel:hover:not(:disabled) { color: ${NAVY_DEEP}; }
+
+      /* Inspiration */
+      .bl-bd-inspo { display: flex; flex-direction: column; gap: 14px; }
+      .bl-bd-inspo-video {
+        position: relative;
+        background: #000;
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid ${BORDER};
+      }
+      .bl-bd-inspo-video-el {
+        display: block;
+        width: 100%;
+        aspect-ratio: 9 / 16;
+        object-fit: cover;
+        background: #000;
+      }
+      .bl-bd-inspo-video-change {
+        position: absolute; top: 8px; right: 8px;
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 4px 9px; border-radius: 999px;
+        background: rgba(255, 255, 255, 0.92);
+        color: ${NAVY_DEEP}; border: none;
+        font-size: 10px; font-weight: 500; cursor: pointer;
+        backdrop-filter: blur(8px);
+        opacity: 0; transition: opacity 0.15s;
+      }
+      .bl-bd-inspo-video:hover .bl-bd-inspo-video-change { opacity: 1; }
+      .bl-bd-inspo-video-caption {
+        position: absolute; left: 0; right: 0; bottom: 0;
+        padding: 6px 10px;
+        background: linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0));
+        color: #FFFFFF;
+        font-size: 11px; font-weight: 500;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        pointer-events: none;
+      }
+      .bl-bd-inspo-group {
+        background: ${SURFACE}; border: 1px solid ${BORDER};
+        border-radius: 12px; padding: 12px 14px;
+      }
+      .bl-bd-inspo-label {
+        font-size: 12px; font-weight: 500; color: ${NAVY_DEEP};
+        margin-bottom: 8px;
+      }
+      .bl-bd-inspo-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .bl-bd-inspo-slot {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 10px 12px;
+        background: #FFFFFF; border: 1px dashed rgba(135, 156, 247, 0.55);
+        border-radius: 10px; color: ${PERIWINKLE_HOVER};
+        font-size: 12px; font-weight: 500; cursor: pointer;
+        transition: background 0.12s, border-color 0.12s, border-style 0.12s;
+        text-align: left; min-width: 0;
+      }
+      .bl-bd-inspo-slot.is-filled {
+        background: ${TAG_BG}; border-style: solid; border-color: ${BORDER};
+        color: ${NAVY_DEEP};
+      }
+      .bl-bd-inspo-slot:hover { border-color: ${PERIWINKLE}; }
+      .bl-bd-inspo-slot-label {
+        flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .bl-bd-inspo-edit-icon { color: ${MUTED}; flex-shrink: 0; }
+      .bl-bd-url-slot {
+        display: flex; flex-direction: column; gap: 6px;
+      }
+      .bl-bd-url-slot-label {
+        font-size: 11px; font-weight: 500; color: ${MUTED};
+      }
+      .bl-bd-url-slot-input-row {
+        display: flex; align-items: stretch; gap: 6px;
+      }
+      .bl-bd-url-slot-input-row .bl-bd-input { flex: 1 1 auto; min-width: 0; }
+      .bl-bd-url-clear {
+        flex: 0 0 32px;
+        width: 32px; height: 36px;
+        background: #FFFFFF; border: 1px solid ${BORDER};
+        border-radius: 8px; color: ${MUTED};
+        cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+        transition: border-color 0.15s, color 0.15s;
+      }
+      .bl-bd-url-clear:hover:not(:disabled) {
+        border-color: #d92626; color: #d92626;
+      }
+      .bl-bd-url-clear:disabled { opacity: 0.5; cursor: not-allowed; }
+      /* Embed wrappers — TikTok / Instagram / YouTube vertical formats
+         render at 9:16; YouTube long-form renders at 16:9. Inline
+         <video> for raw .mp4 URLs uses the same vertical wrapper. */
+      .bl-bd-url-embed {
+        position: relative;
+        background: #000;
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid ${BORDER};
+        width: 100%;
+      }
+      .bl-bd-url-embed-vertical { aspect-ratio: 9 / 16; }
+      .bl-bd-url-embed-horizontal { aspect-ratio: 16 / 9; }
+      .bl-bd-url-embed > iframe,
+      .bl-bd-url-embed > video {
+        position: absolute; inset: 0;
+        width: 100%; height: 100%;
+        border: none; background: #000;
+        display: block;
+      }
+      .bl-bd-url-fallback {
+        display: inline-flex; align-items: center; gap: 4px;
+        font-size: 11px; color: ${PERIWINKLE_HOVER}; text-decoration: none;
+        align-self: flex-start;
+      }
+      .bl-bd-url-fallback:hover { text-decoration: underline; }
+
+      /* Inline PDF preview iframe — sits above the URL/clear row.
+         Tall enough to read without scrolling the page, but capped so
+         it doesn't dominate the brief body. */
+      .bl-bd-pdf-embed {
+        width: 100%;
+        height: 540px;
+        border: 1px solid ${BORDER};
+        border-radius: 10px;
+        overflow: hidden;
+        background: ${SURFACE};
+        margin-bottom: 4px;
+      }
+      .bl-bd-pdf-embed iframe {
+        width: 100%; height: 100%; border: none; display: block;
+      }
+      @media (max-width: 720px) {
+        .bl-bd-pdf-embed { height: 380px; }
+      }
+
+      /* Inline assignment banner — pinned at the top of the brief
+         detail page when the brief has no project. The /assign-brief
+         Softr modal auto-opens on first detection; if dismissed, the
+         banner stays so the user can reopen it. */
+      .bl-bd-assign-banner {
+        display: flex; align-items: center; gap: 12px;
+        padding: 12px 16px;
+        background: ${TAG_BG};
+        border: 1px solid rgba(135, 156, 247, 0.45);
+        border-radius: 12px;
+        margin-bottom: 12px;
+      }
+      .bl-bd-assign-banner-icon {
+        flex: 0 0 32px;
+        width: 32px; height: 32px;
+        border-radius: 10px;
+        background: #FFFFFF;
+        border: 1px solid ${BORDER};
+        color: ${PERIWINKLE_HOVER};
+        display: inline-flex; align-items: center; justify-content: center;
+      }
+      .bl-bd-assign-banner-text {
+        flex: 1 1 auto; min-width: 0;
+        display: flex; flex-direction: column; gap: 1px;
+        font-size: 12px; color: ${NAVY_DEEP};
+      }
+      .bl-bd-assign-banner-text strong {
+        font-size: 13px; font-weight: 600;
+      }
+      .bl-bd-assign-banner-text span { color: ${MUTED}; }
+      .bl-bd-assign-banner-btn {
+        flex: 0 0 auto;
+        height: 34px; padding: 0 14px;
+        background: ${PERIWINKLE}; color: #FFFFFF;
+        border: none; border-radius: 10px;
+        font-size: 12px; font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .bl-bd-assign-banner-btn:hover { background: ${PERIWINKLE_HOVER}; }
+      @media (max-width: 640px) {
+        .bl-bd-assign-banner { flex-wrap: wrap; }
+        .bl-bd-assign-banner-btn { width: 100%; }
+      }
+
+      /* Responsive */
+      @media (max-width: 720px) {
+        .bl-bd-fields-grid { grid-template-columns: 1fr; }
+        .bl-bd-field.is-full { grid-column: span 1; }
+        .bl-bd-thresholds { grid-template-columns: 1fr; }
+        .bl-bd-inspo-row { grid-template-columns: 1fr; }
+        .bl-bd-storyboard-row { grid-template-columns: 1fr; }
+        .bl-bd-section-head { padding: 14px 14px 12px; }
+        .bl-bd-section-body { padding: 0 14px 16px; padding-top: 14px; }
+        .bl-bd-overview { flex-direction: column; }
+        .bl-bd-thumb-wrap { flex: 0 0 auto; width: 100%; height: 180px; }
+        .bl-bd-section-title { font-size: 16px; }
+        .bl-bd-name { font-size: 18px; }
+      }
+    `}</style>
+  );
+}

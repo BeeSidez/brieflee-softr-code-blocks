@@ -5,11 +5,54 @@ description: Write code for Softr Vibe Coding blocks - React/JSX components (or 
 
 # Softr Vibe Coding Block Skill
 
+**Created:** 2026-05-06
+**Updated:** 2026-08-23, verified against docs.softr.io/vibe-coding-developer-guide and the live Softr MCP tool contracts.
+
+**Canonical copy:** `Docs/softr-vibe-code-block.md`. Identical copies live in `Brieflee/brieflee-softr-code-blocks/docs/` and `Creator Scans/Softr Vibe Code Blocks/docs/`. Change the canonical one and copy it across in the same session.
+
+**Maintenance rule:** Softr ships Vibe changes fast (REST API sources 2026-04-21, multi-source 2026-06-16). Before asserting the block CANNOT do something, check docs.softr.io/vibe-coding-developer-guide and softr.io/whats-new. When a session learns a new capability, update THIS file (and the Creator Scans copy at `Creator Scans/Softr Vibe Code Blocks/docs/softr-vibe-code-block`) in the same session, with a date on the change.
+
 ## What this skill covers
 
 Writing or editing the code that goes inside a Softr Vibe Coding block's **Content > Code** tab. This is React/JSX in most cases, sometimes plain HTML/CSS/JS for simple visual blocks with no data.
 
 **For Custom Code blocks (raw HTML/CSS/JS, not React), use the `softr-custom-code-block` skill instead.**
+
+---
+
+## The build loop: how blocks get changed now
+
+Claude edits Softr directly through the **Softr MCP**. Bev does not paste code, and does not wire sources by hand for the types listed below. The loop, in order:
+
+1. **`get_vibe_coding_docs`** first, every session, before touching a block. Hook signatures change and guessing costs round trips.
+2. **`get_page`** to find the block, then **`get_vibe_coding_block_code`** to read the whole source plus its `settings`, `dataSources` and `actions`.
+3. **`connect_vibe_coding_block_data_source`** if a source is missing.
+4. Edit: **`update_vibe_coding_block_code_search_replace`** for small, localised changes, **`update_vibe_coding_block_code`** for a rewrite.
+5. **`preview_app`** with the `pageId`, which returns a `previewUrl`.
+6. **Test it yourself in the browser before Bev sees it.** Open the preview, drive the real flow, read the console, take a screenshot.
+7. Give Bev the preview link. `publish_app` only when she says so.
+
+### What the MCP can wire, and what it cannot
+
+| Source type | Who connects it |
+|---|---|
+| Softr Tables, Airtable, Google Sheets, Notion, Supabase | **Claude**, via `connect_vibe_coding_block_data_source` |
+| REST API (EmailIt, OpenRouter, anything external) | **Bev**, in Studio: Data sources → REST API, then the block's Source tab |
+| PostgreSQL, MySQL, SQL Server, Snowflake, HubSpot, Salesforce | **Bev**, in Studio |
+
+**Record filters and sort on a connected source are Claude's job now** as well: `set_vibe_coding_block_data_source_record_filters` and `set_vibe_coding_block_data_source_sort`. These write the same setting as the Source tab's "Record filters", so the old "tell Bev to set it in the Source tab" answer only applies to source types the MCP cannot connect.
+
+### Traps in the loop
+
+- **A recompile resets Actions visibility.** Every code save deletes and recreates the block's Actions with new IDs and default permissions. Before saving, record any action with `isDefaultVisibility: false` and re-apply it afterwards with `set_vibe_coding_block_action_visibility`.
+- **The validator rejects unused declarations.** Removing a feature means removing its constants and imports too, or the save fails with a validation error.
+- **Compiling is not running.** The compiler cannot see the block's datasource wiring, so code calling `useRecords` or `useProxyFetch` saves fine and throws in the browser when no source is connected. Read `dataSources` from `get_vibe_coding_block_code` before writing any hook.
+- **Preview links are credentials.** They sign in whoever opens them and last about 24 hours. Give one to Bev only, and build a fresh one rather than resending an old link, because rebuilding is the only way to show the latest change.
+- **Published is not previewed.** The live site serves the last published bundle. Check `www.brieflee.co` before claiming anything about live behaviour.
+
+### Testing a preview yourself
+
+Softr renders the app in an iframe and each Vibe block inside a **shadow root**, so pixel clicks usually miss. Drive it with `javascript_tool` instead: walk the shadow roots to find the element, set inputs with the native value setter plus `dispatchEvent(new Event("input", { bubbles: true }))`, then click. To avoid real side effects while testing a form, stub `window.fetch` for the calls that write.
 
 ---
 
@@ -31,16 +74,16 @@ It's important to understand which tab does what, because **Claude Code only wri
 | Tab | What it does | Who handles it |
 |-----|-------------|----------------|
 | **Chat** | Softr's AI prompt interface | Bev (when she uses Softr's AI) |
-| **Source** | Connects the block to a Database + Table, sets conditional filters (workspace/user filters), restricts which records the block sees | **Bev (UI only, NOT in code)** |
+| **Source** | Connects the block to one or more sources: Softr Database tables AND 15+ external types including REST API, Airtable, Google Sheets, Notion, HubSpot, SQL (REST API support since 2026-04-21; multiple sources per block since 2026-06-16, each with its own filter and sort). Sets conditional filters (workspace/user filters), restricts which records the block sees | **Bev (UI only, NOT in code)** |
 | **Content** | The actual JSX/HTML code for the block | **Claude Code** |
 | **Actions** | Declares which fields the block uses for CRUD operations (Add Record, Update, Delete) and configures permissions | **Bev (UI), but the field aliases must match what's in code** |
 | **Visibility** | Controls which user groups can see the block | Bev (UI only) |
 
 ---
 
-## Critical constraint: filters happen in the Source tab, NOT in code
+## Constraint: user-scoped filters are a source setting, not code
 
-This is the single most important thing Claude Code keeps getting wrong.
+**Updated 2026-08-23:** the setting itself is now reachable from the MCP with `set_vibe_coding_block_data_source_record_filters`, so Claude sets it directly on any source the MCP can connect. What has not changed is that it is a *source* setting: it is still not something `useLinkedRecords` can do in code.
 
 **`useLinkedRecords` does not support filtering by user relationships.** There is **no way** to write code that restricts dropdowns or lists to records belonging to the logged-in user.
 
@@ -56,6 +99,94 @@ If Bev needs the block to only show "this user's projects" or "this account's br
 - Make `useLinkedRecords` accept a filter parameter for user relationships
 
 If Bev asks for user-scoped filtering and the Source tab can't handle it, the right answer is: "this needs to be set in the Source tab in Softr; here's what I'd suggest you set there" — not invent code that won't work.
+
+### Scoping a dropdown to the logged-in user
+
+When the picker lives in a data-entry form, the simplest scoping is a Softr native conditional form: native forms filter linked-record pickers to the logged-in user with built-in conditions, so each picker shows only that user's own records, with no code. Reach for this first when a native form fits the flow.
+
+Inside a Vibe code block, scope it in code instead. `useLinkedRecords` returns the whole linked table, so it cannot scope a picker to the current user. The working pattern is to read the user's OWN record by id and pull its linked field:
+
+```jsx
+const userScopedSelect = q.select({ accounts: "Nz6VX" }); // users.accounts linked field
+const userScoped = useRecord({ recordId: user?.id, select: userScopedSelect, enabled: !!user?.id });
+const accounts = (userScoped?.data?.fields?.accounts ?? [])
+  .map((a) => ({ id: a?.id, title: unwrap(a) }))
+  .filter((x) => x.id);
+```
+
+This returns only the user's own accounts (same idea for briefs and other linked fields), with no Source-tab filter needed. References: `app/projects/index`, `app/projects-invite`, `app/briefs/create-brief`. The USERS table must be a source on the block. Known users-table field id: `accounts` = `Nz6VX`.
+
+---
+
+## Multiple data sources (new: connect more than one table)
+
+Since 2026-06-16 a single Vibe Coding block can connect to more than one data source (table). Each connected table can have its own filter and sort, all configured in the **Source tab** (Bev, UI). This lifts the old one-source-per-block limit.
+
+**When to use it:** any block that needs to read from or write to two or more tables. Examples: a dashboard listing `submissions` next to their parent `briefs`, or a view that combines data that isn't joined by a linked-record field. Prefer connecting both tables natively over the older workarounds (binding the block to one source, then passing the other table's context through URL params or lookups).
+
+**Connecting the sources:** Claude adds each table with `connect_vibe_coding_block_data_source` and sets its filter and sort with the matching MCP calls. Bev only does this in Studio for REST API sources and the SQL vendors the MCP cannot connect. User-scoped filtering still belongs in the Source tab, not in code (same rule as the section above).
+
+**In code (Claude Code's job):** two distinct cases — do not confuse them.
+
+*Case 1 — multiple TABLES in the SAME connected database* (the usual case here: submissions, accounts, briefs, users all live in `brieflee beta`). Read each with a plain `useRecords` / `useRecord`, **no `datasource.define`, no `from`**. Softr routes each call to the table whose fields the `select` maps to. To scope a dropdown to the logged-in user, read the user's OWN record and pull its linked field:
+
+```jsx
+import { useRecord, useRecordCreate, q } from "@/lib/datasource";
+
+const userScopedSelect = q.select({ accounts: "Nz6VX", briefs: "3Ww0J" }); // users.accounts / users.briefs
+const userScoped = useRecord({ recordId: user?.id, select: userScopedSelect, enabled: !!user?.id });
+const accounts = (userScoped?.data?.fields?.accounts ?? []).map((a) => ({ id: a?.id, title: unwrap(a) }));
+const createRecord = useRecordCreate({ fields: submissionFields }); // writes submissions
+```
+
+Proven in this repo: `app/projects/index` (projects + accounts + users), `app/discover/formats-row.jsx` (two tables). The block's Source tab must be bound to the database; if reads come back empty or a hook errors "this block does not have a datasource configured", the Source tab has lost its datasource binding.
+
+*Case 2 — separate DATA SOURCES* (a different database, or a REST API, alongside the first). ONLY then alias them with `datasource.define` and pass `from` on every record/metric hook. The datasource id is the per-source connection id from the Source tab (NOT the table id, not documented; Softr writes the `datasource.define` for you when you connect the second source). `from` does NOT apply to `useUpload` / `useCurrentRecordId`. Reference: docs.softr.io/vibe-coding-developer-guide, `app/bulk-import-videos.jsx`.
+
+**Filtering in code** (single or multi source) uses `where` with the `q` builder, up to 2 levels of nesting:
+
+```jsx
+useRecords({ select, where: q.and(
+  q.text("name").contains("Alice"),
+  q.number("age").gte(18),
+  q.or(q.boolean("isActive").is(true), q.text("notes").isNotEmpty()),
+)});
+```
+
+Builders: `q.text` (is, isNot, contains, startsWith, endsWith, isOneOf, isNoneOf, hasAllOf, isEmpty, isNotEmpty), `q.number` (is, isNot, gt, gte, lt, lte, between, isEmpty, isNotEmpty), `q.boolean` (is, isNot, isEmpty, isNotEmpty), `q.date` (is, isNot, gt, gte, lt, lte, between, isNotBetween, isEmpty, isNotEmpty), `q.array` (is, isOneOf, isNoneOf, hasAllOf, isEmpty, isNotEmpty), plus `q.and` / `q.or`. Note: `where` filters by field VALUES; scoping a dropdown to the logged-in user is still done with a Source-tab filter on that source.
+
+**Scope note:** multi-source binding helps with reading and writing across tables in one block. It does not by itself remove the native-form auto-fill limit (a Softr form still auto-populates only the current user id plus one linked record) or the Form-Then-Edit create pattern. Re-test those against a real multi-source block before assuming they have changed.
+
+---
+
+## REST API sources and useProxyFetch (Softr feature 2026-04-21; section added 2026-07-29)
+
+A Vibe block CAN have a **REST API** as a source. Bev configures it under **Data sources → REST API** (base URL + auth header, e.g. `Authorization: Bearer <key>`), then adds it on the block's **Sources tab** like any table. In code, calls go through `useProxyFetch`:
+
+```jsx
+import { useProxyFetch } from "@/lib/datasource";
+
+const proxyFetch = useProxyFetch(); // single source on the block: no argument
+
+const res = await proxyFetch("https://api.emailit.com/v2/contacts/someone@example.com");
+const json = await res.json();
+
+// Writes work too — proxyFetch is fetch-shaped:
+await proxyFetch("https://api.example.com/things/123", {
+  method: "DELETE",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({}),
+});
+```
+
+Key facts:
+- **Softr proxies the call server-side and attaches the source's auth automatically.** Never put a token in block code, never send auth headers manually.
+- With multiple data sources on the block, pass the alias: `useProxyFetch(ds.store)` (see `datasource.define` above).
+- It pairs with plain `@tanstack/react-query` `useQuery` for reads if caching/loading states are wanted.
+- **Public-page caveat:** the proxy authenticates whatever the page requests, and responses reach the browser. On a public block, assume a technical visitor can call the proxied API's GET endpoints from the console. Keep public REST-source blocks to endpoints whose exposure is acceptable, or move sensitive reads behind a workflow.
+- Live references in the repos: the `/unsubscribe` blocks (EmailIt REST source, GET contact + DELETE membership), the CS Recent/Reviews blocks (Ask AI via OpenRouter proxyFetch).
+
+**Full hook list per the official developer guide** (2026-07-29): read — `useRecords`, `useRecord`, `useLinkedRecords`, `useFieldOptions`, `useMetric`, `useChartData`; write — `useRecordCreate`, `useRecordUpdate`, `useRecordDelete`, `useUpload`; REST — `useProxyFetch`.
 
 ---
 
@@ -431,13 +562,32 @@ function convertToISODate(val) {
 ```jsx
 import { useUpload } from "@/lib/datasource";
 
-const upload = useUpload();
-const result = await upload.mutateAsync(file);
-// result is the attachment object/array Softr expects in an attachment field
-fields.video_file = result;
+// useUpload() returns { uploadAsync, isUploading } — NOT a mutation object.
+// Unlike useRecordCreate / useRecordUpdate, there is NO .mutate / .mutateAsync
+// here. Calling upload.mutateAsync(file) throws "mutateAsync is not a function".
+const { uploadAsync, isUploading } = useUpload();
+
+// uploadAsync takes a File (or an array of Files) and ALWAYS resolves to an
+// ARRAY of results: [{ id, file, status: "completed" | "error", url }, ...].
+const [result] = await uploadAsync(file);
+if (!result || result.status !== "completed" || !result.url) {
+  throw new Error("Upload didn't complete.");
+}
+
+// Attachment fields expect an array of { filename, url }.
+fields.video_file = [{ filename: result.file?.name, url: result.url }];
 ```
 
-(If unsure about the exact return shape for a specific use case, ask Bev or check an existing vibe block in the repo that handles uploads.)
+For multiple files, pass the array and map the results:
+
+```jsx
+const results = await uploadAsync(fileList); // array in, array out
+const attachments = results
+  .filter((r) => r.status === "completed" && r.url)
+  .map((r) => ({ filename: r.file?.name, url: r.url }));
+```
+
+Reference implementation: `app/bulk-import-videos.jsx`.
 
 ---
 
@@ -827,9 +977,9 @@ console.log("=== v3 user:", user?.id);
 
 ---
 
-## Editing existing vibe blocks (the GitHub workflow)
+## Editing an existing block: what to preserve
 
-When Bev gives Claude Code an existing vibe block file from her repo to improve or fix:
+Whether the source came from the MCP or from a file in the repo, before changing anything:
 
 1. **Read the whole file first** before changing anything. The constants at the top (option UUID arrays, `q.select` mapping, `DESTINATION_FIELDS`) are often the source of truth — don't break them.
 2. **Preserve the field ID mapping** in `q.select({})`. Don't rename aliases unless Bev asks for it (renames cascade everywhere and break the Actions tab connection).

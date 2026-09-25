@@ -1,0 +1,173 @@
+<!doctype html>
+<!-- @dsCard group="UI Kit — App" name="Brief Model Audit" subtitle="Delta: live brief editor vs the Brief Bible" viewport="1000x1400" -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Brief Model Audit — Brieflee</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body { margin: 0; background: #eef1fb; color: var(--bl-fg-body); }
+    .page { max-width: 900px; margin: 0 auto; padding: 56px 64px 96px; background: var(--bl-card);
+      box-shadow: var(--bl-shadow-lg); }
+    h1 { font-size: 34px; margin: 0 0 6px; }
+    .lede { font-size: 16px; color: var(--bl-fg-muted); margin: 0 0 8px; max-width: 62ch; line-height: 1.55; }
+    .eyebrow { font-size: 12px; letter-spacing: .08em; font-weight: 600; text-transform: uppercase; color: var(--bl-blue-5); }
+    h2 { font-size: 22px; margin: 44px 0 6px; padding-top: 20px; border-top: 2px solid var(--bl-border); }
+    h2 .n { color: var(--bl-blue-5); font-weight: 800; margin-right: 10px; }
+    h2 + .sub { margin: 0 0 18px; color: var(--bl-fg-muted); font-size: 14px; }
+    h3 { font-size: 15px; margin: 22px 0 8px; color: var(--bl-fg); }
+    p { line-height: 1.6; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 8px; font-size: 13.5px; }
+    th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid var(--bl-border); vertical-align: top; }
+    th { background: #f5f7ff; font-weight: 700; color: var(--bl-fg); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+    td code { font-size: 12px; color: var(--bl-navy-2); background: #f2f5ff; padding: 1px 5px; border-radius: 4px; }
+    .tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+    .ok   { background: var(--bl-success-bg); color: var(--bl-success-fg); }
+    .part { background: var(--bl-warn-bg); color: var(--bl-warn-fg); }
+    .miss { background: var(--bl-danger-bg); color: var(--bl-danger-fg); }
+    .new  { background: #e6ebff; color: #294ff6; }
+    ul { line-height: 1.6; padding-left: 20px; }
+    li { margin: 4px 0; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+    .chip { font-size: 12px; background: #f2f5ff; border: 1px solid var(--bl-border); color: var(--bl-fg); padding: 3px 10px; border-radius: 999px; }
+    .callout { background: #f7f9ff; border: 1px solid var(--bl-border); border-left: 3px solid var(--bl-blue-5);
+      border-radius: 10px; padding: 14px 16px; margin: 16px 0; font-size: 14px; }
+    .q { counter-reset: none; }
+    .q li { margin: 8px 0; }
+    .meta { font-size: 12px; color: var(--bl-fg-quiet); margin-top: 4px; }
+    @media print { body { background: #fff; } .page { box-shadow: none; max-width: none; padding: 0; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <span class="eyebrow">Brieflee · Product audit</span>
+    <h1>Brief model — the delta</h1>
+    <p class="lede">A field-level audit of what the live brief editor captures today (from the <code>app/briefs/details</code> code) against the Brief Bible's 19 sections. Where each thing lives now, what's redundant, and what's genuinely missing before the update.</p>
+    <p class="meta">Sources: <code>app/briefs/details</code>, <code>app/briefs/create-brief</code>, <code>details-tooltips.txt</code>, creator preview + editor screenshots, The Brief Bible (Notion).</p>
+
+    <h2><span class="n">A</span>What the live editor captures today</h2>
+    <p class="sub">Six collapsible sections. Every field below has a real write path in the current code.</p>
+
+    <h3>1 · Overview</h3>
+    <table><tbody>
+      <tr><td><b>Name</b></td><td>Brief title.</td></tr>
+      <tr><td><b>Status</b></td><td>Draft · Active · Closed · Archive</td></tr>
+      <tr><td><b>Privacy</b></td><td>Private / Public (kept in sync with SEO-index)</td></tr>
+      <tr><td><b>Review Mode</b> <span class="tag new">NEW</span></td><td>Autonomous · Hybrid · Manual — how submissions get reviewed</td></tr>
+      <tr><td><b>Creator</b></td><td>creator_name + creator_email (the "FOR" line)</td></tr>
+      <tr><td><b>Thumbnail</b></td><td>Brief cover image</td></tr>
+    </tbody></table>
+
+    <h3>2 · Brief <span class="meta">(the <code>description</code> JSON, parsed into cards)</span></h3>
+    <table><tbody>
+      <tr><td><b>About the brand</b></td><td>Pulled from the account / brand blueprint (read-only here)</td></tr>
+      <tr><td><b>About the product / feature</b></td><td>Short summary of what the brief targets (<code>product_feature_description</code>)</td></tr>
+      <tr><td><b>Personal experiences</b></td><td>First-person scenarios in the buyer's voice</td></tr>
+      <tr><td><b>Hooks</b></td><td>Three opening lines for the first 3 seconds</td></tr>
+      <tr><td><b>Talking points</b></td><td>Bullets in the creator's own words</td></tr>
+      <tr><td><b>CTAs</b></td><td>Three ways to close the video</td></tr>
+      <tr><td><b>Dos / Don'ts</b></td><td>Best practices + what to avoid (compliance / brand safety)</td></tr>
+      <tr><td><b>Storyboard</b></td><td>Rows of <i>section → visual → script</i>, section from an 18-item list (Hook, On-ramp, Problem, Agitation, Motivator, Solution Intro, Product Intro, Demonstration, Proof, Offer Stack, CTA, Outro, …)</td></tr>
+      <tr><td><b>Brief PDF</b></td><td>Uploaded PDF embed + attachment</td></tr>
+    </tbody></table>
+
+    <h3>3 · Inspiration</h3>
+    <p>3× Brieflee library "review picks", 3× swipe-file picks, 3× external URLs (TikTok / Instagram / YouTube embeds).</p>
+
+    <h3>4 · Details</h3>
+    <table><tbody>
+      <tr><td><b>Platform(s)</b></td><td>multi-select</td></tr>
+      <tr><td><b>Video length</b></td><td>duration + min/max threshold</td></tr>
+      <tr><td><b>Aspect Ratio</b></td><td>9:16 · 1:1 · 16:9</td></tr>
+      <tr><td><b>File Delivery</b></td><td>Raw · Edited</td></tr>
+      <tr><td><b>Content style</b></td><td>Product demo · Educational · Direct sales · Testimonial · Behind the scenes · Unboxing · Tutorial · Lifestyle</td></tr>
+      <tr><td><b>Submission Open / Close</b></td><td>date-time each</td></tr>
+    </tbody></table>
+
+    <h3>5 · Quality Assurance <span class="meta">(was "QA Checklist" → renamed "Review Agents")</span></h3>
+    <p><b>26 Review Agents</b> (each watches one thing on every submission):</p>
+    <div class="chips">
+      <span class="chip">Brand alignment</span><span class="chip">Hook quality</span><span class="chip">Visual hook</span><span class="chip">Watchable on mute</span><span class="chip">Scene pacing</span><span class="chip">Audio delivery</span><span class="chip">Audio clarity</span><span class="chip">Music &amp; sound balance</span><span class="chip">Pronunciation</span><span class="chip">Lighting &amp; camera</span><span class="chip">Setting &amp; background</span><span class="chip">Distracting elements</span><span class="chip">Text legibility</span><span class="chip">Closed captions</span><span class="chip">Safe zones</span><span class="chip">Video length</span><span class="chip">Product visibility</span><span class="chip">Product usage</span><span class="chip">Creator visibility</span><span class="chip">Energy &amp; authenticity</span><span class="chip">Wardrobe &amp; appearance</span><span class="chip">CTA present</span><span class="chip">Brand name mentioned</span><span class="chip">Copyright check</span><span class="chip">Inspiration link match</span><span class="chip">Follows the brief</span>
+    </div>
+    <p><b>9 thresholds</b> the agents check against: Product visibility (%), Audio hook timing (s), Visual hook (%), CTA timing, Creator visibility (%), Text on screen (%), Audio quality (%), Scene changes, Brand mentions.</p>
+
+    <h3>6 · Brief context <span class="tag new">mostly NEW</span></h3>
+    <table><tbody>
+      <tr><td><b>Filmer</b> (creator_type)</td><td>Influencer · UGC Creator · Founder · Customer · Employee</td></tr>
+      <tr><td><b>Channel</b></td><td>Organic · Paid</td></tr>
+      <tr><td><b>Awareness stage</b></td><td>Unaware · Problem · Solution · Product · Most Aware</td></tr>
+      <tr><td><b>Angle</b></td><td>16 options (Pattern Interrupt, Curiosity Gap, Story Setup, Social Proof, Before/After, …)</td></tr>
+      <tr><td><b>Product / Feature URL + description</b></td><td>the target of the brief</td></tr>
+    </tbody></table>
+
+    <h2><span class="n">B</span>Coverage map — the Bible's 19 sections vs today</h2>
+    <p class="sub">Where each Brief Bible section lives in the current app, if at all.</p>
+    <table>
+      <thead><tr><th style="width:150px">Bible section</th><th style="width:90px">Status</th><th>Where it is today / the gap</th></tr></thead>
+      <tbody>
+        <tr><td>Brand</td><td><span class="tag ok">Built</span></td><td>Brief → "About the brand" (read-only, from account)</td></tr>
+        <tr><td>The Offer</td><td><span class="tag miss">Missing</span></td><td>No field for the deal (fee / gift / commission). Biggest content gap.</td></tr>
+        <tr><td>Audience / Customer</td><td><span class="tag part">Partial</span></td><td>Awareness stage + "Personal experiences" touch it, but there's no dedicated audience/persona block. (Filmer ≠ audience.)</td></tr>
+        <tr><td>Product / Feature</td><td><span class="tag ok">Built</span></td><td>Product/feature gate + URLs + "About the product/feature"</td></tr>
+        <tr><td>Creator Benefits</td><td><span class="tag miss">Missing</span></td><td>No "why the creator wins" block.</td></tr>
+        <tr><td>Deliverables</td><td><span class="tag part">Partial</span></td><td>Details holds specs (platform, length, ratio, delivery, dates) but not "how many videos / definition of done".</td></tr>
+        <tr><td>Hook</td><td><span class="tag ok">Built</span></td><td>Brief → "Hooks" (3 lines) + hook thresholds. Note: Bible wants 3 <i>components</i> (caption + visual + spoken); today it's 3 opener lines.</td></tr>
+        <tr><td>Talking Points</td><td><span class="tag ok">Built</span></td><td>Brief → "Talking points" card</td></tr>
+        <tr><td>Script</td><td><span class="tag ok">Built</span></td><td>Brief → "Storyboard" (section → visual → script rows)</td></tr>
+        <tr><td>Visual Format</td><td><span class="tag part">Partial</span></td><td>Split across "Content style" (8) + the create-flow format + the 42-format library. Needs one canonical home. See §D.</td></tr>
+        <tr><td>Examples</td><td><span class="tag ok">Built</span></td><td>Inspiration (review picks + swipe + URLs)</td></tr>
+        <tr><td>Props</td><td><span class="tag miss">Missing</span></td><td>No props list.</td></tr>
+        <tr><td>Production Notes</td><td><span class="tag part">Partial</span></td><td>Details specs + Dos/Don'ts overlap, but no dedicated filming-notes block (device, lighting, takes).</td></tr>
+        <tr><td>Guidelines</td><td><span class="tag ok">Built</span></td><td>Dos/Don'ts cards + the 26 Review Agents + thresholds. Strongest match — the "generated dos &amp; don'ts" the Bible describes.</td></tr>
+        <tr><td>Usage Rights</td><td><span class="tag miss">Missing</span></td><td>No rights grant (who can use it, where, how long).</td></tr>
+        <tr><td>Submissions</td><td><span class="tag part">Partial</span></td><td>Open/close dates + delivery + creator Upload flow exist; no hand-in-method text.</td></tr>
+        <tr><td>Contact / Community</td><td><span class="tag miss">Missing</span></td><td>Lives in modules only, not in the brief.</td></tr>
+        <tr><td>Creator Info</td><td><span class="tag ok">Built</span></td><td>Overview → creator_name + creator_email</td></tr>
+        <tr><td>Extra</td><td><span class="tag part">Partial</span></td><td>Plain-text description fallback only; no explicit "extra" block.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout"><b>Headline:</b> Hook, Talking Points, Script, CTAs and Guidelines are <b>already built</b> — they're just hidden inside the Brief section's JSON cards rather than surfaced as toggleable sections. The real content gaps are <b>The Offer, Creator Benefits, Props, Usage Rights, Contact/Community</b>, plus a proper <b>Audience</b> block.</div>
+
+    <h2><span class="n">C</span>New since the Bible <span class="tag new">fold in</span></h2>
+    <p class="sub">Concepts the live app added that the Bible doesn't mention — keep these in the merged model.</p>
+    <ul>
+      <li><b>Review Mode</b> — Autonomous / Hybrid / Manual (who has the final say on a submission).</li>
+      <li><b>Review Agents (26) + 9 thresholds</b> — the QA engine. This is what powers the creator-side "What our AI checks / Bars to hit".</li>
+      <li><b>Awareness stage (5) + Angle (16)</b> — the marketing framing that drives hook/format suggestions.</li>
+      <li><b>Filmer</b> (Influencer / UGC / Founder / Customer / Employee) and <b>Channel</b> (Organic / Paid).</li>
+      <li><b>Status, Privacy/SEO, Thumbnail, Brief PDF</b>, and the <b>Storyboard's 18 section types</b>.</li>
+    </ul>
+
+    <h2><span class="n">D</span>Redundant / renamed / to reconcile</h2>
+    <ul>
+      <li><b>Three notions of "format".</b> "Content style" (8: Product demo, Testimonial, Unboxing…) vs the create-flow <code>format</code> field vs the Bible's 42-item Visual Format library. Pick one canonical field; the 8 content-styles look like a subset of the 42.</li>
+      <li><b>"QA Checklist" → "Review Agents".</b> UI renamed; DB field <code>qa_checklist</code> unchanged. Old label is dead.</li>
+      <li><b>"Filmer" vs "who leads".</b> The Bible frames Talking Points vs Script by creator-led vs brand-led; the app models the person as <code>creator_type</code>/Filmer. Decide if these are the same axis.</li>
+      <li><b>Audience overlap.</b> "Awareness stage" (marketing funnel) and a future Audience section both describe the viewer — keep them distinct or merge.</li>
+      <li><b>Font mismatch.</b> The live editor renders in <b>League Spartan</b>; this design system is <b>Inter</b>. Align on one.</li>
+      <li><b>Legacy folders</b> present: <code>archive/thresholds-legacy</code>, <code>archive/paywall</code>, <code>archive/upgrade</code> — dead, ignore.</li>
+    </ul>
+
+    <h2><span class="n">E</span>Direction for the merged builder</h2>
+    <p class="sub">What I'll build once you confirm — combining today's editor with the section/module concept.</p>
+    <ul>
+      <li><b>One surface</b> = the white "page" editor with per-section <b>collapse/expand toggles</b> (already the live pattern) + the Sections/Modules rail to <b>add or remove</b> any section. Fully customizable — Creator Info, Contact, etc. are optional; add only what this brief needs.</li>
+      <li><b>Canonical section set</b> = today's 6 structural sections + the Bible's missing content sections (Offer, Benefits, Props, Usage Rights, Audience, Contact/Community), all as toggleable blocks.</li>
+      <li><b>Preview button</b> → the creator-side view (hero + brand, submission details, "What our AI checks" driven by the thresholds, inspiration, Submit). Different design, page-like, read-only.</li>
+      <li><b>Modules</b> stay the pre-generated workspace source (brand blueprint / product / concepts / hooks / formats) that fills sections; <b>Sections</b> start empty with AI assist.</li>
+    </ul>
+
+    <div class="callout">
+      <b>Open questions before I build the merged editor:</b>
+      <ol class="q">
+        <li>Should the <b>Bible content sections</b> (Hook, Talking Points, Script, CTAs, Dos/Don'ts) become <b>first-class toggleable sections</b>, or stay grouped inside one "Brief" section as they are now?</li>
+        <li>Add the 5 missing sections (<b>Offer, Creator Benefits, Props, Usage Rights, Contact/Community</b>) — all of them, or a subset for v1?</li>
+        <li>Which is the canonical <b>format</b> field — keep "Content style" (8), or move to the 42-format Visual Format library?</li>
+        <li>Is <b>Filmer</b> the same thing as the Bible's creator-led / brand-led axis, or separate?</li>
+        <li>Should the <b>creator Preview</b> be part of this prototype now, or a follow-up?</li>
+      </ol>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,23 @@
+BRAND CONTEXT
+Name: {{New_Setup.body.workspace_name}}
+Description: {{New_Setup.body.description}}
+Website:{{New_Setup.body.website}} 
+
+WEBSITE SCRAPE
+{{Trim_Scrapes.body.website}}
+
+PRODUCT OR FEATURE PAGE 1 ({{New_Setup.body.page_link_1}})
+{{Trim_Scrapes.body.page1}}
+
+PRODUCT OR FEATURE PAGE 2 ({{New_Setup.body.page_link_2}})
+{{Trim_Scrapes.body.page2}}
+
+PRODUCT OR FEATURE PAGE 3 ({{New_Setup.body.page_link_3}})
+{{Trim_Scrapes.body.page3}}
+
+FORMATS
+1. {{New_Setup.body.format_1_name}}: {{New_Setup.body.format_1_description}} Why it works: {{New_Setup.body.format_1_why}} Hook tactics: {{New_Setup.body.format_1_hook_tactic}}. Hook types: {{New_Setup.body.format_1_hook_type}}.
+2. {{New_Setup.body.format_2_name}}: {{New_Setup.body.format_2_description}} Why it works: {{New_Setup.body.format_2_why}} Hook tactics: {{New_Setup.body.format_2_hook_tactic}}. Hook types: {{New_Setup.body.format_2_hook_type}}.
+3. {{New_Setup.body.format_3_name}}: {{New_Setup.body.format_3_description}} Why it works: {{New_Setup.body.format_3_why}} Hook tactics: {{New_Setup.body.format_3_hook_tactic}}. Hook types: {{New_Setup.body.format_3_hook_type}}.
+
+Build the blueprint JSON now.

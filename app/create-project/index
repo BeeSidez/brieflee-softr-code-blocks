@@ -1,0 +1,438 @@
+// =====================================================================
+// /create-project — Create Project modal (Vibe Code block)
+// =====================================================================
+// Opens via window.openSwModal("/create-project?workspace=<id>") from
+// the "Create Review" button on /app/projects.
+//
+// What it does:
+//   • Reads the URL `?workspace=<id>` so multi-account users coming
+//     off the switcher land in the right workspace
+//   • Reads the logged-in user's `accounts` linked field directly so
+//     single-account users auto-default to their one workspace, and
+//     zero-account users get a "create workspace" CTA
+//   • Renders the same form as before: Name / Description / Workspace
+//   • On submit, creates the project row, posts a "project-created"
+//     message to the parent window (so /app/projects refetches the
+//     grid), then closes the modal
+//
+// SOFTR UI SETUP:
+//   1. Page: /create-project
+//   2. Source binding → Database: brieflee beta · Table: projects
+//      (so useRecordCreate writes there)
+//   3. Actions: enable Add Record
+//   4. Visibility: logged-in user groups (Active / Paid / etc.)
+//   5. NO Softr-side workspace filter needed — this block only
+//      writes; it reads user.accounts directly to figure out
+//      available workspaces.
+// =====================================================================
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  useRecord, useRecordCreate, q,
+} from "@/lib/datasource";
+import { useCurrentUser } from "@/lib/user";
+import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+
+// ─── Brand palette ────────────────────────────────────────────
+const NAVY_DEEP  = "#001364";
+const PERIWINKLE = "#879CF7";
+const MUTED      = "#6B7A99";
+const BORDER     = "rgba(217, 224, 255, 0.55)";
+
+// ─── Field maps ───────────────────────────────────────────────
+// projects table — write payload
+const createFields = q.select({
+  name:        "bvDEj",
+  description: "j2HQW",
+  accounts:    "IBYGK", // LINKED_RECORD → accounts
+  users:       "2YWNF", // LINKED_RECORD → users
+});
+
+// users table — single read for the logged-in user's linked accounts.
+// If `Hvx8O` returns empty, swap to `Nz6VX` — one of the two is the
+// canonical link Softr's data layer exposes.
+const userAccountsSelect = q.select({
+  accounts: "Hvx8O",
+});
+
+// Workspace creation page — where to send users with zero accounts.
+const CREATE_WORKSPACE_PATH = "/settings/new-workspace";
+
+// ─── Helpers ──────────────────────────────────────────────────
+function unwrap(raw) {
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw.trim();
+  if (Array.isArray(raw)) {
+    const f = raw[0];
+    if (typeof f === "string") return f.trim();
+    if (f?.label) return String(f.label).trim();
+    if (f?.name) return String(f.name).trim();
+    return "";
+  }
+  if (typeof raw === "object") {
+    if (raw.label) return String(raw.label).trim();
+    if (raw.name) return String(raw.name).trim();
+    return "";
+  }
+  return String(raw).trim();
+}
+
+// Closes the Softr modal we're rendered inside. Tries the direct
+// parent-API first, falls back to postMessage.
+function closeSoftrModal() {
+  if (typeof window === "undefined") return;
+  try {
+    const p = window.parent;
+    if (p && typeof p.closeSwModal === "function") {
+      p.closeSwModal();
+      return;
+    }
+    if (p) {
+      p.postMessage({ type: "softr-modal-close" }, "*");
+      p.postMessage({ type: "closeModal" }, "*");
+    }
+  } catch (e) {
+    console.error("closeSoftrModal failed:", e);
+  }
+}
+
+// =====================================================================
+// MAIN BLOCK
+// =====================================================================
+export default function Block() {
+  const user = useCurrentUser();
+
+  // Read the user's linked accounts.
+  const userAccountsRecord = useRecord({
+    recordId: user?.id,
+    select: userAccountsSelect,
+    enabled: !!user?.id,
+  });
+  const userAccounts = useMemo(() => {
+    const raw = userAccountsRecord?.data?.fields?.accounts;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((a) => ({
+        id: a?.id || "",
+        label: unwrap(a) || "Untitled workspace",
+      }))
+      .filter((x) => x.id);
+  }, [userAccountsRecord?.data]);
+
+  const workspaceLabelLookup = useMemo(() => {
+    const m = new Map();
+    for (const a of userAccounts) m.set(a.id, a.label);
+    return m;
+  }, [userAccounts]);
+
+  // Pick the right workspace to land in:
+  //   1. URL `?workspace=<id>` from the switcher in /app/projects
+  //   2. Single-account user → their one and only account
+  //   3. Multi-account user with nothing ticked → empty (nudge them)
+  //   4. Zero-account user → empty (CTA shown)
+  const defaultWorkspaceId = useMemo(() => {
+    if (typeof window !== "undefined") {
+      const fromUrl = new URL(window.location.href).searchParams.get("workspace");
+      if (fromUrl) return fromUrl.split(",").map((s) => s.trim()).filter(Boolean)[0] || "";
+    }
+    if (userAccounts.length === 1) return userAccounts[0].id;
+    return "";
+  }, [userAccounts]);
+
+  const hasNoAccounts = !userAccountsRecord?.data
+    ? false
+    : userAccounts.length === 0;
+
+  // ─── Form state ───────────────────────────────────────
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [workspace, setWorkspace] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // Re-sync workspace when defaultWorkspaceId resolves (it changes
+  // once the user.accounts read finishes loading).
+  useEffect(() => {
+    if (!defaultWorkspaceId) return;
+    setWorkspace((prev) => (prev ? prev : defaultWorkspaceId));
+  }, [defaultWorkspaceId]);
+
+  const createRecord = useRecordCreate({ fields: createFields });
+
+  const handleCreate = async () => {
+    if (!name.trim()) {
+      toast.error("Project name is required");
+      return;
+    }
+    if (!workspace) {
+      toast.error("Pick a workspace for this project");
+      return;
+    }
+    if (!user?.id) {
+      toast.error("Please log in to create a project");
+      return;
+    }
+    if (!createRecord.enabled) {
+      toast.error("Cannot create records right now");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await createRecord.mutateAsync({
+        name: name.trim(),
+        description: description.trim(),
+        accounts: [{ id: workspace }],
+        users: [{ id: user.id }],
+      });
+      toast.success("Project created");
+
+      // Tell the parent (/app/projects) to refetch its grid.
+      if (typeof window !== "undefined" && window.parent) {
+        try {
+          window.parent.postMessage({ type: "brieflee:project-created" }, "*");
+        } catch (e) {
+          console.error("postMessage to parent failed:", e);
+        }
+      }
+      closeSoftrModal();
+    } catch (e) {
+      console.error("Create project failed:", e);
+      toast.error("Couldn't create project", {
+        description: e?.message || "Try again.",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCancel = () => closeSoftrModal();
+
+  const isFormValid = !!name.trim() && !!workspace;
+
+  return (
+    <>
+      <Style />
+      <div className="bl-cp">
+        <div className="bl-cp-content">
+          <header className="bl-cp-header">
+            <h2 className="bl-cp-title">Create new project</h2>
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="bl-cp-close"
+              aria-label="Close"
+            ><X size={18} /></button>
+          </header>
+
+          <div className="bl-cp-body">
+            <div className="bl-cp-field">
+              <label className="bl-cp-label" htmlFor="cp-name">
+                Name <span style={{ color: "#d92626" }}>*</span>
+              </label>
+              <Input
+                id="cp-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Q1 TikTok Affiliates"
+                disabled={submitting}
+                autoFocus
+              />
+            </div>
+
+            <div className="bl-cp-field">
+              <label className="bl-cp-label" htmlFor="cp-desc">
+                Description <span className="bl-cp-optional">(optional)</span>
+              </label>
+              <Textarea
+                id="cp-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Add a few details"
+                rows={3}
+                disabled={submitting}
+              />
+            </div>
+
+            <div className="bl-cp-field">
+              <label className="bl-cp-label">Workspace</label>
+              {workspace ? (
+                <div className="bl-cp-static">
+                  {workspaceLabelLookup.get(workspace) || "Selected workspace"}
+                </div>
+              ) : hasNoAccounts ? (
+                <a
+                  href={CREATE_WORKSPACE_PATH}
+                  className="bl-cp-static bl-cp-static-cta"
+                >
+                  You don't have a workspace yet — create one to get started.
+                </a>
+              ) : (
+                <div className="bl-cp-static bl-cp-static-warn">
+                  Tick a workspace in the switcher above first.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <footer className="bl-cp-footer">
+            <button
+              type="button"
+              onClick={handleCancel}
+              disabled={submitting}
+              className="bl-cp-cancel"
+            >Cancel</button>
+            <Button
+              onClick={handleCreate}
+              disabled={submitting || !isFormValid}
+              style={{ backgroundColor: PERIWINKLE, color: "#fff" }}
+            >
+              {submitting ? "Creating…" : "Create"}
+            </Button>
+          </footer>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// =====================================================================
+// Style
+// =====================================================================
+function Style() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+
+      .bl-cp,
+      .bl-cp * { font-family: 'League Spartan', sans-serif; box-sizing: border-box; }
+
+      .bl-cp {
+        background: #FFFFFF;
+        min-height: 100vh;
+        padding: 22px 24px 18px;
+      }
+      .bl-cp-content { width: 100%; }
+
+      .bl-cp-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+      .bl-cp-title {
+        font-size: 18px;
+        font-weight: 500;
+        color: ${NAVY_DEEP};
+        margin: 0;
+        line-height: 1.25;
+        letter-spacing: -0.01em;
+      }
+      .bl-cp-close {
+        width: 28px;
+        height: 28px;
+        background: transparent;
+        color: ${MUTED};
+        border: none;
+        border-radius: 999px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        transition: background 0.15s, color 0.15s;
+        flex-shrink: 0;
+      }
+      .bl-cp-close:hover {
+        background: rgba(135, 156, 247, 0.10);
+        color: ${NAVY_DEEP};
+      }
+
+      .bl-cp-body { display: flex; flex-direction: column; gap: 14px; }
+      .bl-cp-field { display: flex; flex-direction: column; gap: 6px; }
+      .bl-cp-label {
+        font-size: 12px;
+        font-weight: 500;
+        color: ${NAVY_DEEP};
+        letter-spacing: 0.01em;
+      }
+      .bl-cp-optional {
+        color: ${MUTED};
+        font-weight: 400;
+      }
+
+      /* Force shadcn Input/Textarea sizing to match the rest of the
+         app — the iframe doesn't inherit the parent app's styles, so
+         without these overrides they fall back to text-base (16px). */
+      .bl-cp input,
+      .bl-cp textarea {
+        font-size: 13px !important;
+        font-family: 'League Spartan', sans-serif !important;
+      }
+      .bl-cp input::placeholder,
+      .bl-cp textarea::placeholder {
+        font-size: 13px;
+        color: #9aa3bf;
+      }
+      .bl-cp input:not([type="checkbox"]):not([type="radio"]) {
+        height: 38px !important;
+      }
+      .bl-cp textarea {
+        min-height: 72px;
+        line-height: 1.4;
+      }
+
+      .bl-cp-static {
+        padding: 9px 12px;
+        background: #F7F9FF;
+        border: 1px solid ${BORDER};
+        border-radius: 10px;
+        font-size: 13px;
+        color: ${NAVY_DEEP};
+        line-height: 1.3;
+      }
+      .bl-cp-static-cta {
+        display: block;
+        color: ${PERIWINKLE};
+        background: rgba(135, 156, 247, 0.08);
+        border-color: rgba(135, 156, 247, 0.45);
+        text-decoration: none;
+      }
+      .bl-cp-static-warn {
+        color: #B45309;
+        background: rgba(217, 119, 6, 0.06);
+        border-color: rgba(217, 119, 6, 0.35);
+      }
+
+      .bl-cp-footer {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 8px;
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid ${BORDER};
+      }
+      .bl-cp-cancel {
+        background: transparent;
+        color: ${MUTED};
+        border: none;
+        font-size: 13px;
+        font-weight: 500;
+        padding: 8px 14px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: color 0.15s;
+      }
+      .bl-cp-cancel:hover:not(:disabled) { color: ${NAVY_DEEP}; }
+      .bl-cp-cancel:disabled { color: #C5CFE8; cursor: not-allowed; }
+
+      @media (max-width: 520px) {
+        .bl-cp { padding: 18px 16px 16px; }
+      }
+    `}</style>
+  );
+}

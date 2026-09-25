@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #FAFBFF; -webkit-font-smoothing: antialiased; font-family: 'Inter', system-ui, sans-serif; color: #001364; }
+  * { box-sizing: border-box; }
+  @keyframes bcSpin { to { transform: rotate(360deg); } }
+  @keyframes bcBounce { 0%,80%,100% { transform: translateY(0); opacity: 0.5; } 40% { transform: translateY(-5px); opacity: 1; } }
+  @keyframes bcFadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes bcScan { from { top: 7%; } to { top: 93%; } }
+  @keyframes bcPulse { 0% { transform: scale(0.7); opacity: 0.55; } 70% { transform: scale(1.5); opacity: 0; } 100% { opacity: 0; } }
+  .bc-enter { animation: bcFadeUp 0.45s cubic-bezier(0.32,0.72,0,1) both; }
+  .bc-scrollbar::-webkit-scrollbar { width: 8px; }
+  .bc-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .bc-scrollbar::-webkit-scrollbar-thumb { background: #DDE3F2; border-radius: 8px; }
+  .bc-noscroll::-webkit-scrollbar { display: none; }
+  textarea::placeholder, input::placeholder { color: #97A0BA; }
+</style>
+</helmet>
+
+<div style="min-height: 100vh; padding: 24px 20px 72px; background: #FAFBFF;">
+
+  <!-- Prototype control bar -->
+  <div style="max-width: 640px; margin: 0 auto 26px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 9px 13px; border-radius: 12px; background: #FFFFFF; border: 1px solid #E6EAF5; box-shadow: 0 1px 2px rgba(16,24,64,0.04);">
+    <span style="display: inline-flex; align-items: center; gap: 7px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #8A93AC;">Preview controls</span>
+    <div style="display: flex; align-items: center; gap: 6px;">
+      <span style="font-size: 11.5px; color: #64708C; font-weight: 500;">Analysis</span>
+      <div style="display: inline-flex; padding: 2px; border-radius: 8px; background: #F3F5FB; border: 1px solid #E6EAF5;">
+        <button onClick="{{ setScanPreview }}" style="{{ scanPreviewBtn }}">Video</button>
+        <button onClick="{{ setScanFallback }}" style="{{ scanFallbackBtn }}">Icon</button>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 6px;">
+      <span style="font-size: 11.5px; color: #64708C; font-weight: 500;">Agents</span>
+      <div style="display: inline-flex; padding: 2px; border-radius: 8px; background: #F3F5FB; border: 1px solid #E6EAF5;">
+        <button onClick="{{ setDensityCards }}" style="{{ densityCardsBtn }}">Cards</button>
+        <button onClick="{{ setDensityCompact }}" style="{{ densityCompactBtn }}">Compact</button>
+      </div>
+    </div>
+    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: #64708C; font-weight: 500; cursor: pointer;">
+      <input type="checkbox" checked="{{ forceTimeout }}" onChange="{{ toggleTimeout }}" style="accent-color: #879CF7; width: 14px; height: 14px;">
+      Force timeout
+    </label>
+    <button onClick="{{ replay }}" style="margin-left: auto; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid #E6EAF5; background: #fff; color: #64708C; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer;" style-hover="background: #F7F9FF; color: #001364;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+      Replay
+    </button>
+  </div>
+
+  <!-- The block -->
+  <div style="max-width: 640px; margin: 0 auto;">
+
+    <!-- Hero greeting -->
+    <div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin: 8px 0 24px;">
+      <span style="display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 11px; background: #EEF1FE;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="#879CF7"><path d="M12 2c.4 3.9 1.7 6.1 4 7.1 1.4.6 3 .9 6 .9-3 0-4.6.3-6 .9-2.3 1-3.6 3.2-4 7.1-.4-3.9-1.7-6.1-4-7.1-1.4-.6-3-.9-6-.9 3 0 4.6-.3 6-.9 2.3-1 3.6-3.2 4-7.1Z"></path></svg>
+      </span>
+      <h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: #001364;">Welcome back, {{ firstName }}</h1>
+    </div>
+
+    <!-- ============ COMPOSE ENTRY ============ -->
+    <sc-if value="{{ isCompose }}" hint-placeholder-val="{{ true }}">
+    <div class="bc-enter">
+      <!-- Prompt-starter pills: horizontal scroll + hover preview -->
+      <div style="position: relative; margin-bottom: 14px;">
+        <sc-if value="{{ pillPreviewShown }}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; display: flex; justify-content: center; z-index: 6; pointer-events: none;">
+          <div style="max-width: 480px; padding: 8px 12px; border-radius: 10px; background: #001364; color: #fff; font-size: 12px; line-height: 1.45; box-shadow: 0 10px 26px -12px rgba(16,24,64,0.55);">{{ pillPreview }}</div>
+        </div>
+        </sc-if>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <button onClick="{{ pillsLeft }}" style="flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; border: 1px solid #E6EAF5; background: #fff; color: #64708C; cursor: pointer;" style-hover="background: #F5F7FF; color: #001364;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+          <div ref="{{ pillsRef }}" class="bc-noscroll" style="flex: 1 1 auto; display: flex; gap: 8px; overflow-x: auto; scroll-behavior: smooth; scrollbar-width: none; padding: 2px 0;">
+            <sc-for list="{{ pills }}" as="pill" hint-placeholder-count="6">
+              <button onClick="{{ pill.onPick }}" onMouseEnter="{{ pill.onEnter }}" onMouseLeave="{{ pillLeave }}" style="flex: 0 0 auto; white-space: nowrap; height: 32px; padding: 0 13px; border-radius: 9px; border: 1px solid #E6EAF5; background: #fff; color: #3C4767; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: all 0.15s;" style-hover="background: #F5F7FF; border-color: #D8DEF0; color: #001364;">{{ pill.chip }}</button>
+            </sc-for>
+          </div>
+          <button onClick="{{ pillsRight }}" style="flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; border: 1px solid #E6EAF5; background: #fff; color: #64708C; cursor: pointer;" style-hover="background: #F5F7FF; color: #001364;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+        </div>
+      </div>
+
+      <!-- Input box -->
+      <div style="border-radius: 14px; background: #FFFFFF; border: 1px solid #D8DEF0; box-shadow: 0 1px 2px rgba(16,24,64,0.04), 0 6px 18px -12px rgba(16,24,64,0.14); padding: 16px 16px 12px;">
+        <textarea value="{{ notes }}" onChange="{{ onNotes }}" placeholder="Tell me about this video, or what you want done with it…" rows="3" style="width: 100%; border: none; outline: none; resize: none; font-family: inherit; font-size: 14.5px; font-weight: 400; line-height: 1.5; color: #001364; background: transparent;"></textarea>
+
+        <!-- Link input (revealed) -->
+        <sc-if value="{{ showLinkInput }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; align-items: center; gap: 8px; margin: 4px 0; padding: 9px 12px; border-radius: 10px; background: #FAFBFF; border: 1px solid #E6EAF5;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#879CF7" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          <input type="url" value="{{ link }}" onChange="{{ onLink }}" placeholder="Paste a TikTok or Instagram link" style="flex: 1; border: none; outline: none; background: transparent; font-family: inherit; font-size: 13.5px; font-weight: 400; color: #001364;">
+        </div>
+        </sc-if>
+
+        <!-- Attachment chip (file) -->
+        <sc-if value="{{ showFileChip }}" hint-placeholder-val="{{ false }}">
+        <div style="display: inline-flex; align-items: center; gap: 8px; margin: 4px 0; padding: 6px 10px 6px 7px; border-radius: 9px; background: #F5F7FF; border: 1px solid #E6EAF5;">
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 6px; background: #EEF1FE; color: #879CF7;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"></path><rect width="14" height="12" x="2" y="6" rx="2"></rect></svg></span>
+          <span style="font-size: 12.5px; font-weight: 500; color: #001364;">{{ fileName }}</span>
+          <button onClick="{{ clearAttach }}" style="display: inline-flex; border: none; background: transparent; cursor: pointer; color: #97A0BA; padding: 2px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+        </div>
+        </sc-if>
+
+        <!-- Toolbar -->
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px;">
+          <div style="position: relative;">
+            <button onClick="{{ toggleAttachMenu }}" style="display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px 0 10px; border-radius: 9px; border: 1px solid #E6EAF5; background: #fff; color: #3C4767; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;" style-hover="background: #F5F7FF; color: #001364;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#879CF7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>
+              Add a video
+            </button>
+            <sc-if value="{{ attachMenuOpen }}" hint-placeholder-val="{{ false }}">
+            <div class="bc-enter" style="position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 20; width: 206px; padding: 5px; border-radius: 11px; background: #fff; border: 1px solid #E6EAF5; box-shadow: 0 12px 32px -14px rgba(16,24,64,0.28);">
+              <button onClick="{{ chooseLink }}" style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: none; border-radius: 8px; background: transparent; color: #001364; font-family: inherit; font-size: 13px; font-weight: 500; text-align: left; cursor: pointer;" style-hover="background: #F5F7FF;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#879CF7" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                Paste a link
+              </button>
+              <button onClick="{{ chooseFile }}" style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: none; border-radius: 8px; background: transparent; color: #001364; font-family: inherit; font-size: 13px; font-weight: 500; text-align: left; cursor: pointer;" style-hover="background: #F5F7FF;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#879CF7" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" x2="12" y1="3" y2="15"></line></svg>
+                Upload a file
+              </button>
+            </div>
+            </sc-if>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <!-- Run-mode dropdown -->
+            <div style="position: relative;">
+              <button onClick="{{ toggleModeMenu }}" style="display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 10px; border-radius: 9px; border: 1px solid #E6EAF5; background: #fff; color: #001364; font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;" style-hover="background: #F5F7FF;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#879CF7" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="16" y2="6"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="18" x2="12" y2="18"></line><circle cx="19" cy="6" r="2" fill="#879CF7" stroke="none"></circle></svg>
+                {{ modeLabel }}
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#97A0BA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="{{ modeChev }}"><polyline points="18 15 12 9 6 15"></polyline></svg>
+              </button>
+              <sc-if value="{{ modeMenuOpen }}" hint-placeholder-val="{{ false }}">
+              <div class="bc-enter" style="position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 20; width: 176px; padding: 5px; border-radius: 11px; background: #fff; border: 1px solid #E6EAF5; box-shadow: 0 12px 32px -14px rgba(16,24,64,0.28);">
+                <div style="padding: 6px 10px 4px; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #97A0BA;">Run mode</div>
+                <sc-for list="{{ modeOptions }}" as="opt" hint-placeholder-count="5">
+                  <button onClick="{{ opt.onPick }}" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 10px; border: none; border-radius: 8px; background: transparent; color: #001364; font-family: inherit; font-size: 13px; font-weight: 500; text-align: left; cursor: pointer;" style-hover="background: #F5F7FF;">
+                    {{ opt.label }}
+                    <sc-if value="{{ opt.selected }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#879CF7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></sc-if>
+                  </button>
+                </sc-for>
+              </div>
+              </sc-if>
+            </div>
+
+            <button onClick="{{ send }}" style="{{ sendBtnStyle }}">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 14 0"></path><path d="m13 6 6 6-6 6"></path></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <p style="text-align: center; margin: 12px 0 0; font-size: 12px; font-weight: 400; color: #97A0BA;">Add a video, set the run mode, then send. I'll pick it up from there.</p>
+    </div>
+    </sc-if>
+
+    <!-- ============ CHAT ============ -->
+    <sc-if value="{{ isChat }}" hint-placeholder-val="{{ false }}">
+    <div ref="{{ chatRef }}" class="bc-scrollbar" style="max-height: 66vh; overflow-y: auto; overscroll-behavior: contain; border-radius: 14px; border: 1px solid #E6EAF5; background: #FFFFFF; box-shadow: 0 1px 2px rgba(16,24,64,0.04), 0 8px 24px -18px rgba(16,24,64,0.16);">
+      <div style="padding: 22px 24px 26px;">
+
+        <!-- USER MESSAGE -->
+        <div class="bc-enter" style="display: flex; justify-content: flex-end; margin-bottom: 16px;">
+          <div style="max-width: 80%; display: flex; flex-direction: column; align-items: flex-end; gap: 7px;">
+            <sc-if value="{{ hasNotes }}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 11px 14px; border-radius: 12px; border-bottom-right-radius: 4px; background: #EEF1FE; border: 1px solid #DFE4FA; color: #001364; font-size: 14px; font-weight: 400; line-height: 1.5;">{{ notes }}</div>
+            </sc-if>
+            <div style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 11px 6px 7px; border-radius: 9px; background: #F5F7FF; border: 1px solid #E6EAF5;">
+              <span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px; background: #EEF1FE; color: #879CF7;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"></path><rect width="14" height="12" x="2" y="6" rx="2"></rect></svg></span>
+              <span style="font-size: 12px; font-weight: 500; color: #3C4767;">{{ attachLabel }}</span>
+              <span style="width: 1px; height: 12px; background: #DDE3F2;"></span>
+              <span style="font-size: 11px; font-weight: 600; color: #879CF7;">{{ modeLabel }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- LEE: confirmation -->
+        <sc-if value="{{ showConfirm }}" hint-placeholder-val="{{ false }}">
+        <div class="bc-enter" style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px;">
+          <img src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" alt="Lee" style="width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;">
+          <div style="padding: 11px 15px; border-radius: 12px; border-top-left-radius: 4px; background: #FFFFFF; border: 1px solid #E6EAF5; max-width: 82%;">
+            <p style="margin: 0; font-size: 14px; font-weight: 400; line-height: 1.5; color: #001364;">{{ confirmMsg }}</p>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- LEE: agents question -->
+        <sc-if value="{{ showAgentsQ }}" hint-placeholder-val="{{ false }}">
+        <div class="bc-enter" style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px;">
+          <img src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" alt="Lee" style="width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;">
+          <div style="padding: 11px 15px; border-radius: 12px; border-top-left-radius: 4px; background: #FFFFFF; border: 1px solid #E6EAF5; max-width: 82%;">
+            <p style="margin: 0; font-size: 14px; font-weight: 400; line-height: 1.5; color: #001364;">First, which Review Agents should run? Pick at least 3, each one watches for one specific thing.</p>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- AGENTS PICKER -->
+        <sc-if value="{{ showAgents }}" hint-placeholder-val="{{ false }}">
+        <div class="bc-enter" style="margin: 0 0 14px 40px; max-width: 480px;">
+          <div style="border-radius: 12px; border: 1px solid #E6EAF5; background: #fff; overflow: hidden;">
+            <sc-for list="{{ agentGroups }}" as="group" hint-placeholder-count="5">
+              <div style="border-bottom: 1px solid #EEF1F8;">
+                <button onClick="{{ group.onToggle }}" style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px; border: none; background: transparent; font-family: inherit; cursor: pointer; text-align: left;" style-hover="background: #FAFBFF;">
+                  <span style="{{ group.iconWrap }}">
+                    <sc-if value="{{ group.isCompliance }}" hint-placeholder-val="{{ true }}"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_padlock-sticker-blue-transparent_2026-05.png" alt="" style="width: 19px; height: 19px; object-fit: contain;"></sc-if>
+                    <sc-if value="{{ group.isHook }}" hint-placeholder-val="{{ false }}"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_help-icon_troubleshoot-lightning-bolt-sticker-blue-transparent_2026-05.png" alt="" style="width: 19px; height: 19px; object-fit: contain;"></sc-if>
+                    <sc-if value="{{ group.isBrand }}" hint-placeholder-val="{{ false }}"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_simple-lined-clipboard-with-pen-transparent_2026-05.png" alt="" style="width: 19px; height: 19px; object-fit: contain;"></sc-if>
+                    <sc-if value="{{ group.isProduction }}" hint-placeholder-val="{{ false }}"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_help-icon_videos-camcorder-camera-icon-blue-transparent_2026-05.png" alt="" style="width: 19px; height: 19px; object-fit: contain;"></sc-if>
+                    <sc-if value="{{ group.isOther }}" hint-placeholder-val="{{ false }}"><img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_blue-multiple-stars-transparent_2026-05.png" alt="" style="width: 19px; height: 19px; object-fit: contain;"></sc-if>
+                  </span>
+                  <span style="flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; color: #001364;">{{ group.title }}</span>
+                  <sc-if value="{{ group.hasSelected }}" hint-placeholder-val="{{ false }}">
+                  <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 6px; border-radius: 999px; background: #EEF1FE; color: #5B6FD8; font-size: 11px; font-weight: 600;">{{ group.count }}</span>
+                  </sc-if>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#AEB6CE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="{{ group.chevStyle }}"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </button>
+                <sc-if value="{{ group.open }}" hint-placeholder-val="{{ true }}">
+                <div style="{{ group.bodyStyle }}">
+                  <sc-for list="{{ group.agents }}" as="agent" hint-placeholder-count="4">
+                    <button onClick="{{ agent.onToggle }}" style="{{ agent.cardStyle }}">
+                      <img src="https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_qa-agent-sherlock-magnifying-glass-tilted-glass-3d-transparent_2026-07.png" alt="" draggable="false" style="{{ agent.iconStyle }}">
+                      <span style="flex: 1; min-width: 0;">
+                        <span style="display: block; font-size: 12.5px; font-weight: 500; color: #001364;">{{ agent.label }}</span>
+                        <sc-if value="{{ agent.showDesc }}" hint-placeholder-val="{{ true }}">
+                        <span style="display: block; margin-top: 2px; font-size: 10.5px; font-weight: 400; line-height: 1.35; color: #8A93AC;">{{ agent.desc }}</span>
+                        </sc-if>
+                      </span>
+                      <span style="{{ agent.checkStyle }}">
+                        <sc-if value="{{ agent.selected }}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></sc-if>
+                      </span>
+                    </button>
+                  </sc-for>
+                </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px;">
+            <span style="font-size: 12px; font-weight: 500; color: {{ countColor }};">{{ countLabel }}</span>
+            <button onClick="{{ startAnalyse }}" style="{{ analyseBtnStyle }}">{{ analyseLabel }}</button>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- LEE: analysing -->
+        <sc-if value="{{ showAnalyseMsg }}" hint-placeholder-val="{{ false }}">
+        <div class="bc-enter" style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px;">
+          <img src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" alt="Lee" style="width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;">
+          <div style="padding: 11px 15px; border-radius: 12px; border-top-left-radius: 4px; background: #FFFFFF; border: 1px solid #E6EAF5; max-width: 82%;">
+            <p style="margin: 0; font-size: 14px; font-weight: 400; line-height: 1.5; color: #001364;">{{ analyseMsg }}</p>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- SCAN / RESULT FRAME -->
+        <sc-if value="{{ showScan }}" hint-placeholder-val="{{ false }}">
+        <div class="bc-enter" style="margin: 0 0 6px 40px; display: flex; flex-direction: column; align-items: flex-start; gap: 13px;">
+
+          <div style="position: relative; width: 208px; height: 370px; border-radius: 16px; overflow: hidden; background: #FFFFFF; border: 1px solid #E6EAF5;">
+
+            <!-- analysing: PREVIEW (real video / thumbnail) -->
+            <sc-if value="{{ showPreviewMedia }}" hint-placeholder-val="{{ true }}">
+            <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(180deg, #2C3768 0%, #131A3A 100%);"><span style="display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 14px; background: rgba(135,156,247,0.18); color: #B4C4FF;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"></path><rect width="14" height="12" x="2" y="6" rx="2"></rect></svg></span></div>
+            <video autoplay muted loop playsinline poster="https://res.cloudinary.com/dspv9nm1n/video/upload/so_1/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: blur(2px) brightness(0.85);"><source src="https://res.cloudinary.com/dspv9nm1n/video/upload/v1782292068/qorue56gnkxsjtqabviy.mp4" type="video/mp4"></video>
+            </sc-if>
+
+            <!-- analysing: FALLBACK (no reliable preview) -->
+            <sc-if value="{{ showFallbackMedia }}" hint-placeholder-val="{{ false }}">
+            <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: linear-gradient(180deg, #F5F6FB 0%, #FFFFFF 100%);">
+              <div style="position: relative; width: 112px; height: 112px; display: flex; align-items: center; justify-content: center;">
+                <span style="position: absolute; inset: -4px; border-radius: 26px; background: rgba(135,156,247,0.26); animation: bcPulse 2.2s ease-out infinite;"></span>
+                <span style="position: absolute; inset: -4px; border-radius: 26px; background: rgba(135,156,247,0.26); animation: bcPulse 2.2s ease-out 1.1s infinite;"></span>
+                <sc-if value="{{ fkIsUpload }}" hint-placeholder-val="{{ true }}"><img src="https://res.cloudinary.com/dchroynzv/image/upload/v1778145999/brieflee_icon_upload-cloud-engraving-transparent_2026-05.png" alt="" draggable="false" style="position: relative; width: 112px; height: 112px; object-fit: contain; border-radius: 22px; background: #ECEEF4; box-shadow: 0 8px 22px -10px rgba(16,24,64,0.30);"></sc-if>
+                <sc-if value="{{ fkIsTiktok }}" hint-placeholder-val="{{ false }}"><img src="https://res.cloudinary.com/dchroynzv/image/upload/v1777622929/brieflee_engraving_tiktok-logo-3d-musical-note-icon-grey-engraved_2026-03.png" alt="" draggable="false" style="position: relative; width: 112px; height: 112px; object-fit: contain; border-radius: 22px; background: #ECEEF4; box-shadow: 0 8px 22px -10px rgba(16,24,64,0.30);"></sc-if>
+                <sc-if value="{{ fkIsInstagram }}" hint-placeholder-val="{{ false }}"><img src="https://res.cloudinary.com/dchroynzv/image/upload/v1777622956/brieflee_engraving_instagram-logo-camera-icon-3d-grey-bg-third-party-mark_2026-03.png" alt="" draggable="false" style="position: relative; width: 112px; height: 112px; object-fit: contain; border-radius: 22px; background: #ECEEF4; box-shadow: 0 8px 22px -10px rgba(16,24,64,0.30);"></sc-if>
+              </div>
+              <span style="font-size: 12px; font-weight: 600; color: #5B6FD8;">{{ fallbackLabel }}</span>
+            </div>
+            </sc-if>
+
+            <!-- scan overlays (preview media only) -->
+            <sc-if value="{{ showScanLine }}" hint-placeholder-val="{{ false }}">
+            <div style="position: absolute; left: 0; right: 0; height: 54px; margin-top: -27px; background: linear-gradient(180deg, rgba(135,156,247,0) 0%, rgba(135,156,247,0.30) 48%, rgba(135,156,247,0.30) 52%, rgba(135,156,247,0) 100%); animation: bcScan 2.4s ease-in-out infinite alternate; pointer-events: none;">
+              <div style="position: absolute; top: 50%; left: 0; right: 0; height: 2px; transform: translateY(-1px); background: linear-gradient(90deg, rgba(180,196,255,0) 0%, #C3D0FF 50%, rgba(180,196,255,0) 100%); box-shadow: 0 0 14px 2px rgba(135,156,247,0.7);"></div>
+            </div>
+            <div style="position: absolute; inset: 10px; pointer-events: none;">
+              <span style="position: absolute; top: 0; left: 0; width: 15px; height: 15px; border-top: 2px solid rgba(195,208,255,0.85); border-left: 2px solid rgba(195,208,255,0.85); border-top-left-radius: 5px;"></span>
+              <span style="position: absolute; top: 0; right: 0; width: 15px; height: 15px; border-top: 2px solid rgba(195,208,255,0.85); border-right: 2px solid rgba(195,208,255,0.85); border-top-right-radius: 5px;"></span>
+              <span style="position: absolute; bottom: 0; left: 0; width: 15px; height: 15px; border-bottom: 2px solid rgba(195,208,255,0.85); border-left: 2px solid rgba(195,208,255,0.85); border-bottom-left-radius: 5px;"></span>
+              <span style="position: absolute; bottom: 0; right: 0; width: 15px; height: 15px; border-bottom: 2px solid rgba(195,208,255,0.85); border-right: 2px solid rgba(195,208,255,0.85); border-bottom-right-radius: 5px;"></span>
+            </div>
+            <div style="position: absolute; top: 11px; left: 11px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; background: rgba(14,20,48,0.72); border: 1px solid rgba(255,255,255,0.14);">
+              <span style="width: 6px; height: 6px; border-radius: 50%; background: #879CF7;"></span>
+              <span style="font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.9);">Scanning</span>
+            </div>
+            </sc-if>
+
+            <!-- ready overlay -->
+            <sc-if value="{{ reviewReady }}" hint-placeholder-val="{{ false }}">
+            <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 22px; text-align: center; background: #FFFFFF;">
+              <span style="display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 50%; background: #E9F8EE; color: #2FA463;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+              <span style="font-size: 15px; font-weight: 700; color: #001364;">Review complete</span>
+              <span style="font-size: 12px; font-weight: 400; line-height: 1.45; color: #64708C;">Your video scored <strong style="color:#001364; font-weight:700;">93</strong> against your agents.</span>
+            </div>
+            </sc-if>
+
+            <!-- timeout overlay -->
+            <sc-if value="{{ timedOut }}" hint-placeholder-val="{{ false }}">
+            <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 22px; text-align: center; background: #FFFFFF;">
+              <span style="display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 50%; background: #EEF1FE; color: #879CF7;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></span>
+              <span style="font-size: 15px; font-weight: 700; color: #001364;">Still processing</span>
+              <span style="font-size: 12px; font-weight: 400; line-height: 1.45; color: #64708C;">We'll email you when it's ready.</span>
+            </div>
+            </sc-if>
+          </div>
+
+          <!-- status + chips (analysing only) -->
+          <sc-if value="{{ scanning }}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-direction: column; gap: 9px;">
+            <span style="font-size: 13.5px; font-weight: 500; color: #3C4767;">{{ scanStatus }}</span>
+            <div style="display: flex; gap: 7px;">
+              <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #E9F8EE; color: #2FA463; font-size: 11px; font-weight: 500;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>Fetched</span>
+              <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #F3F5FB; color: #5B6FD8; font-size: 11px; font-weight: 500;"><span style="width: 11px; height: 11px; border: 2px solid #C7CFE6; border-top-color: #879CF7; border-radius: 50%; animation: bcSpin 0.8s linear infinite;"></span>Analysing</span>
+            </div>
+          </div>
+          </sc-if>
+
+          <!-- ready CTA -->
+          <sc-if value="{{ reviewReady }}" hint-placeholder-val="{{ false }}">
+          <a href="/videos" style="display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 10px; background: #879CF7; color: #fff; font-size: 13.5px; font-weight: 600; text-decoration: none;" style-hover="background: #6F86F0;">View my results<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 14 0"></path><path d="m13 6 6 6-6 6"></path></svg></a>
+          </sc-if>
+
+          <!-- timeout CTA -->
+          <sc-if value="{{ timedOut }}" hint-placeholder-val="{{ false }}">
+          <a href="/videos" style="display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 10px; background: #879CF7; color: #fff; font-size: 13.5px; font-weight: 600; text-decoration: none;" style-hover="background: #6F86F0;">Go to dashboard<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 14 0"></path><path d="m13 6 6 6-6 6"></path></svg></a>
+          </sc-if>
+
+        </div>
+        </sc-if>
+
+        <!-- typing indicator -->
+        <sc-if value="{{ typing }}" hint-placeholder-val="{{ false }}">
+        <div class="bc-enter" style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px;">
+          <img src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" alt="Lee" style="width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;">
+          <div style="display: flex; gap: 5px; padding: 13px 15px; border-radius: 12px; border-top-left-radius: 4px; background: #FFFFFF; border: 1px solid #E6EAF5;">
+            <span style="width: 6px; height: 6px; border-radius: 50%; background: #879CF7; animation: bcBounce 1.4s infinite;"></span>
+            <span style="width: 6px; height: 6px; border-radius: 50%; background: #879CF7; animation: bcBounce 1.4s 0.2s infinite;"></span>
+            <span style="width: 6px; height: 6px; border-radius: 50%; background: #879CF7; animation: bcBounce 1.4s 0.4s infinite;"></span>
+          </div>
+        </div>
+        </sc-if>
+
+      </div>
+    </div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const AGENT_ICON = 'https://res.cloudinary.com/dchroynzv/image/upload/v1780012233/brieflee_icon_qa-agent-suited-character-tilted-glass-3d-transparent_2026-05.png';
+
+const AGENT_GROUPS = [
+  { key: 'compliance', title: 'Compliance & safety', agents: [
+    { label: 'Copyright check', desc: 'Flags music, fonts, or clips that could break copyright.' },
+    { label: 'Safe zones', desc: 'Keeps key content inside platform safe zones.' },
+  ]},
+  { key: 'hook', title: 'Hook & attention', agents: [
+    { label: 'Hook quality', desc: 'First 3 seconds grab attention without feeling like an ad.' },
+    { label: 'Visual hook', desc: 'A visual moment strong enough to stop the scroll.' },
+    { label: 'Scene pacing', desc: 'Scenes change often enough to hold attention.' },
+    { label: 'CTA present', desc: "There's a clear ask to the viewer." },
+    { label: 'Watchable on mute', desc: 'Still makes sense with the sound off.' },
+  ]},
+  { key: 'brand', title: 'Brand & brief', agents: [
+    { label: 'Follows the brief', desc: 'Matches what the brief asked for.' },
+    { label: 'Brand name mentioned', desc: 'Brand name is said the agreed number of times.' },
+    { label: 'Brand alignment', desc: "Matches the brand's voice, look, and feel." },
+    { label: 'Product visibility', desc: 'Product shows clearly enough across the video.' },
+    { label: 'Product usage', desc: 'Product is shown being used the right way.' },
+    { label: 'Creator visibility', desc: 'Creator is on camera enough for the format.' },
+    { label: 'Inspiration link match', desc: 'Matches the inspiration examples in the brief.' },
+  ]},
+  { key: 'production', title: 'Production quality', agents: [
+    { label: 'Lighting & camera', desc: 'Bright enough, steady, and in focus.' },
+    { label: 'Setting & background', desc: 'Background is tidy and on-brand.' },
+    { label: 'Audio clarity', desc: 'Audio is clean, no noise, echo, or hum.' },
+    { label: 'Audio delivery', desc: 'Spoken script is clear, natural, on-brand.' },
+    { label: 'Music & sound balance', desc: "Music doesn't drown out the voice." },
+    { label: 'Pronunciation', desc: 'Brand and product names are said right.' },
+    { label: 'Text legibility', desc: 'On-screen text is big enough to read.' },
+    { label: 'Closed captions', desc: 'Captions are accurate and easy to follow.' },
+    { label: 'Distracting elements', desc: 'Nothing pulls attention from the product.' },
+    { label: 'Energy & authenticity', desc: 'Feels real and engaging, not scripted.' },
+    { label: 'Wardrobe & appearance', desc: 'Outfit fits the brand and looks intentional.' },
+  ]},
+  { key: 'other', title: 'Other checks', agents: [
+    { label: 'Video length', desc: 'Runs the right length for the format.' },
+  ]},
+];
+
+const GROUP_ICONS = {
+  compliance: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_padlock-sticker-blue-transparent_2026-05.png',
+  hook: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_help-icon_troubleshoot-lightning-bolt-sticker-blue-transparent_2026-05.png',
+  brand: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_simple-lined-clipboard-with-pen-transparent_2026-05.png',
+  production: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_help-icon_videos-camcorder-camera-icon-blue-transparent_2026-05.png',
+  other: 'https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_blue-multiple-stars-transparent_2026-05.png',
+};
+
+const PILLS = [
+  { chip: "Something's off", mode: 'review', prompt: "Not sure about this one, something feels off and I can't place it. Want your read before I reply to the creator." },
+  { chip: 'Gut-check this', mode: 'review', prompt: 'I think this is strong, but I want a second pair of eyes before it goes live.' },
+  { chip: 'Creator loves it', mode: 'review', prompt: "The creator's convinced this is their best cut. Is it as good as they think, or are they too close to it?" },
+  { chip: 'Tell me straight', mode: 'review', prompt: "I keep going back and forth on this one. Just tell me straight if it's good enough." },
+  { chip: 'Want this energy', mode: 'remix', prompt: 'Love how this brand nailed the pacing, I want this same energy for my audience.' },
+  { chip: 'Steal this hook', mode: 'remix', prompt: 'This hook stopped me dead, I want my own version of it for my product.' },
+  { chip: 'Make it mine', mode: 'remix', prompt: "This is exactly the vibe I've been trying to explain to my creators. Help me make it mine." },
+  { chip: "Why'd this blow up?", mode: 'analyse', prompt: 'This blew up for a tiny brand and I want to understand why before I borrow it.' },
+  { chip: 'What makes it work?', mode: 'analyse', prompt: "Everyone's copying this format. I want to know what actually makes it work." },
+  { chip: "Shouldn't work, but does", mode: 'analyse', prompt: "This shouldn't work but it clearly does. What am I missing?" },
+];
+
+const MODE_OPTIONS = [
+  { value: 'review', label: 'Review', confirm: "Perfect. I'll review this against your brief and quality standards." },
+  { value: 'remix', label: 'Remix', confirm: "Love it. I'll break down what works and remix it for your brand." },
+  { value: 'analyse', label: 'Analyse', confirm: "On it. I'll analyse the hook, pacing, and what's driving this." },
+];
+
+const STATUS_LINES = [
+  'Analysing your video', 'Checking the hook', 'Looking at pacing',
+  'Checking audio quality', 'Scanning for the product', 'Reading on-screen text',
+  'Checking brand alignment', 'Almost done',
+];
+
+const SEG_ON = 'height:26px; padding:0 12px; border:none; border-radius:6px; background:#fff; color:#5B6FD8; font-family:inherit; font-size:11.5px; font-weight:600; cursor:pointer; box-shadow:0 1px 2px rgba(16,24,64,0.10);';
+const SEG_OFF = 'height:26px; padding:0 12px; border:none; border-radius:6px; background:transparent; color:#8A93AC; font-family:inherit; font-size:11.5px; font-weight:500; cursor:pointer;';
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.chatRef = React.createRef();
+    this.pillsRef = React.createRef();
+    this._to = [];
+  }
+
+  state = this.initialState();
+
+  initialState() {
+    return {
+      stage: 'compose',
+      notes: '', attachType: null, link: '', fileName: '', attachMenuOpen: false,
+      selectedMode: 'review', modeMenuOpen: false,
+      hoverPill: null,
+      typing: false,
+      showConfirm: false, showAgentsQ: false, showAgents: false,
+      selectedAgents: ['Hook quality', 'Visual hook', 'Product visibility', 'Follows the brief'],
+      openGroup: 'hook',
+      showAnalyseMsg: false, showScan: false, scanIdx: 0, reviewReady: false, timedOut: false,
+      // 'auto' derives from input; user can override to 'preview' / 'fallback'
+      scanOverride: this.state ? this.state.scanOverride : 'auto',
+      density: this.state ? this.state.density : 'cards',
+      forceTimeout: this.state ? this.state.forceTimeout : false,
+    };
+  }
+
+  componentDidUpdate() {
+    const el = this.chatRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }
+  componentWillUnmount() { this._clear(); }
+  _clear() { this._to.forEach(clearTimeout); this._to = []; if (this._scanInt) { clearInterval(this._scanInt); this._scanInt = null; } }
+  _t(fn, ms) { this._to.push(setTimeout(fn, ms)); }
+
+  hasAttach() { return this.state.attachType === 'file' || (this.state.attachType === 'link' && this.state.link.trim().length > 0); }
+
+  // Which analysis visual to show. Auto: file/tiktok → preview, instagram/none → fallback.
+  scanKind() {
+    if (this.state.scanOverride !== 'auto') return this.state.scanOverride;
+    if (this.state.attachType === 'file') return 'preview';
+    const l = (this.state.link || '').toLowerCase();
+    if (l.includes('tiktok')) return 'preview';
+    if (l.includes('instagram')) return 'fallback';
+    return 'preview';
+  }
+
+  send() {
+    if (!this.hasAttach() && !this.state.notes.trim()) return;
+    this.setState({ stage: 'chat', attachMenuOpen: false, modeMenuOpen: false, typing: true });
+    this._t(() => this.setState({ typing: false, showConfirm: true }), 1300);
+    this._t(() => this.setState({ typing: true }), 1650);
+    this._t(() => this.setState({ typing: false, showAgentsQ: true }), 2600);
+    this._t(() => this.setState({ showAgents: true }), 2850);
+  }
+
+  toggleGroup(key) { this.setState(s => ({ openGroup: s.openGroup === key ? null : key })); }
+
+  toggleAgent(label) {
+    this.setState(s => {
+      const has = s.selectedAgents.includes(label);
+      return { selectedAgents: has ? s.selectedAgents.filter(x => x !== label) : [...s.selectedAgents, label] };
+    });
+  }
+
+  startAnalyse() {
+    if (this.state.selectedAgents.length < 3) return;
+    this.setState({ showAgents: false, typing: true });
+    this._t(() => this.setState({ typing: false, showAnalyseMsg: true }), 1100);
+    this._t(() => {
+      this.setState({ showScan: true, scanIdx: 0 });
+      this._scanInt = setInterval(() => this.setState(s => ({ scanIdx: s.scanIdx + 1 })), 1300);
+    }, 1500);
+    this._t(() => {
+      if (this._scanInt) { clearInterval(this._scanInt); this._scanInt = null; }
+      this.setState(s => ({ reviewReady: !s.forceTimeout, timedOut: s.forceTimeout }));
+    }, 9000);
+  }
+
+  replay() { this._clear(); this.setState(this.initialState()); }
+
+  renderVals() {
+    const s = this.state;
+    const sel = s.selectedAgents;
+    const kind = this.scanKind();
+    const scanningNow = s.showScan && !s.reviewReady && !s.timedOut;
+    const fkLink = (s.link || '').toLowerCase();
+    const fkSource = s.attachType === 'file' ? 'upload' : (fkLink.includes('tiktok') ? 'tiktok' : 'instagram');
+    const FK = {
+      upload: ['https://res.cloudinary.com/dchroynzv/image/upload/v1778145999/brieflee_icon_upload-cloud-engraving-transparent_2026-05.png', 'Analysing your upload'],
+      tiktok: ['https://res.cloudinary.com/dchroynzv/image/upload/v1777622929/brieflee_engraving_tiktok-logo-3d-musical-note-icon-grey-engraved_2026-03.png', 'Analysing your TikTok'],
+      instagram: ['https://res.cloudinary.com/dchroynzv/image/upload/v1777622956/brieflee_engraving_instagram-logo-camera-icon-3d-grey-bg-third-party-mark_2026-03.png', 'Analysing your Instagram video'],
+    };
+
+    const agentGroups = AGENT_GROUPS.map(g => {
+      const count = g.agents.filter(a => sel.includes(a.label)).length;
+      return {
+        key: g.key, title: g.title, open: s.openGroup === g.key, count,
+        hasSelected: count > 0,
+        isCompliance: g.key === 'compliance', isHook: g.key === 'hook', isBrand: g.key === 'brand', isProduction: g.key === 'production', isOther: g.key === 'other',
+        iconWrap: 'display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:8px; flex-shrink:0; background:#F1F4FF;',
+        chevStyle: 'transition:transform 0.2s; transform:rotate(' + (s.openGroup === g.key ? '180deg' : '0deg') + ');',
+        bodyStyle: s.density === 'cards'
+          ? 'display:grid; grid-template-columns:repeat(2,1fr); gap:8px; padding:2px 14px 14px;'
+          : 'display:flex; flex-direction:column; gap:6px; padding:2px 14px 12px;',
+        onToggle: () => this.toggleGroup(g.key),
+        agents: g.agents.map(a => {
+          const on = sel.includes(a.label);
+          const cards = s.density === 'cards';
+          const skin = on ? 'background:#F5F7FF; border:1px solid #879CF7;' : 'background:#fff; border:1px solid #E6EAF5;';
+          const base = cards
+            ? 'position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:7px; width:100%; min-height:104px; text-align:left; font-family:inherit; cursor:pointer; border-radius:12px; transition:all 0.15s; padding:12px 12px 13px;'
+            : 'position:relative; display:flex; align-items:center; gap:9px; width:100%; text-align:left; font-family:inherit; cursor:pointer; border-radius:10px; transition:all 0.15s; padding:8px 11px;';
+          const iconSize = cards ? 32 : 22;
+          return {
+            label: a.label, desc: a.desc, selected: on,
+            showDesc: cards,
+            cardStyle: base + skin,
+            iconStyle: 'width:' + iconSize + 'px; height:' + iconSize + 'px; object-fit:contain; flex-shrink:0; transform:rotate(-12deg); filter:drop-shadow(0 3px 5px rgba(135,156,247,0.28));',
+            checkStyle: (cards ? 'position:absolute; top:10px; right:10px;' : 'margin-left:auto;') + ' display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:6px; flex-shrink:0; ' + (on ? 'background:#879CF7; border:1px solid #879CF7;' : 'background:#fff; border:1px solid #CFD6EA;'),
+            onToggle: () => this.toggleAgent(a.label),
+          };
+        }),
+      };
+    });
+
+    const count = sel.length;
+    const canAnalyse = count >= 3;
+    const sendReady = this.hasAttach();
+    const modeObj = MODE_OPTIONS.find(m => m.value === s.selectedMode) || MODE_OPTIONS[0];
+
+    return {
+      firstName: 'Bev',
+      isCompose: s.stage === 'compose',
+      isChat: s.stage === 'chat',
+      chatRef: this.chatRef,
+      pillsRef: this.pillsRef,
+
+      pills: PILLS.map((p, i) => ({
+        chip: p.chip,
+        onPick: () => this.setState({ notes: p.prompt, selectedMode: p.mode }),
+        onEnter: () => this.setState({ hoverPill: i }),
+      })),
+      pillLeave: () => this.setState({ hoverPill: null }),
+      pillPreviewShown: s.hoverPill != null,
+      pillPreview: s.hoverPill != null ? PILLS[s.hoverPill].prompt : '',
+      pillsLeft: () => { const el = this.pillsRef.current; if (el) el.scrollBy({ left: -220, behavior: 'smooth' }); },
+      pillsRight: () => { const el = this.pillsRef.current; if (el) el.scrollBy({ left: 220, behavior: 'smooth' }); },
+
+      notes: s.notes,
+      onNotes: (e) => this.setState({ notes: e.target.value }),
+      link: s.link,
+      onLink: (e) => this.setState({ link: e.target.value }),
+      showLinkInput: s.attachType === 'link',
+      showFileChip: s.attachType === 'file',
+      fileName: s.fileName,
+      clearAttach: () => this.setState({ attachType: null, link: '', fileName: '' }),
+      attachMenuOpen: s.attachMenuOpen,
+      toggleAttachMenu: () => this.setState(st => ({ attachMenuOpen: !st.attachMenuOpen, modeMenuOpen: false })),
+      chooseLink: () => this.setState({ attachType: 'link', attachMenuOpen: false }),
+      chooseFile: () => this.setState({ attachType: 'file', fileName: 'earnedinsilence-travelhoodie.mp4', attachMenuOpen: false }),
+      send: () => this.send(),
+      sendBtnStyle: 'display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border:none; border-radius:10px; font-family:inherit; transition:all 0.15s; ' + (sendReady ? 'background:#879CF7; color:#fff; cursor:pointer;' : 'background:#EDEFF6; color:#AEB6CE; cursor:not-allowed;'),
+
+      // mode dropdown
+      modeLabel: modeObj.label,
+      modeChev: 'transition:transform 0.2s; transform:rotate(' + (s.modeMenuOpen ? '180deg' : '0deg') + ');',
+      modeMenuOpen: s.modeMenuOpen,
+      toggleModeMenu: () => this.setState(st => ({ modeMenuOpen: !st.modeMenuOpen, attachMenuOpen: false })),
+      modeOptions: MODE_OPTIONS.map(m => ({
+        label: m.label, selected: s.selectedMode === m.value,
+        onPick: () => this.setState({ selectedMode: m.value, modeMenuOpen: false }),
+      })),
+
+      hasNotes: s.notes.trim().length > 0,
+      attachLabel: s.attachType === 'link' ? (s.link.trim() || 'Video link') : (s.fileName || 'Video'),
+
+      showConfirm: s.showConfirm,
+      confirmMsg: modeObj.confirm,
+
+      showAgentsQ: s.showAgentsQ,
+      showAgents: s.showAgents,
+      agentGroups,
+      agentIcon: AGENT_ICON,
+      countLabel: canAnalyse ? (count + ' agents selected') : ('Pick at least 3 · ' + count + ' selected'),
+      countColor: canAnalyse ? '#2FA463' : '#B7791F',
+      analyseLabel: canAnalyse ? ('Run ' + count + ' agents') : 'Pick at least 3',
+      analyseBtnStyle: 'display:inline-flex; align-items:center; gap:7px; height:36px; padding:0 16px; border:none; border-radius:10px; font-family:inherit; font-size:13px; font-weight:600; transition:all 0.15s; ' + (canAnalyse ? 'background:#879CF7; color:#fff; cursor:pointer;' : 'background:#EDEFF6; color:#AEB6CE; cursor:not-allowed;'),
+      startAnalyse: () => this.startAnalyse(),
+
+      showAnalyseMsg: s.showAnalyseMsg,
+      analyseMsg: 'On it. Running ' + count + ' agents on your video now.',
+      showScan: s.showScan,
+      scanning: scanningNow,
+      showPreviewMedia: scanningNow && kind === 'preview',
+      showFallbackMedia: scanningNow && kind === 'fallback',
+      fkIsUpload: fkSource === 'upload',
+      fkIsTiktok: fkSource === 'tiktok',
+      fkIsInstagram: fkSource === 'instagram',
+      fallbackLabel: FK[fkSource][1],
+      showScanLine: scanningNow,
+      scanStatus: STATUS_LINES[s.scanIdx % STATUS_LINES.length],
+      reviewReady: s.reviewReady,
+      timedOut: s.timedOut,
+
+      typing: s.typing,
+
+      // controls
+      forceTimeout: s.forceTimeout,
+      toggleTimeout: () => this.setState(st => ({ forceTimeout: !st.forceTimeout })),
+      setScanPreview: () => this.setState({ scanOverride: 'preview' }),
+      setScanFallback: () => this.setState({ scanOverride: 'fallback' }),
+      scanPreviewBtn: kind === 'preview' ? SEG_ON : SEG_OFF,
+      scanFallbackBtn: kind === 'fallback' ? SEG_ON : SEG_OFF,
+      setDensityCards: () => this.setState({ density: 'cards' }),
+      setDensityCompact: () => this.setState({ density: 'compact' }),
+      densityCardsBtn: s.density === 'cards' ? SEG_ON : SEG_OFF,
+      densityCompactBtn: s.density === 'compact' ? SEG_ON : SEG_OFF,
+      replay: () => this.replay(),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,414 @@
+// =====================================================================
+// /app/ops/model-bench — Model Bench · Vibe Code block. INTERNAL ONLY.
+//
+// Runs one prompt through several OpenRouter models at once and scores
+// the output, so model changes get tested here instead of in flight.
+//
+// Put this on a page nobody else can reach (an /ops page behind an
+// internal-only user group). It has no product function.
+//
+// SETUP, three steps:
+//   1. Make a SEPARATE OpenRouter key for this (label it "ops-bench")
+//      so bench spend never mixes with production spend, and so it can
+//      be revoked on its own.
+//   2. Softr → Data sources → add a REST API source with that key,
+//      base https://openrouter.ai/api/v1
+//   3. Paste that source's id into ds.openrouter below (Source tab).
+//
+// What it reports per model: latency, real token counts, real cost,
+// whether the JSON parsed, em dash count, and banned phrases. Em dashes
+// are the house rule the cheaper models break first.
+//
+// Prices below are $ per million tokens, pulled 2026-07-30. They move.
+// Re-check against https://openrouter.ai/api/v1/models before trusting
+// a cost number in a decision.
+// =====================================================================
+
+// ─── Datasources (ids from this block's Source tab) ───────────
+const ds = datasource.define({
+  openrouter: "PASTE_OPS_OPENROUTER_SOURCE_ID_HERE",
+});
+import {
+  Play, Check, X, AlertTriangle, ChevronDown, ChevronRight, Copy, Loader2,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+
+// ─── Brand palette ────────────────────────────────────────────
+const NAVY_DEEP = "#001364";
+const PERIWINKLE = "#879CF7";
+const PERIWINKLE_HOVER = "#294FF6";
+const INK = "#0F172A";
+const MUTED = "#64748B";
+const LINE = "#E2E8F0";
+const GOOD = "#059669";
+const WARN = "#D97706";
+const BAD = "#DC2626";
+
+// ─── Model catalogue ($ per million tokens) ───────────────────
+const MODELS = [
+  { id: "deepseek/deepseek-v4-flash", label: "DeepSeek V4 Flash", inC: 0.14, outC: 0.28 },
+  { id: "deepseek/deepseek-v4-pro", label: "DeepSeek V4 Pro", inC: 0.435, outC: 0.87 },
+  { id: "deepseek/deepseek-v3.2", label: "DeepSeek V3.2", inC: 0.269, outC: 0.4 },
+  { id: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", inC: 0.1, outC: 0.4 },
+  { id: "google/gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite", inC: 0.25, outC: 1.5 },
+  { id: "qwen/qwen3-235b-a22b-2507", label: "Qwen3 235B", inC: 0.09, outC: 0.55 },
+  { id: "minimax/minimax-m2.5", label: "MiniMax M2.5", inC: 0.15, outC: 0.9 },
+  { id: "z-ai/glm-4.7", label: "GLM 4.7", inC: 0.4, outC: 1.75 },
+  { id: "openai/gpt-5-mini", label: "GPT-5 mini", inC: 0.25, outC: 2.0 },
+  { id: "anthropic/claude-haiku-4.5", label: "Claude Haiku 4.5", inC: 1.0, outC: 5.0 },
+  { id: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5", inC: 2.0, outC: 10.0 },
+  { id: "anthropic/claude-sonnet-4.5", label: "Claude Sonnet 4.5 (current)", inC: 3.0, outC: 15.0 },
+];
+
+// ─── House style checks ───────────────────────────────────────
+// No spelling-variant policing. The only text checks are the em dash
+// count and a short banned-phrase list.
+const BANNED_PHRASES = [
+  "check out our store",
+];
+
+function scoreOutput(text) {
+  const emDashes = (text.match(/—/g) || []).length;
+  const lower = text.toLowerCase();
+  const phraseHits = BANNED_PHRASES.filter((w) => lower.includes(w));
+  return { emDashes, phraseHits };
+}
+
+function tryParseJson(text) {
+  const stripped = text.trim().replace(/^```json?/i, "").replace(/```$/, "").trim();
+  try {
+    const parsed = JSON.parse(stripped);
+    return { ok: true, keys: Object.keys(parsed || {}).length, parsed };
+  } catch (e) {
+    return { ok: false, error: e?.message || "parse failed" };
+  }
+}
+
+function money(n) {
+  if (n == null) return "—";
+  if (n < 0.01) return "$" + n.toFixed(5);
+  return "$" + n.toFixed(4);
+}
+
+// ─── Prefilled: the workspace blueprint prompt ────────────────
+// This is the live prompt from the create-workspace n8n workflow.
+// It is the most expensive call in the product: every signup fires
+// one, and the user message carries full website scrapes.
+const DEFAULT_SYSTEM = `You build content blueprints that creators use to make short-form videos for a brand. ASSEMBLE from the brand source material below. Your reader is a creator: a UGC maker, a TikTok Shop affiliate, an employee, or the brand owner filming their own content. Every line must be something a creator can pick up and film today. The blueprint is also the brand's pitch to that creator: good creators get more briefs than they can take, so every section should quietly convince them this brand is good for their personal brand, their audience, and their earnings. Output strict JSON only. No markdown fences. No prose.
+
+SOURCE MATERIAL
+- Brand basics: the brand name, plus either a website URL or the brand's own description. Never both.
+- With a website: a scrape of the site, plus up to three page scrapes, one per product or feature link. Skip missing slots entirely.
+- With a description only: no scrapes. Work from the description, draw carefully on general knowledge of the category, keep brand-specific claims to what the description supports, placeholders for the rest.
+- Three formats the brand picked, each with a name, a description, why it works, and the hook tactics and hook types used for that format (tags, often several of each).
+
+STYLE RULES
+- Plain, everyday language. No jargon: no ROI, KPIs, B2B, psychographics, funnel, synergy, compliance.
+- Always write in English, translating any non-English source material.
+- NEVER use em dashes. Use full stops, commas, colons or brackets.
+- Ground every line in the source material. Do not invent specifics. If a detail cannot be verified, write a short placeholder in [square brackets].
+- Concrete and specific. No abstract benefit language.
+
+BRAND LEVEL: write these once, from the website scrape, or from the description when there is no website.
+- name: Official brand name as it should appear in captions, with spaces.
+- bio: Open with one product-led sentence in this shape: "We are [Brand], and we've created [the solution] for [target outcome]: [Product]. Made from [material or method], it's [USP one] and [USP two] that [core benefit] without [the usual trade-off]." Add one short belief line only if there is a genuine ownership story or stand worth telling (founder-led, family-owned, made somewhere specific, a cause it backs). Lead with the belief, not the action. Two to four sentences, persuasive like a strong sales letter but strictly factual.
+- content_style: How the brand's videos should sound and feel, 2 to 3 sentences, so a creator can match the tone.
+- cta: 3 simple lines a creator can say at the end of a video to move viewers to act.
+- niche: 3 specific spaces the brand genuinely owns.
+- target_audience: One tight paragraph in the second person, speaking to the creator about the person they are talking to. Three moves: paint who this audience is (what they follow, where they spend time, what they value, whose taste they trust); name the problem the brand solves at the audience's real awareness level, usually normalized background friction described in concrete physical detail, not dramatic pain; set the creator's stance, the friend who figured it out first and cannot stop talking about it, never a spokesperson or an advert.
+- objectives: 3 goals a video for this brand should hit.
+- pain: 3 real problems the brand solves for its audience.
+
+PER PRODUCT OR FEATURE: write one object per page scrape provided, grounded in that page. Skip slots with no link.
+- product_name: What this product or feature is called, from its page.
+- description: 2 or 3 sentences, present tense, third person, plain and factual, no hype: the category in a word or two, what it does and who it is for, then the two or three qualities it is genuinely known for. Descriptive, not persuasive.
+- target_audience: One tight paragraph, same three moves as the brand-level audience, for the specific buyer of this product or feature.
+- ctas: 3 ready-to-say lines a creator can end a video about this specific product with.
+- concepts: 3 filmable video concepts, one per format, in format order, each opening with the format name. Each is 3 to 5 sentences: the setting, the moment the product naturally enters, and what should be clear to the viewer by the end. Real not acted, message shown not stated, genuinely different from each other. End each with a rough length that fits the format.
+- hooks: 3 spoken opening lines, one per format, in format order, each built using that format's hook tactics and hook types, choosing whichever tags fit this product best. Under 15 words, natural to say to camera. Every hook must stop the scroll, make this product's specific buyer feel called out, and give a reason to keep watching. Tie it to the exact problem this product solves so it only makes sense with this product in the video. No bait it cannot pay off. NEVER mention the brand by name in the hook line. NEVER use: "Have you ever", "scroll-stopping", "game-changing", "level up", "unlock", any ad cliche.
+
+Keys (required): name, bio, content_style, cta, niche, target_audience, objectives, pain, products.
+- name, bio, content_style, target_audience (string)
+- cta, niche, objectives, pain (arrays of exactly 3 strings)
+- products (array): one object per provided link, in slot order. Each object has these keys:
+- slot (number): the slot number as given
+- product_name (string)
+- description (string)
+- target_audience (string)
+- ctas (array of exactly 3 strings)
+- concepts (array of exactly 3 strings): format order, index 0 = format 1
+- hooks (array of exactly 3 strings): format order, index 0 = format 1`;
+
+const DEFAULT_USER = `BRAND CONTEXT
+Name:
+Description:
+Website:
+
+WEBSITE SCRAPE
+[paste a real scrape here — this is where most of the cost lives]
+
+PRODUCT OR FEATURE PAGE 1 ()
+
+PRODUCT OR FEATURE PAGE 2 ()
+
+PRODUCT OR FEATURE PAGE 3 ()
+
+FORMATS
+1. :  Why it works:  Hook tactics: . Hook types: .
+2. :  Why it works:  Hook tactics: . Hook types: .
+3. :  Why it works:  Hook tactics: . Hook types: .
+
+Build the blueprint JSON now.`;
+
+export default function Block() {
+  const proxyFetch = useProxyFetch(ds.openrouter);
+
+  const [system, setSystem] = useState(DEFAULT_SYSTEM);
+  const [user, setUser] = useState(DEFAULT_USER);
+  const [temp, setTemp] = useState(0.3);
+  const [jsonMode, setJsonMode] = useState(true);
+  const [picked, setPicked] = useState([
+    "deepseek/deepseek-v4-flash",
+    "deepseek/deepseek-v4-pro",
+    "anthropic/claude-sonnet-4.5",
+  ]);
+  const [results, setResults] = useState([]);
+  const [running, setRunning] = useState(false);
+  const [openRow, setOpenRow] = useState(null);
+
+  const toggleModel = (id) =>
+    setPicked((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : cur.concat([id])));
+
+  const runOne = async (m) => {
+    const started = Date.now();
+    const body = {
+      model: m.id,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      temperature: Number(temp),
+    };
+    if (jsonMode) body.response_format = { type: "json_object" };
+    try {
+      const res = await proxyFetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const json = await res.json();
+      const text = (json?.choices?.[0]?.message?.content || "").trim();
+      const inTok = json?.usage?.prompt_tokens ?? 0;
+      const outTok = json?.usage?.completion_tokens ?? 0;
+      const cost = (inTok / 1e6) * m.inC + (outTok / 1e6) * m.outC;
+      return {
+        id: m.id, label: m.label, ok: true, text,
+        ms: Date.now() - started, inTok, outTok, cost,
+        json: tryParseJson(text), style: scoreOutput(text),
+      };
+    } catch (e) {
+      return { id: m.id, label: m.label, ok: false, error: e?.message || "failed", ms: Date.now() - started };
+    }
+  };
+
+  const runAll = async () => {
+    if (!picked.length) { toast.error("Pick at least one model"); return; }
+    setRunning(true);
+    setResults([]);
+    setOpenRow(null);
+    try {
+      const chosen = MODELS.filter((m) => picked.includes(m.id));
+      const out = await Promise.all(chosen.map((m) => runOne(m)));
+      out.sort((a, b) => (a.cost ?? 9e9) - (b.cost ?? 9e9));
+      setResults(out);
+      const failed = out.filter((r) => !r.ok).length;
+      if (failed) toast.error(failed + " of " + out.length + " runs failed");
+      else toast.success("Ran " + out.length + " models");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const totalCost = results.reduce((a, r) => a + (r.cost || 0), 0);
+  const cheapest = results.find((r) => r.ok && r.cost != null);
+
+  const box = { border: "1px solid " + LINE, borderRadius: 12, background: "#fff" };
+  const lbl = { fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 6, display: "block" };
+  const ta = {
+    width: "100%", border: "1px solid " + LINE, borderRadius: 10, padding: 12,
+    fontSize: 13, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    lineHeight: 1.5, color: INK, resize: "vertical",
+  };
+
+  return (
+    <div style={{ maxWidth: 1180, margin: "0 auto", padding: 24, color: INK }}>
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: NAVY_DEEP, margin: 0 }}>Model Bench</h1>
+        <p style={{ fontSize: 14, color: MUTED, margin: "6px 0 0" }}>
+          Internal. Run one prompt across models, compare real cost and house-style compliance
+          before changing anything in production.
+        </p>
+      </div>
+
+      <div style={{ ...box, padding: 16, marginBottom: 16 }}>
+        <label style={lbl}>System prompt</label>
+        <textarea style={{ ...ta, minHeight: 150 }} value={system} onChange={(e) => setSystem(e.target.value)} />
+        <div style={{ height: 14 }} />
+        <label style={lbl}>User message</label>
+        <textarea style={{ ...ta, minHeight: 120 }} value={user} onChange={(e) => setUser(e.target.value)} />
+        <div style={{ display: "flex", gap: 20, alignItems: "center", marginTop: 14, flexWrap: "wrap" }}>
+          <div>
+            <label style={lbl}>Temperature</label>
+            <input
+              type="number" step="0.1" min="0" max="2" value={temp}
+              onChange={(e) => setTemp(e.target.value)}
+              style={{ width: 90, border: "1px solid " + LINE, borderRadius: 8, padding: "6px 10px", fontSize: 13 }}
+            />
+          </div>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, marginTop: 18, cursor: "pointer" }}>
+            <input type="checkbox" checked={jsonMode} onChange={(e) => setJsonMode(e.target.checked)} />
+            Force JSON (response_format)
+          </label>
+        </div>
+      </div>
+
+      <div style={{ ...box, padding: 16, marginBottom: 16 }}>
+        <label style={lbl}>Models ({picked.length} selected)</label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {MODELS.map((m) => {
+            const on = picked.includes(m.id);
+            return (
+              <button
+                key={m.id}
+                onClick={() => toggleModel(m.id)}
+                style={{
+                  border: "1px solid " + (on ? PERIWINKLE_HOVER : LINE),
+                  background: on ? PERIWINKLE + "22" : "#fff",
+                  color: on ? NAVY_DEEP : INK,
+                  borderRadius: 999, padding: "7px 13px", fontSize: 12.5,
+                  fontWeight: on ? 600 : 500, cursor: "pointer",
+                }}
+              >
+                {m.label}
+                <span style={{ color: MUTED, fontWeight: 400, marginLeft: 6 }}>
+                  {m.inC}/{m.outC}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <Button
+            onClick={runAll}
+            disabled={running}
+            style={{ background: PERIWINKLE_HOVER, color: "#fff", fontWeight: 600 }}
+          >
+            {running ? <Loader2 size={15} style={{ marginRight: 8 }} /> : <Play size={15} style={{ marginRight: 8 }} />}
+            {running ? "Running " + picked.length + " models" : "Run"}
+          </Button>
+        </div>
+      </div>
+
+      {results.length > 0 && (
+        <div style={{ ...box, overflow: "hidden" }}>
+          <div style={{ padding: "12px 16px", borderBottom: "1px solid " + LINE, display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+            <span style={{ fontWeight: 600, color: NAVY_DEEP }}>Results, cheapest first</span>
+            <span style={{ color: MUTED }}>
+              Run total {money(totalCost)}
+              {cheapest ? " · cheapest " + cheapest.label + " at " + money(cheapest.cost) : ""}
+            </span>
+          </div>
+
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: "#F8FAFC", color: MUTED, textAlign: "left" }}>
+                <th style={{ padding: "9px 16px", fontWeight: 600 }}>Model</th>
+                <th style={{ padding: "9px 10px", fontWeight: 600 }}>Cost</th>
+                <th style={{ padding: "9px 10px", fontWeight: 600 }}>Tokens</th>
+                <th style={{ padding: "9px 10px", fontWeight: 600 }}>Time</th>
+                <th style={{ padding: "9px 10px", fontWeight: 600 }}>JSON</th>
+                <th style={{ padding: "9px 10px", fontWeight: 600 }}>Em dash</th>
+                <th style={{ padding: "9px 10px", fontWeight: 600 }}>Banned phrases</th>
+                <th style={{ padding: "9px 16px", fontWeight: 600 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {results.map((r) => {
+                const open = openRow === r.id;
+                const emBad = r.ok && r.style.emDashes > 0;
+                const phraseBad = r.ok && r.style.phraseHits.length > 0;
+                return (
+                  <>
+                    <tr key={r.id} style={{ borderTop: "1px solid " + LINE }}>
+                      <td style={{ padding: "10px 16px", fontWeight: 600 }}>{r.label}</td>
+                      <td style={{ padding: "10px 10px" }}>{r.ok ? money(r.cost) : "—"}</td>
+                      <td style={{ padding: "10px 10px", color: MUTED }}>
+                        {r.ok ? r.inTok + " in / " + r.outTok + " out" : "—"}
+                      </td>
+                      <td style={{ padding: "10px 10px", color: MUTED }}>{(r.ms / 1000).toFixed(1)}s</td>
+                      <td style={{ padding: "10px 10px" }}>
+                        {!r.ok ? <X size={15} color={BAD} />
+                          : r.json.ok ? <span style={{ color: GOOD, display: "inline-flex", gap: 4, alignItems: "center" }}><Check size={15} />{r.json.keys} keys</span>
+                          : <span style={{ color: BAD, display: "inline-flex", gap: 4, alignItems: "center" }}><X size={15} />invalid</span>}
+                      </td>
+                      <td style={{ padding: "10px 10px", color: emBad ? BAD : GOOD, fontWeight: emBad ? 700 : 400 }}>
+                        {r.ok ? r.style.emDashes : "—"}
+                      </td>
+                      <td style={{ padding: "10px 10px", color: phraseBad ? WARN : GOOD }}>
+                        {r.ok ? (r.style.phraseHits.length ? r.style.phraseHits.join(", ") : "clean") : "—"}
+                      </td>
+                      <td style={{ padding: "10px 16px", textAlign: "right" }}>
+                        <button
+                          onClick={() => setOpenRow(open ? null : r.id)}
+                          style={{ border: "none", background: "none", cursor: "pointer", color: PERIWINKLE_HOVER, display: "inline-flex", gap: 4, alignItems: "center" }}
+                        >
+                          {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                          {open ? "Hide" : "Output"}
+                        </button>
+                      </td>
+                    </tr>
+                    {open && (
+                      <tr key={r.id + "-body"}>
+                        <td colSpan={8} style={{ padding: 0, background: "#F8FAFC", borderTop: "1px solid " + LINE }}>
+                          <div style={{ padding: 16 }}>
+                            {!r.ok && (
+                              <div style={{ color: BAD, display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+                                <AlertTriangle size={15} /> {r.error}
+                              </div>
+                            )}
+                            {r.ok && (
+                              <>
+                                <div style={{ display: "flex", gap: 16, marginBottom: 10, fontSize: 12, color: MUTED, flexWrap: "wrap" }}>
+                                  {!r.json.ok && <span style={{ color: BAD }}>JSON error: {r.json.error}</span>}
+                                  <button
+                                    onClick={() => { navigator.clipboard.writeText(r.text); toast.success("Copied"); }}
+                                    style={{ border: "none", background: "none", cursor: "pointer", color: PERIWINKLE_HOVER, display: "inline-flex", gap: 4, alignItems: "center" }}
+                                  >
+                                    <Copy size={13} /> Copy output
+                                  </button>
+                                </div>
+                                <pre style={{
+                                  margin: 0, maxHeight: 420, overflow: "auto", fontSize: 12,
+                                  lineHeight: 1.55, whiteSpace: "pre-wrap", wordBreak: "break-word",
+                                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                                }}>
+                                  {r.text}
+                                </pre>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}

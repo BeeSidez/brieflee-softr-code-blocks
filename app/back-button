@@ -1,0 +1,157 @@
+// =====================================================================
+// /app/back-button — Universal back navigation · Vibe Code block.
+//
+// Drop this block onto any page (above your main content) to give the
+// user a way back. No source binding, no fields, no config — just add
+// the block and it works.
+//
+// CLICK BEHAVIOUR:
+//   - If the browser has history to go back to, history.back().
+//   - Otherwise (fresh visit, no history), derive a sensible parent
+//     route from the current URL — e.g.
+//         /briefs/details         → /briefs
+//         /projects/details       → /projects
+//         /brief/details/live     → /briefs (creator-facing → user's list)
+//         /settings/workspace     → /home
+//         anything else           → /home
+//
+// VISUAL:
+//   - Small, restrained — sits flush left at the top of the page.
+//   - Matches the briefs index aesthetic (League Spartan, navy text,
+//     periwinkle hover, white pill on the page background).
+//   - Hidden inside a Softr modal (we don't want a Back button on
+//     pages that ARE modals — the modal already has its own close).
+//
+// SOFTR UI SETUP:
+//   1. Source tab → No source needed (this block doesn't read records).
+//   2. Just add the block to whatever page you want a Back button on.
+//      Position it ABOVE the page's main content.
+// =====================================================================
+
+import { useEffect, useState } from "react";
+import { ArrowLeft } from "lucide-react";
+
+// Route → parent fallback. Used when there's no browser history to pop
+// (e.g. the user opened the page directly via deep link). Order matters
+// — first match wins, so put more-specific paths first.
+const PARENT_ROUTES = [
+  { match: /^\/briefs\/details/i,     parent: "/briefs" },
+  { match: /^\/brief\/details\/live/i,parent: "/briefs" },
+  { match: /^\/brief\/details/i,      parent: "/briefs" },
+  { match: /^\/brief\b/i,             parent: "/briefs" },
+  { match: /^\/projects\/details/i,   parent: "/projects" },
+  { match: /^\/project\/details/i,    parent: "/projects" },
+  { match: /^\/settings\//i,          parent: "/home" },
+  { match: /^\/account\//i,           parent: "/home" },
+];
+
+const DEFAULT_PARENT = "/home";
+
+function deriveParentRoute(pathname) {
+  if (!pathname) return DEFAULT_PARENT;
+  for (const r of PARENT_ROUTES) {
+    if (r.match.test(pathname)) return r.parent;
+  }
+  return DEFAULT_PARENT;
+}
+
+// Detects whether this page is currently running inside a Softr modal.
+// Softr renders modal pages inside an iframe with a parent that has
+// openSwModal / closeSwModal helpers. If we're in a modal, the user
+// already has the modal's own close button — a Back button would be
+// redundant and confusing.
+function isInsideSoftrModal() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.parent !== window && typeof window.parent.closeSwModal === "function";
+  } catch {
+    return false;
+  }
+}
+
+export default function Block() {
+  // We need to suppress the block on the server-side render to avoid
+  // hydration mismatches. Always render nothing on first paint, then
+  // decide once we're on the client.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  if (!mounted) return null;
+
+  // Don't show inside a Softr modal — the modal frame already has its
+  // own close affordance.
+  if (isInsideSoftrModal()) return null;
+
+  const goBack = () => {
+    if (typeof window === "undefined") return;
+    // Softr's iframe context makes history.back() unreliable — it can
+    // bounce to studio editor URLs or yield "page not found" on direct
+    // deep links. Use the same-origin referrer when we have one, else
+    // go straight to the derived parent route.
+    const ref = document.referrer || "";
+    const sameOrigin = ref && ref.startsWith(window.location.origin);
+    if (sameOrigin && ref !== window.location.href) {
+      window.location.href = ref;
+      return;
+    }
+    window.location.href = deriveParentRoute(window.location.pathname);
+  };
+
+  return (
+    <>
+      <Style />
+      <div className="bl-back-wrap">
+        <button type="button" className="bl-back-btn" onClick={goBack}>
+          <ArrowLeft size={14} strokeWidth={2.25} />
+          <span>Back</span>
+        </button>
+      </div>
+    </>
+  );
+}
+
+// =====================================================================
+// Style
+// =====================================================================
+function Style() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&display=swap');
+      .bl-back-wrap, .bl-back-wrap * { font-family: 'League Spartan', sans-serif; box-sizing: border-box; }
+      /* Full-width wrapper — back button sits flush left at the page
+         edge, NOT constrained to the 1140px content container. Small
+         horizontal padding so it doesn't touch the Softr sidebar. */
+      .bl-back-wrap {
+        width: 100%;
+        padding: 12px 24px 0;
+      }
+      .bl-back-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 32px;
+        padding: 0 12px 0 10px;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        color: #6B7A99;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.12s, color 0.12s, border-color 0.12s;
+      }
+      .bl-back-btn:hover {
+        background: rgba(135, 156, 247, 0.10);
+        color: #294FF6;
+        border-color: rgba(135, 156, 247, 0.45);
+      }
+      .bl-back-btn:active {
+        background: rgba(135, 156, 247, 0.18);
+      }
+      .bl-back-btn svg { flex-shrink: 0; }
+
+      @media (max-width: 640px) {
+        .bl-back-wrap { padding: 8px 16px 0; }
+      }
+    `}</style>
+  );
+}

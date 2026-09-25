@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="_ds/brieflee-design-system-019de405-eba5-7d6d-91be-2aef8f538e50/tokens.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #EBEEFA; -webkit-font-smoothing: antialiased; }
+  @keyframes blspin { to { transform: rotate(360deg); } }
+  details.bltool > summary { list-style: none; }
+  details.bltool > summary::-webkit-details-marker { display: none; }
+  details.bltool[open] .blchev { transform: rotate(180deg); }
+  details.bltool[open] > summary { background: #F3F6FF; }
+</style>
+  <script src="_ds/brieflee-design-system-019de405-eba5-7d6d-91be-2aef8f538e50/_ds_bundle.js"></script>
+</helmet>
+
+<div style="font-family: 'Inter', sans-serif; min-height: 100vh; padding: 56px 64px 96px; background: radial-gradient(120% 80% at 50% -10%, #F4F2FF 0%, #EBEEFA 60%); color: #000F4D;">
+
+  <div style="max-width: 1180px; margin: 0 auto 30px;">
+    <div style="display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; background: #FFFFFF; border: 1px solid rgba(217,224,255,0.9); font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #6B7A99;">
+      <span style="width: 7px; height: 7px; border-radius: 50%; background: #879CF7;"></span>
+      Video review workspace · explorations
+    </div>
+    <h1 style="margin: 14px 0 6px; font-size: 30px; font-weight: 700; letter-spacing: -0.02em; color: #000F4D;">Spell check for video, the Grammarly way</h1>
+    <p style="margin: 0; font-size: 15px; font-weight: 300; color: #6B7A99; max-width: 70ch; line-height: 1.5;">The video is the document. Each direction carries a score, a tools rail of review agents, and an Ask AI composer, built on real data from the Comfrt Travel Hoodie review. Tap any check, or jump to its moment in the clip. Newest round is up top.</p>
+  </div>
+
+  <!-- ROUND 2 LABEL -->
+  <div style="margin: 0 0 18px; display: flex; align-items: center; gap: 10px;">
+    <span style="display: inline-flex; align-items: center; justify-content: center; height: 24px; padding: 0 12px; border-radius: 999px; background: #879CF7; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.1em;">ROUND 2</span>
+    <span style="font-size: 13px; font-weight: 500; color: #6B7A99;">Two more directions, newest first</span>
+  </div>
+
+  <section style="width: max-content; margin: 0 0 72px;">
+    <div style="display: flex; flex-wrap: nowrap; gap: 56px; align-items: flex-start; width: max-content;">
+
+      <!-- ============================= OPTION 2A ============================= -->
+      <div id="2a" style="flex: 0 0 auto;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
+          <span style="display: inline-flex; align-items: center; justify-content: center; height: 26px; padding: 0 11px; border-radius: 999px; background: #000F4D; color: #fff; font-size: 12px; font-weight: 600;">2A</span>
+          <span style="font-size: 13px; font-weight: 500; color: #6B7A99;">Scoreboard band · open checklist</span>
+        </div>
+        <div style="width: 1080px; max-width: 100%; background: #FFFFFF; border: 1px solid rgba(217,224,255,0.8); border-radius: 26px; box-shadow: 0 40px 90px -50px rgba(0,15,77,0.45); overflow: hidden;">
+          <!-- Topbar -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 22px; height: 60px; border-bottom: 1px solid rgba(217,224,255,0.7);">
+            <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+              <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"></path><rect width="14" height="12" x="2" y="6" rx="2" ry="2"></rect></svg></span>
+              <div style="min-width: 0;">
+                <div style="font-size: 14.5px; font-weight: 600; color: #000F4D; line-height: 1.1;">Comfrt Travel Hoodie</div>
+                <div style="font-size: 11px; font-weight: 400; color: #9aa6c3; line-height: 1.2;">Content review · scored against your brief</div>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; flex: 0 0 auto;">
+              <button style="display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 13px; border-radius: 9px; border: 1px solid rgba(217,224,255,0.9); background: #fff; color: #000F4D; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;" style-hover="background: #F5F7FF;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>Re-run</button>
+              <span style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; border-radius: 999px; background: #879CF7; color: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer;" style-hover="background: #294FF6;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>Approve</span>
+            </div>
+          </div>
+
+          <!-- Scoreboard band -->
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 22px; padding: 22px 26px; border-bottom: 1px solid rgba(217,224,255,0.6); background: rgba(135,156,247,0.05);">
+            <div style="position: relative; width: 80px; height: 80px; flex: 0 0 auto; border-radius: 50%; background: conic-gradient(#294FF6 0%, #879CF7 93%, #E7EAF7 93% 100%);">
+              <div style="position: absolute; inset: 8px; border-radius: 50%; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;"><span style="font-size: 24px; font-weight: 700; color: #000F4D; line-height: 1;">93</span><span style="font-size: 9.5px; font-weight: 500; color: #9aa6c3;">/ 100</span></div>
+            </div>
+            <div style="min-width: 0;">
+              <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #9aa6c3;">Video score</div>
+              <div style="margin: 3px 0 8px; font-size: 19px; font-weight: 700; color: #000F4D; letter-spacing: -0.01em;">Brief-ready</div>
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 7px;">
+                <span style="display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 999px; background: rgba(45,170,99,0.12); color: #2DAA63; font-size: 11px; font-weight: 600;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>Approved</span>
+                <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: #000F4D;"><svg width="13" height="13" viewBox="0 0 24 24" fill="#879CF7"><path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.12 5.11a.56.56 0 0 0 .48.34l5.52.45c.5.04.7.66.32.99l-4.2 3.6a.56.56 0 0 0-.18.56l1.28 5.38a.56.56 0 0 1-.84.61l-4.72-2.88a.56.56 0 0 0-.59 0l-4.72 2.88a.56.56 0 0 1-.84-.61l1.28-5.38a.56.56 0 0 0-.18-.56l-4.2-3.6a.56.56 0 0 1 .32-.99l5.52-.45a.56.56 0 0 0 .48-.34Z"></path></svg>5.0</span>
+                <span style="font-size: 12px; color: #6B7A99;">· 7 of 7 checks passed</span>
+              </div>
+            </div>
+            <div style="margin-left: auto; display: flex; gap: 10px; flex: 0 0 auto;">
+              <button style="display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 18px; border-radius: 10px; border: none; background: #879CF7; color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;" style-hover="background: #294FF6;">Approve video</button>
+              <button style="display: inline-flex; align-items: center; height: 38px; padding: 0 16px; border-radius: 10px; border: 1px solid rgba(217,224,255,0.9); background: #fff; color: #6B7A99; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer;" style-hover="background: #F5F7FF;">Request changes</button>
+            </div>
+          </div>
+
+          <!-- Body -->
+          <div style="display: flex; flex-wrap: wrap; align-items: stretch;">
+            <div style="flex: 1 1 320px; min-width: 300px; padding: 30px 32px; background: linear-gradient(180deg, #FCFDFF 0%, #F7F9FF 100%); display: flex; flex-direction: column; align-items: center;">
+              <div style="position: relative; width: 268px; max-width: 100%; aspect-ratio: 9 / 16; border-radius: 18px; overflow: hidden; background: #0B1024; border: 1px solid rgba(0,0,0,0.08); box-shadow: 0 26px 54px -28px rgba(0,15,77,0.5);">
+                <video id="vid2a" controls playsinline preload="metadata" poster="https://res.cloudinary.com/dspv9nm1n/video/upload/so_1/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" style="width: 100%; height: 100%; object-fit: cover; display: block;"><source src="https://res.cloudinary.com/dspv9nm1n/video/upload/v1782292068/qorue56gnkxsjtqabviy.mp4" type="video/mp4"></video>
+              </div>
+              <h2 style="margin: 16px 0 9px; font-size: 19px; font-weight: 700; letter-spacing: -0.02em; color: #000F4D; text-align: center;">Comfrt Travel Hoodie</h2>
+              <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 6px;">
+                <span style="display: inline-flex; align-items: center; height: 23px; padding: 0 10px; border-radius: 999px; background: #879CF7; color: #fff; font-size: 10.5px; font-weight: 600;">Content review</span>
+                <span style="display: inline-flex; align-items: center; height: 23px; padding: 0 10px; border-radius: 999px; background: rgba(135,156,247,0.12); color: #001364; font-size: 10.5px; font-weight: 500;">Comfrt</span>
+                <span style="display: inline-flex; align-items: center; height: 23px; padding: 0 10px; border-radius: 999px; background: rgba(135,156,247,0.12); color: #001364; font-size: 10.5px; font-weight: 500;">0:39 · Bev Banahene</span>
+              </div>
+            </div>
+            <div style="flex: 1 1 380px; min-width: 300px; padding: 18px 18px 8px; border-left: 1px solid rgba(217,224,255,0.7); background: #fff;">
+              <div style="display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 10px;">
+                <span style="font-size: 14px; font-weight: 600; color: #000F4D;">Review agents</span>
+                <span style="font-size: 11px; color: #2DAA63; font-weight: 600;">all passing</span>
+              </div>
+              <div style="display: flex; gap: 11px; padding: 11px 8px; border-top: 1px solid rgba(217,224,255,0.45);">
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></span>
+                <div style="flex: 1 1 auto; min-width: 0;"><div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;"><span style="font-size: 13px; font-weight: 600; color: #000F4D;">Hook speed</span><span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>90</span></div><p style="margin: 3px 0 0; font-size: 11.5px; line-height: 1.45; color: #9aa6c3; font-weight: 300;">Pain-point hook lands in the first second.</p></div>
+              </div>
+              <div style="display: flex; gap: 11px; padding: 11px 8px; border-top: 1px solid rgba(217,224,255,0.45);">
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg></span>
+                <div style="flex: 1 1 auto; min-width: 0;"><div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;"><span style="font-size: 13px; font-weight: 600; color: #000F4D;">Visual hook</span><span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>90</span></div><p style="margin: 3px 0 0; font-size: 11.5px; line-height: 1.45; color: #9aa6c3; font-weight: 300;">A passport pulled from a hidden pocket, second one.</p></div>
+              </div>
+              <div style="display: flex; gap: 11px; padding: 11px 8px; border-top: 1px solid rgba(217,224,255,0.45);">
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg></span>
+                <div style="flex: 1 1 auto; min-width: 0;"><div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;"><span style="font-size: 13px; font-weight: 600; color: #000F4D;">Scene pacing</span><span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>~2s</span></div><p style="margin: 3px 0 0; font-size: 11.5px; line-height: 1.45; color: #9aa6c3; font-weight: 300;">Rapid ~2s cuts keep attention throughout.</p></div>
+              </div>
+              <div style="display: flex; gap: 11px; padding: 11px 8px; border-top: 1px solid rgba(217,224,255,0.45);">
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" x2="9.01" y1="9" y2="9"></line><line x1="15" x2="15.01" y1="9" y2="9"></line></svg></span>
+                <div style="flex: 1 1 auto; min-width: 0;"><div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;"><span style="font-size: 13px; font-weight: 600; color: #000F4D;">Energy &amp; authenticity</span><span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>95</span></div><p style="margin: 3px 0 0; font-size: 11.5px; line-height: 1.45; color: #9aa6c3; font-weight: 300;">Clear, warm, best-friend delivery.</p></div>
+              </div>
+              <div style="display: flex; gap: 11px; padding: 11px 8px; border-top: 1px solid rgba(217,224,255,0.45);">
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23Z"></path></svg></span>
+                <div style="flex: 1 1 auto; min-width: 0;"><div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;"><span style="font-size: 13px; font-weight: 600; color: #000F4D;">Wardrobe &amp; look</span><span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>95</span></div><p style="margin: 3px 0 0; font-size: 11.5px; line-height: 1.45; color: #9aa6c3; font-weight: 300;">Full Comfrt set, cozy and unforced.</p></div>
+              </div>
+              <div style="display: flex; gap: 11px; padding: 11px 8px; border-top: 1px solid rgba(217,224,255,0.45);">
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+                <div style="flex: 1 1 auto; min-width: 0;"><div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;"><span style="font-size: 13px; font-weight: 600; color: #000F4D;">Copyright check</span><span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>Clear</span></div><p style="margin: 3px 0 0; font-size: 11.5px; line-height: 1.45; color: #9aa6c3; font-weight: 300;">No third-party music, logos, or IP.</p></div>
+              </div>
+              <div style="display: flex; gap: 11px; padding: 11px 8px; border-top: 1px solid rgba(217,224,255,0.45);">
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"></path></svg></span>
+                <div style="flex: 1 1 auto; min-width: 0;"><div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;"><span style="font-size: 13px; font-weight: 600; color: #000F4D;">Content moderation</span><span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>Safe</span></div><p style="margin: 3px 0 0; font-size: 11.5px; line-height: 1.45; color: #9aa6c3; font-weight: 300;">Family-friendly and on-brand throughout.</p></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Ask AI bar -->
+          <div style="padding: 16px 22px; border-top: 1px solid rgba(217,224,255,0.6); display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 8px; flex: 0 0 auto;"><img src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" alt="Lee" style="width: 26px; height: 26px; border-radius: 50%;"><span style="font-size: 12.5px; font-weight: 500; color: #000F4D;">Ask Lee</span></div>
+            <div style="flex: 1 1 320px; min-width: 240px; display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 6px 0 16px; border-radius: 13px; border: 1px solid rgba(217,224,255,0.9); background: #fff;"><input placeholder="Ask about this review, or draft revision notes…" style="flex: 1 1 auto; min-width: 0; border: none; outline: none; background: transparent; font-family: inherit; font-size: 13px; color: #000F4D;"><button aria-label="Send" style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 9px; border: none; background: #879CF7; color: #fff; cursor: pointer; flex: 0 0 auto;" style-hover="background: #294FF6;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="19" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg></button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================= OPTION 2B ============================= -->
+      <div id="2b" style="flex: 0 0 auto;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
+          <span style="display: inline-flex; align-items: center; justify-content: center; height: 26px; padding: 0 11px; border-radius: 999px; background: #000F4D; color: #fff; font-size: 12px; font-weight: 600;">2B</span>
+          <span style="font-size: 13px; font-weight: 500; color: #6B7A99;">Key-moments filmstrip · scrub to each check</span>
+        </div>
+        <div style="width: 1080px; max-width: 100%; background: #FFFFFF; border: 1px solid rgba(217,224,255,0.8); border-radius: 26px; box-shadow: 0 40px 90px -50px rgba(0,15,77,0.45); overflow: hidden;">
+          <!-- Top row: video + score card -->
+          <div style="display: flex; flex-wrap: wrap; align-items: stretch;">
+            <div style="flex: 1 1 300px; min-width: 280px; padding: 30px 30px 24px; background: linear-gradient(180deg, #FCFDFF 0%, #F7F9FF 100%); display: flex; flex-direction: column; align-items: center;">
+              <div style="position: relative; width: 264px; max-width: 100%; aspect-ratio: 9 / 16; border-radius: 18px; overflow: hidden; background: #0B1024; border: 1px solid rgba(0,0,0,0.08); box-shadow: 0 26px 54px -28px rgba(0,15,77,0.5);">
+                <video id="vid2b" controls playsinline preload="metadata" poster="https://res.cloudinary.com/dspv9nm1n/video/upload/so_1/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" style="width: 100%; height: 100%; object-fit: cover; display: block;"><source src="https://res.cloudinary.com/dspv9nm1n/video/upload/v1782292068/qorue56gnkxsjtqabviy.mp4" type="video/mp4"></video>
+              </div>
+              <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 14px;"><span style="display: inline-flex; align-items: center; height: 23px; padding: 0 10px; border-radius: 999px; background: #879CF7; color: #fff; font-size: 10.5px; font-weight: 600;">Content review</span><span style="display: inline-flex; align-items: center; height: 23px; padding: 0 10px; border-radius: 999px; background: rgba(135,156,247,0.12); color: #001364; font-size: 10.5px; font-weight: 500;">Comfrt · 0:39</span></div>
+            </div>
+            <div style="flex: 1 1 320px; min-width: 300px; padding: 28px 28px; border-left: 1px solid rgba(217,224,255,0.7); background: #fff; display: flex; flex-direction: column;">
+              <div style="display: flex; align-items: center; gap: 16px;">
+                <div style="position: relative; width: 84px; height: 84px; flex: 0 0 auto; border-radius: 50%; background: conic-gradient(#294FF6 0%, #879CF7 93%, #E7EAF7 93% 100%);"><div style="position: absolute; inset: 8px; border-radius: 50%; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;"><span style="font-size: 25px; font-weight: 700; color: #000F4D; line-height: 1;">93</span><span style="font-size: 9.5px; font-weight: 500; color: #9aa6c3;">/ 100</span></div></div>
+                <div><div style="font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #9aa6c3;">Video score</div><div style="margin: 4px 0 7px; font-size: 18px; font-weight: 700; color: #000F4D;">Brief-ready</div><span style="display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 999px; background: rgba(45,170,99,0.12); color: #2DAA63; font-size: 11px; font-weight: 600;">7 / 7 passed · 5.0</span></div>
+              </div>
+              <h2 style="margin: 20px 0 8px; font-size: 19px; font-weight: 700; letter-spacing: -0.02em; color: #000F4D;">Comfrt Travel Hoodie</h2>
+              <p style="margin: 0; font-size: 12.5px; line-height: 1.55; color: #6B7A99; font-weight: 300;">Nails the cozy, friendly, real voice while showing off hidden pockets and the built-in eye mask.</p>
+              <div style="margin: 14px 0 0; padding: 12px 14px; border-radius: 12px; background: rgba(135,156,247,0.08); border: 1px solid rgba(217,224,255,0.7);"><div style="display: flex; align-items: center; gap: 7px; margin-bottom: 4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#294FF6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"></path></svg><span style="font-size: 12px; font-weight: 600; color: #000F4D;">What to try</span></div><p style="margin: 0; font-size: 11.5px; line-height: 1.5; color: #6B7A99; font-weight: 300;">Add an explicit on-screen CTA at the end to lift conversions.</p></div>
+              <button style="margin-top: 16px; align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 18px; border-radius: 10px; border: none; background: #879CF7; color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;" style-hover="background: #294FF6;">Approve video</button>
+            </div>
+          </div>
+
+          <!-- Filmstrip -->
+          <div style="padding: 18px 26px 22px; border-top: 1px solid rgba(217,224,255,0.6);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;"><span style="font-size: 13.5px; font-weight: 600; color: #000F4D;">Key moments</span><span style="font-size: 11px; color: #9aa6c3; font-weight: 500;">tap a frame to scrub the clip</span></div>
+            <div style="display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px;">
+              <button data-vid="vid2b" data-sec="0" onClick="{{ seek }}" style="flex: 0 0 auto; width: 102px; border: none; background: transparent; padding: 0; cursor: pointer; text-align: left;"><div style="position: relative; width: 102px; height: 146px; border-radius: 12px; overflow: hidden; border: 1px solid rgba(217,224,255,0.8);"><img src="https://res.cloudinary.com/dspv9nm1n/video/upload/so_0/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" alt="" style="width: 100%; height: 100%; object-fit: cover;"><span style="position: absolute; top: 7px; right: 7px; width: 9px; height: 9px; border-radius: 50%; background: #2DAA63; box-shadow: 0 0 0 2px #fff;"></span><span style="position: absolute; left: 7px; bottom: 7px; padding: 1px 7px; border-radius: 999px; background: rgba(0,15,77,0.7); color: #fff; font-size: 10px; font-weight: 600;">0:00</span></div><div style="margin-top: 7px; font-size: 11.5px; font-weight: 600; color: #000F4D; line-height: 1.2;">Hook speed</div><div style="font-size: 10.5px; color: #9aa6c3;">Pass · 90</div></button>
+              <button data-vid="vid2b" data-sec="1" onClick="{{ seek }}" style="flex: 0 0 auto; width: 102px; border: none; background: transparent; padding: 0; cursor: pointer; text-align: left;"><div style="position: relative; width: 102px; height: 146px; border-radius: 12px; overflow: hidden; border: 1px solid rgba(217,224,255,0.8);"><img src="https://res.cloudinary.com/dspv9nm1n/video/upload/so_1/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" alt="" style="width: 100%; height: 100%; object-fit: cover;"><span style="position: absolute; top: 7px; right: 7px; width: 9px; height: 9px; border-radius: 50%; background: #2DAA63; box-shadow: 0 0 0 2px #fff;"></span><span style="position: absolute; left: 7px; bottom: 7px; padding: 1px 7px; border-radius: 999px; background: rgba(0,15,77,0.7); color: #fff; font-size: 10px; font-weight: 600;">0:01</span></div><div style="margin-top: 7px; font-size: 11.5px; font-weight: 600; color: #000F4D; line-height: 1.2;">Visual hook</div><div style="font-size: 10.5px; color: #9aa6c3;">Pass · 90</div></button>
+              <button data-vid="vid2b" data-sec="10" onClick="{{ seek }}" style="flex: 0 0 auto; width: 102px; border: none; background: transparent; padding: 0; cursor: pointer; text-align: left;"><div style="position: relative; width: 102px; height: 146px; border-radius: 12px; overflow: hidden; border: 1px solid rgba(217,224,255,0.8);"><img src="https://res.cloudinary.com/dspv9nm1n/video/upload/so_10/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" alt="" style="width: 100%; height: 100%; object-fit: cover;"><span style="position: absolute; top: 7px; right: 7px; width: 9px; height: 9px; border-radius: 50%; background: #2DAA63; box-shadow: 0 0 0 2px #fff;"></span><span style="position: absolute; left: 7px; bottom: 7px; padding: 1px 7px; border-radius: 999px; background: rgba(0,15,77,0.7); color: #fff; font-size: 10px; font-weight: 600;">0:10</span></div><div style="margin-top: 7px; font-size: 11.5px; font-weight: 600; color: #000F4D; line-height: 1.2;">Scene pacing</div><div style="font-size: 10.5px; color: #9aa6c3;">Pass · ~2s</div></button>
+              <button data-vid="vid2b" data-sec="17" onClick="{{ seek }}" style="flex: 0 0 auto; width: 102px; border: none; background: transparent; padding: 0; cursor: pointer; text-align: left;"><div style="position: relative; width: 102px; height: 146px; border-radius: 12px; overflow: hidden; border: 1px solid rgba(217,224,255,0.8);"><img src="https://res.cloudinary.com/dspv9nm1n/video/upload/so_17/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" alt="" style="width: 100%; height: 100%; object-fit: cover;"><span style="position: absolute; top: 7px; right: 7px; width: 9px; height: 9px; border-radius: 50%; background: #2DAA63; box-shadow: 0 0 0 2px #fff;"></span><span style="position: absolute; left: 7px; bottom: 7px; padding: 1px 7px; border-radius: 999px; background: rgba(0,15,77,0.7); color: #fff; font-size: 10px; font-weight: 600;">0:17</span></div><div style="margin-top: 7px; font-size: 11.5px; font-weight: 600; color: #000F4D; line-height: 1.2;">Energy</div><div style="font-size: 10.5px; color: #9aa6c3;">Pass · 95</div></button>
+              <button data-vid="vid2b" data-sec="18" onClick="{{ seek }}" style="flex: 0 0 auto; width: 102px; border: none; background: transparent; padding: 0; cursor: pointer; text-align: left;"><div style="position: relative; width: 102px; height: 146px; border-radius: 12px; overflow: hidden; border: 1px solid rgba(217,224,255,0.8);"><img src="https://res.cloudinary.com/dspv9nm1n/video/upload/so_18/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" alt="" style="width: 100%; height: 100%; object-fit: cover;"><span style="position: absolute; top: 7px; right: 7px; width: 9px; height: 9px; border-radius: 50%; background: #2DAA63; box-shadow: 0 0 0 2px #fff;"></span><span style="position: absolute; left: 7px; bottom: 7px; padding: 1px 7px; border-radius: 999px; background: rgba(0,15,77,0.7); color: #fff; font-size: 10px; font-weight: 600;">0:18</span></div><div style="margin-top: 7px; font-size: 11.5px; font-weight: 600; color: #000F4D; line-height: 1.2;">Wardrobe</div><div style="font-size: 10.5px; color: #9aa6c3;">Pass · 95</div></button>
+              <div style="flex: 0 0 auto; width: 102px;"><div style="width: 102px; height: 146px; border-radius: 12px; border: 1px dashed rgba(135,156,247,0.5); background: rgba(135,156,247,0.06); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #294FF6;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"></path><path d="m9 12 2 2 4-4"></path></svg><span style="font-size: 10px; font-weight: 600; color: #2DAA63;">Whole clip</span></div><div style="margin-top: 7px; font-size: 11.5px; font-weight: 600; color: #000F4D; line-height: 1.2;">Copyright</div><div style="font-size: 10.5px; color: #9aa6c3;">Pass · Clear</div></div>
+              <div style="flex: 0 0 auto; width: 102px;"><div style="width: 102px; height: 146px; border-radius: 12px; border: 1px dashed rgba(135,156,247,0.5); background: rgba(135,156,247,0.06); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #294FF6;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"></path></svg><span style="font-size: 10px; font-weight: 600; color: #2DAA63;">Whole clip</span></div><div style="margin-top: 7px; font-size: 11.5px; font-weight: 600; color: #000F4D; line-height: 1.2;">Moderation</div><div style="font-size: 10.5px; color: #9aa6c3;">Pass · Safe</div></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ROUND 1 LABEL -->
+  <div style="margin: 0 0 18px; display: flex; align-items: center; gap: 10px;">
+    <span style="display: inline-flex; align-items: center; justify-content: center; height: 24px; padding: 0 12px; border-radius: 999px; background: #C6CAE3; color: #001364; font-size: 11px; font-weight: 700; letter-spacing: 0.1em;">ROUND 1</span>
+    <span style="font-size: 13px; font-weight: 500; color: #6B7A99;">First two directions</span>
+  </div>
+
+  <section style="width: max-content;">
+    <div style="display: flex; flex-wrap: nowrap; gap: 56px; align-items: flex-start; width: max-content;">
+
+      <!-- ============================= OPTION 1A ============================= -->
+      <div id="1a" style="flex: 0 0 auto;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
+          <span style="display: inline-flex; align-items: center; justify-content: center; height: 26px; padding: 0 11px; border-radius: 999px; background: #000F4D; color: #fff; font-size: 12px; font-weight: 600; letter-spacing: 0.03em;">1A</span>
+          <span style="font-size: 13px; font-weight: 500; color: #6B7A99;">Docked AI panel · flat agent rail</span>
+        </div>
+
+        <div style="width: 1060px; max-width: 100%; background: #FFFFFF; border: 1px solid rgba(217,224,255,0.8); border-radius: 26px; box-shadow: 0 40px 90px -50px rgba(0,15,77,0.45); overflow: hidden;">
+
+          <!-- Topbar -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 22px; height: 60px; border-bottom: 1px solid rgba(217,224,255,0.7);">
+            <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+              <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"></path><rect width="14" height="12" x="2" y="6" rx="2" ry="2"></rect></svg>
+              </span>
+              <div style="min-width: 0;">
+                <div style="font-size: 14.5px; font-weight: 600; color: #000F4D; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Comfrt Travel Hoodie</div>
+                <div style="font-size: 11px; font-weight: 400; color: #9aa6c3; line-height: 1.2;">Content review · saved 2 min ago</div>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; flex: 0 0 auto;">
+              <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; background: rgba(45,170,99,0.12); color: #2DAA63; font-size: 12px; font-weight: 600;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                Approved
+              </span>
+              <button style="display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 13px; border-radius: 9px; border: 1px solid rgba(217,224,255,0.9); background: #fff; color: #000F4D; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;" style-hover="background: #F5F7FF;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line></svg>
+                Export
+              </button>
+              <button aria-label="More" style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 9px; border: 1px solid rgba(217,224,255,0.9); background: #fff; color: #6B7A99; cursor: pointer;" style-hover="background: #F5F7FF;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="12" cy="19" r="1.6"></circle></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Body -->
+          <div style="display: flex; flex-wrap: wrap; align-items: stretch;">
+
+            <!-- Center: the document = the video -->
+            <div style="flex: 1 1 380px; min-width: 300px; padding: 44px 40px 36px; background: linear-gradient(180deg, #FCFDFF 0%, #F7F9FF 100%); display: flex; flex-direction: column; align-items: center;">
+              <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #9aa6c3; align-self: flex-start;">Reviewing</div>
+              <h2 style="margin: 7px 0 14px; font-size: 25px; font-weight: 700; letter-spacing: -0.02em; color: #000F4D; align-self: flex-start; line-height: 1.12;">Comfrt Travel Hoodie</h2>
+
+              <div style="display: flex; flex-wrap: wrap; gap: 7px; align-self: flex-start; margin-bottom: 22px;">
+                <span style="display: inline-flex; align-items: center; gap: 5px; height: 25px; padding: 0 11px; border-radius: 999px; background: #879CF7; color: #fff; font-size: 11px; font-weight: 600;">Content review</span>
+                <span style="display: inline-flex; align-items: center; gap: 5px; height: 25px; padding: 0 11px; border-radius: 999px; background: rgba(135,156,247,0.12); color: #001364; font-size: 11px; font-weight: 500;">Comfrt</span>
+                <span style="display: inline-flex; align-items: center; gap: 5px; height: 25px; padding: 0 11px; border-radius: 999px; background: rgba(135,156,247,0.12); color: #001364; font-size: 11px; font-weight: 500;">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                  0:39
+                </span>
+              </div>
+
+              <div style="position: relative; width: 300px; max-width: 100%; aspect-ratio: 9 / 16; border-radius: 20px; overflow: hidden; background: #0B1024; border: 1px solid rgba(0,0,0,0.08); box-shadow: 0 30px 60px -30px rgba(0,15,77,0.5);">
+                <video id="vid1a" controls playsinline preload="metadata" poster="https://res.cloudinary.com/dspv9nm1n/video/upload/so_1/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" style="width: 100%; height: 100%; object-fit: cover; display: block;">
+                  <source src="https://res.cloudinary.com/dspv9nm1n/video/upload/v1782292068/qorue56gnkxsjtqabviy.mp4" type="video/mp4">
+                </video>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 12px; margin-top: 18px;">
+                <span style="display: inline-flex; align-items: center; gap: 2px;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#879CF7" stroke="none"><path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.12 5.11a.56.56 0 0 0 .48.34l5.52.45c.5.04.7.66.32.99l-4.2 3.6a.56.56 0 0 0-.18.56l1.28 5.38a.56.56 0 0 1-.84.61l-4.72-2.88a.56.56 0 0 0-.59 0l-4.72 2.88a.56.56 0 0 1-.84-.61l1.28-5.38a.56.56 0 0 0-.18-.56l-4.2-3.6a.56.56 0 0 1 .32-.99l5.52-.45a.56.56 0 0 0 .48-.34Z"></path></svg>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#879CF7" stroke="none"><path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.12 5.11a.56.56 0 0 0 .48.34l5.52.45c.5.04.7.66.32.99l-4.2 3.6a.56.56 0 0 0-.18.56l1.28 5.38a.56.56 0 0 1-.84.61l-4.72-2.88a.56.56 0 0 0-.59 0l-4.72 2.88a.56.56 0 0 1-.84-.61l1.28-5.38a.56.56 0 0 0-.18-.56l-4.2-3.6a.56.56 0 0 1 .32-.99l5.52-.45a.56.56 0 0 0 .48-.34Z"></path></svg>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#879CF7" stroke="none"><path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.12 5.11a.56.56 0 0 0 .48.34l5.52.45c.5.04.7.66.32.99l-4.2 3.6a.56.56 0 0 0-.18.56l1.28 5.38a.56.56 0 0 1-.84.61l-4.72-2.88a.56.56 0 0 0-.59 0l-4.72 2.88a.56.56 0 0 1-.84-.61l1.28-5.38a.56.56 0 0 0-.18-.56l-4.2-3.6a.56.56 0 0 1 .32-.99l5.52-.45a.56.56 0 0 0 .48-.34Z"></path></svg>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#879CF7" stroke="none"><path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.12 5.11a.56.56 0 0 0 .48.34l5.52.45c.5.04.7.66.32.99l-4.2 3.6a.56.56 0 0 0-.18.56l1.28 5.38a.56.56 0 0 1-.84.61l-4.72-2.88a.56.56 0 0 0-.59 0l-4.72 2.88a.56.56 0 0 1-.84-.61l1.28-5.38a.56.56 0 0 0-.18-.56l-4.2-3.6a.56.56 0 0 1 .32-.99l5.52-.45a.56.56 0 0 0 .48-.34Z"></path></svg>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#879CF7" stroke="none"><path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.12 5.11a.56.56 0 0 0 .48.34l5.52.45c.5.04.7.66.32.99l-4.2 3.6a.56.56 0 0 0-.18.56l1.28 5.38a.56.56 0 0 1-.84.61l-4.72-2.88a.56.56 0 0 0-.59 0l-4.72 2.88a.56.56 0 0 1-.84-.61l1.28-5.38a.56.56 0 0 0-.18-.56l-4.2-3.6a.56.56 0 0 1 .32-.99l5.52-.45a.56.56 0 0 0 .48-.34Z"></path></svg>
+                </span>
+                <span style="font-size: 13px; font-weight: 600; color: #000F4D;">5.0</span>
+                <span style="width: 4px; height: 4px; border-radius: 50%; background: #C6CAE3;"></span>
+                <span style="font-size: 12.5px; font-weight: 400; color: #6B7A99;">by Bev Banahene</span>
+              </div>
+
+              <details style="margin-top: 24px; width: 300px; max-width: 100%;">
+                <summary style="cursor: pointer; font-size: 12.5px; font-weight: 500; color: #294FF6; list-style: none;">View transcript</summary>
+                <p style="margin: 10px 0 0; font-size: 12px; line-height: 1.6; color: #6B7A99; font-weight: 300;">0:00 “Stop losing things when you’re travelling!” 0:01 hand pulls a passport from a hidden sleeve pocket. 0:03 hidden zip pockets, left and right. 0:09 a blackout eye mask built into the hood. 0:14 “This is Comfrt’s Airplane Mode collection in crimson.”</p>
+              </details>
+            </div>
+
+            <!-- Right: AI panel -->
+            <div style="flex: 0 1 408px; min-width: 300px; max-width: 100%; border-left: 1px solid rgba(217,224,255,0.7); background: #FFFFFF; display: flex; flex-direction: column;">
+
+              <!-- Score card -->
+              <div style="padding: 22px 22px 20px; border-bottom: 1px solid rgba(217,224,255,0.6); display: flex; align-items: center; gap: 18px;">
+                <div style="position: relative; width: 92px; height: 92px; flex: 0 0 auto; border-radius: 50%; background: conic-gradient(#294FF6 0%, #879CF7 93%, #E7EAF7 93% 100%);">
+                  <div style="position: absolute; inset: 9px; border-radius: 50%; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <span style="font-size: 27px; font-weight: 700; color: #000F4D; line-height: 1;">93</span>
+                    <span style="font-size: 10px; font-weight: 500; color: #9aa6c3; letter-spacing: 0.04em;">/ 100</span>
+                  </div>
+                </div>
+                <div style="min-width: 0;">
+                  <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #9aa6c3;">Video score</div>
+                  <div style="margin: 4px 0 8px; font-size: 17px; font-weight: 700; color: #000F4D; letter-spacing: -0.01em;">Brief-ready</div>
+                  <div style="display: flex; align-items: center; gap: 7px;">
+                    <span style="display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 999px; background: rgba(45,170,99,0.12); color: #2DAA63; font-size: 11px; font-weight: 600;">7 / 7 passed</span>
+                    <span style="font-size: 11.5px; color: #6B7A99; font-weight: 400;">no flags</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Agents rail -->
+              <div style="padding: 16px 14px 6px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 6px 10px;">
+                  <span style="font-size: 14px; font-weight: 600; color: #000F4D;">Review agents</span>
+                  <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #9aa6c3; font-weight: 500;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#879CF7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                    one pass
+                  </span>
+                </div>
+
+                <!-- Hook Speed -->
+                <details class="bltool">
+                  <summary style="display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 11px; cursor: pointer;" style-hover="background: #F5F7FF;">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></span>
+                    <span style="flex: 1 1 auto; min-width: 0;">
+                      <span style="display: block; font-size: 13.5px; font-weight: 500; color: #000F4D;">Hook speed</span>
+                      <span style="display: block; font-size: 11px; font-weight: 400; color: #9aa6c3;">Score 90</span>
+                    </span>
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: #2DAA63; flex: 0 0 auto;"></span>
+                    <svg class="blchev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa6c3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; transition: transform 0.18s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </summary>
+                  <div style="padding: 4px 14px 14px 53px;">
+                    <p style="margin: 0 0 10px; font-size: 12.5px; line-height: 1.55; color: #6B7A99; font-weight: 300;">The audio hook, “Stop losing things when you’re travelling!”, presents a common pain point and promises a solution, grabbing attention within the first second.</p>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #2DAA63;">Pass</span>
+                      <button data-vid="vid1a" data-sec="0" onClick="{{ seek }}" style="display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 999px; border: none; background: rgba(135,156,247,0.12); color: #294FF6; font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer;" style-hover="background: rgba(135,156,247,0.22);">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"></polygon></svg>
+                        Jump to 0:00
+                      </button>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- Visual Hook -->
+                <details class="bltool">
+                  <summary style="display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 11px; cursor: pointer;" style-hover="background: #F5F7FF;">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg></span>
+                    <span style="flex: 1 1 auto; min-width: 0;">
+                      <span style="display: block; font-size: 13.5px; font-weight: 500; color: #000F4D;">Visual hook</span>
+                      <span style="display: block; font-size: 11px; font-weight: 400; color: #9aa6c3;">Score 90</span>
+                    </span>
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: #2DAA63; flex: 0 0 auto;"></span>
+                    <svg class="blchev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa6c3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; transition: transform 0.18s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </summary>
+                  <div style="padding: 4px 14px 14px 53px;">
+                    <p style="margin: 0 0 10px; font-size: 12.5px; line-height: 1.55; color: #6B7A99; font-weight: 300;">The opening immediately shows a hand pulling a passport from a hidden pocket on the hoodie, an unexpected and highly engaging demo of a unique product feature.</p>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #2DAA63;">Pass</span>
+                      <button data-vid="vid1a" data-sec="1" onClick="{{ seek }}" style="display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 999px; border: none; background: rgba(135,156,247,0.12); color: #294FF6; font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer;" style-hover="background: rgba(135,156,247,0.22);">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"></polygon></svg>
+                        Jump to 0:01
+                      </button>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- Engagement Pacing -->
+                <details class="bltool">
+                  <summary style="display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 11px; cursor: pointer;" style-hover="background: #F5F7FF;">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg></span>
+                    <span style="flex: 1 1 auto; min-width: 0;">
+                      <span style="display: block; font-size: 13.5px; font-weight: 500; color: #000F4D;">Scene pacing</span>
+                      <span style="display: block; font-size: 11px; font-weight: 400; color: #9aa6c3;">~2s per scene</span>
+                    </span>
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: #2DAA63; flex: 0 0 auto;"></span>
+                    <svg class="blchev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa6c3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; transition: transform 0.18s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </summary>
+                  <div style="padding: 4px 14px 14px 53px;">
+                    <p style="margin: 0 0 10px; font-size: 12.5px; line-height: 1.55; color: #6B7A99; font-weight: 300;">Rapid scene changes, averaging about 2 seconds per scene. The quick pacing showcases numerous features and keeps the viewer engaged throughout.</p>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #2DAA63;">Pass</span>
+                      <button data-vid="vid1a" data-sec="10" onClick="{{ seek }}" style="display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 999px; border: none; background: rgba(135,156,247,0.12); color: #294FF6; font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer;" style-hover="background: rgba(135,156,247,0.22);">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"></polygon></svg>
+                        Jump to 0:10
+                      </button>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- Energy & authenticity -->
+                <details class="bltool">
+                  <summary style="display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 11px; cursor: pointer;" style-hover="background: #F5F7FF;">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" x2="9.01" y1="9" y2="9"></line><line x1="15" x2="15.01" y1="9" y2="9"></line></svg></span>
+                    <span style="flex: 1 1 auto; min-width: 0;">
+                      <span style="display: block; font-size: 13.5px; font-weight: 500; color: #000F4D;">Energy &amp; authenticity</span>
+                      <span style="display: block; font-size: 11px; font-weight: 400; color: #9aa6c3;">Score 95</span>
+                    </span>
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: #2DAA63; flex: 0 0 auto;"></span>
+                    <svg class="blchev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa6c3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; transition: transform 0.18s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </summary>
+                  <div style="padding: 4px 14px 14px 53px;">
+                    <p style="margin: 0 0 10px; font-size: 12.5px; line-height: 1.55; color: #6B7A99; font-weight: 300;">High energy and authenticity, speaking clearly and enthusiastically. Genuine smiles and natural gestures make her relatable, matching the “best friend” brand voice.</p>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #2DAA63;">Pass</span>
+                      <button data-vid="vid1a" data-sec="17" onClick="{{ seek }}" style="display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 999px; border: none; background: rgba(135,156,247,0.12); color: #294FF6; font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer;" style-hover="background: rgba(135,156,247,0.22);">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"></polygon></svg>
+                        Jump to 0:17
+                      </button>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- Wardrobe -->
+                <details class="bltool">
+                  <summary style="display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 11px; cursor: pointer;" style-hover="background: #F5F7FF;">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23Z"></path></svg></span>
+                    <span style="flex: 1 1 auto; min-width: 0;">
+                      <span style="display: block; font-size: 13.5px; font-weight: 500; color: #000F4D;">Wardrobe &amp; look</span>
+                      <span style="display: block; font-size: 11px; font-weight: 400; color: #9aa6c3;">Score 95</span>
+                    </span>
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: #2DAA63; flex: 0 0 auto;"></span>
+                    <svg class="blchev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa6c3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; transition: transform 0.18s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </summary>
+                  <div style="padding: 4px 14px 14px 53px;">
+                    <p style="margin: 0 0 10px; font-size: 12.5px; line-height: 1.55; color: #6B7A99; font-weight: 300;">The creator’s wardrobe (full Comfrt set) and natural appearance suit the brand’s cozy, real-life aesthetic, put together without being overly polished.</p>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #2DAA63;">Pass</span>
+                      <button data-vid="vid1a" data-sec="18" onClick="{{ seek }}" style="display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 999px; border: none; background: rgba(135,156,247,0.12); color: #294FF6; font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer;" style-hover="background: rgba(135,156,247,0.22);">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"></polygon></svg>
+                        Jump to 0:18
+                      </button>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- Copyright -->
+                <details class="bltool">
+                  <summary style="display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 11px; cursor: pointer;" style-hover="background: #F5F7FF;">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+                    <span style="flex: 1 1 auto; min-width: 0;">
+                      <span style="display: block; font-size: 13.5px; font-weight: 500; color: #000F4D;">Copyright check</span>
+                      <span style="display: block; font-size: 11px; font-weight: 400; color: #9aa6c3;">Clear</span>
+                    </span>
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: #2DAA63; flex: 0 0 auto;"></span>
+                    <svg class="blchev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa6c3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; transition: transform 0.18s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </summary>
+                  <div style="padding: 4px 14px 14px 53px;">
+                    <p style="margin: 0 0 10px; font-size: 12.5px; line-height: 1.55; color: #6B7A99; font-weight: 300;">No copyrighted music, logos (other than Comfrt), or intellectual property were identified in the video.</p>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #2DAA63;">Pass</span>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- Content moderation -->
+                <details class="bltool">
+                  <summary style="display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 11px; cursor: pointer;" style-hover="background: #F5F7FF;">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"></path></svg></span>
+                    <span style="flex: 1 1 auto; min-width: 0;">
+                      <span style="display: block; font-size: 13.5px; font-weight: 500; color: #000F4D;">Content moderation</span>
+                      <span style="display: block; font-size: 11px; font-weight: 400; color: #9aa6c3;">Safe</span>
+                    </span>
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: #2DAA63; flex: 0 0 auto;"></span>
+                    <svg class="blchev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa6c3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; transition: transform 0.18s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </summary>
+                  <div style="padding: 4px 14px 14px 53px;">
+                    <p style="margin: 0 0 10px; font-size: 12.5px; line-height: 1.55; color: #6B7A99; font-weight: 300;">No inappropriate content, language, or themes. Suitable for a general audience and aligned with brand values.</p>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #2DAA63;">Pass</span>
+                    </div>
+                  </div>
+                </details>
+              </div>
+
+              <!-- What to try -->
+              <div style="margin: 8px 16px 4px; padding: 13px 15px; border-radius: 13px; background: rgba(135,156,247,0.08); border: 1px solid rgba(217,224,255,0.7);">
+                <div style="display: flex; align-items: center; gap: 7px; margin-bottom: 5px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#294FF6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"></path></svg>
+                  <span style="font-size: 12px; font-weight: 600; color: #000F4D;">What to try</span>
+                </div>
+                <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #6B7A99; font-weight: 300;">Approve for immediate use. Consider adding an explicit on-screen CTA or a verbal “link in bio” / “comment COMFY” at the end to lift conversions.</p>
+              </div>
+
+              <!-- Ask AI -->
+              <div style="margin-top: auto; padding: 16px; border-top: 1px solid rgba(217,224,255,0.6);">
+                <div style="display: flex; gap: 9px; align-items: flex-start; margin-bottom: 12px;">
+                  <img src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" alt="Lee" style="width: 28px; height: 28px; border-radius: 50%; flex: 0 0 auto;">
+                  <div style="background: #F5F7FF; border: 1px solid rgba(217,224,255,0.7); border-radius: 14px; border-top-left-radius: 4px; padding: 10px 13px;">
+                    <p style="margin: 0; font-size: 12.5px; line-height: 1.5; color: #001364; font-weight: 300;">I reviewed this video. It scored <strong style="font-weight: 600;">93</strong> and passed all 7 checks. Ask me anything, or start here.</p>
+                  </div>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; padding-left: 37px;">
+                  <button style="height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(217,224,255,0.9); background: #fff; color: #294FF6; font-family: inherit; font-size: 11.5px; font-weight: 500; cursor: pointer;" style-hover="background: rgba(135,156,247,0.1);">Why did the hook pass?</button>
+                  <button style="height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(217,224,255,0.9); background: #fff; color: #294FF6; font-family: inherit; font-size: 11.5px; font-weight: 500; cursor: pointer;" style-hover="background: rgba(135,156,247,0.1);">How can the CTA improve?</button>
+                  <button style="height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(217,224,255,0.9); background: #fff; color: #294FF6; font-family: inherit; font-size: 11.5px; font-weight: 500; cursor: pointer;" style-hover="background: rgba(135,156,247,0.1);">Summarise the report</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 6px 0 16px; border-radius: 14px; border: 1px solid rgba(217,224,255,0.9); background: #fff;">
+                  <input placeholder="Ask about this video…" style="flex: 1 1 auto; min-width: 0; border: none; outline: none; background: transparent; font-family: inherit; font-size: 13px; color: #000F4D;">
+                  <button aria-label="Send" style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; border: none; background: #879CF7; color: #fff; cursor: pointer; flex: 0 0 auto;" style-hover="background: #294FF6;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="19" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                  </button>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 13px; font-size: 10.5px; color: #9aa6c3; font-weight: 400;">
+                  <span>Powered by</span>
+                  <img src="https://res.cloudinary.com/dchroynzv/image/upload/v1777623054/brieflee_logo_logo-pack-2025-vector-blue-v3_2025-03.svg" alt="Brieflee" style="height: 13px; width: auto; opacity: 0.85;">
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================= OPTION 1B ============================= -->
+      <div id="1b" style="flex: 0 0 auto;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
+          <span style="display: inline-flex; align-items: center; justify-content: center; height: 26px; padding: 0 11px; border-radius: 999px; background: #000F4D; color: #fff; font-size: 12px; font-weight: 600; letter-spacing: 0.03em;">1B</span>
+          <span style="font-size: 13px; font-weight: 500; color: #6B7A99;">Grouped report · key moments · bar score</span>
+        </div>
+
+        <div style="width: 1080px; max-width: 100%; background: #FFFFFF; border: 1px solid rgba(217,224,255,0.8); border-radius: 26px; box-shadow: 0 40px 90px -50px rgba(0,15,77,0.45); overflow: hidden;">
+
+          <!-- Topbar -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 22px; height: 60px; border-bottom: 1px solid rgba(217,224,255,0.7);">
+            <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+              <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: rgba(135,156,247,0.12); color: #294FF6; flex: 0 0 auto;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"></path><rect width="14" height="12" x="2" y="6" rx="2" ry="2"></rect></svg>
+              </span>
+              <div style="min-width: 0;">
+                <div style="font-size: 14.5px; font-weight: 600; color: #000F4D; line-height: 1.1;">Comfrt Travel Hoodie</div>
+                <div style="font-size: 11px; font-weight: 400; color: #9aa6c3; line-height: 1.2;">Content review · 7 agents · 1 pass</div>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; flex: 0 0 auto;">
+              <button style="display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 13px; border-radius: 9px; border: 1px solid rgba(217,224,255,0.9); background: #fff; color: #000F4D; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;" style-hover="background: #F5F7FF;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>
+                Re-run
+              </button>
+              <span style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 999px; background: #879CF7; color: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer;" style-hover="background: #294FF6;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                Approve
+              </span>
+            </div>
+          </div>
+
+          <!-- Body -->
+          <div style="display: flex; flex-wrap: wrap; align-items: stretch;">
+
+            <!-- Center: video -->
+            <div style="flex: 1 1 380px; min-width: 300px; padding: 40px 36px 32px; background: linear-gradient(180deg, #FCFDFF 0%, #F7F9FF 100%); display: flex; flex-direction: column; align-items: center;">
+              <div style="position: relative; width: 296px; max-width: 100%; aspect-ratio: 9 / 16; border-radius: 20px; overflow: hidden; background: #0B1024; border: 1px solid rgba(0,0,0,0.08); box-shadow: 0 30px 60px -30px rgba(0,15,77,0.5);">
+                <video id="vid1b" controls playsinline preload="metadata" poster="https://res.cloudinary.com/dspv9nm1n/video/upload/so_1/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" style="width: 100%; height: 100%; object-fit: cover; display: block;">
+                  <source src="https://res.cloudinary.com/dspv9nm1n/video/upload/v1782292068/qorue56gnkxsjtqabviy.mp4" type="video/mp4">
+                </video>
+              </div>
+              <h2 style="margin: 18px 0 10px; font-size: 21px; font-weight: 700; letter-spacing: -0.02em; color: #000F4D; text-align: center;">Comfrt Travel Hoodie</h2>
+              <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; margin-bottom: 16px;">
+                <span style="display: inline-flex; align-items: center; height: 24px; padding: 0 11px; border-radius: 999px; background: #879CF7; color: #fff; font-size: 11px; font-weight: 600;">Content review</span>
+                <span style="display: inline-flex; align-items: center; height: 24px; padding: 0 11px; border-radius: 999px; background: rgba(135,156,247,0.12); color: #001364; font-size: 11px; font-weight: 500;">Comfrt</span>
+                <span style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 11px; border-radius: 999px; background: rgba(135,156,247,0.12); color: #001364; font-size: 11px; font-weight: 500;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>0:39</span>
+              </div>
+              <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #6B7A99; font-weight: 300; text-align: center; max-width: 40ch;">An excellent UGC example that nails the “cozy, friendly, and real” voice while showing off the hoodie’s standout features, hidden pockets, and built-in eye mask.</p>
+              <div style="display: flex; align-items: center; gap: 9px; margin-top: 16px;">
+                <span style="display: inline-flex; align-items: center; gap: 2px;">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="#879CF7"><path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.12 5.11a.56.56 0 0 0 .48.34l5.52.45c.5.04.7.66.32.99l-4.2 3.6a.56.56 0 0 0-.18.56l1.28 5.38a.56.56 0 0 1-.84.61l-4.72-2.88a.56.56 0 0 0-.59 0l-4.72 2.88a.56.56 0 0 1-.84-.61l1.28-5.38a.56.56 0 0 0-.18-.56l-4.2-3.6a.56.56 0 0 1 .32-.99l5.52-.45a.56.56 0 0 0 .48-.34Z"></path></svg>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="#879CF7"><path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.12 5.11a.56.56 0 0 0 .48.34l5.52.45c.5.04.7.66.32.99l-4.2 3.6a.56.56 0 0 0-.18.56l1.28 5.38a.56.56 0 0 1-.84.61l-4.72-2.88a.56.56 0 0 0-.59 0l-4.72 2.88a.56.56 0 0 1-.84-.61l1.28-5.38a.56.56 0 0 0-.18-.56l-4.2-3.6a.56.56 0 0 1 .32-.99l5.52-.45a.56.56 0 0 0 .48-.34Z"></path></svg>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="#879CF7"><path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.12 5.11a.56.56 0 0 0 .48.34l5.52.45c.5.04.7.66.32.99l-4.2 3.6a.56.56 0 0 0-.18.56l1.28 5.38a.56.56 0 0 1-.84.61l-4.72-2.88a.56.56 0 0 0-.59 0l-4.72 2.88a.56.56 0 0 1-.84-.61l1.28-5.38a.56.56 0 0 0-.18-.56l-4.2-3.6a.56.56 0 0 1 .32-.99l5.52-.45a.56.56 0 0 0 .48-.34Z"></path></svg>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="#879CF7"><path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.12 5.11a.56.56 0 0 0 .48.34l5.52.45c.5.04.7.66.32.99l-4.2 3.6a.56.56 0 0 0-.18.56l1.28 5.38a.56.56 0 0 1-.84.61l-4.72-2.88a.56.56 0 0 0-.59 0l-4.72 2.88a.56.56 0 0 1-.84-.61l1.28-5.38a.56.56 0 0 0-.18-.56l-4.2-3.6a.56.56 0 0 1 .32-.99l5.52-.45a.56.56 0 0 0 .48-.34Z"></path></svg>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="#879CF7"><path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.12 5.11a.56.56 0 0 0 .48.34l5.52.45c.5.04.7.66.32.99l-4.2 3.6a.56.56 0 0 0-.18.56l1.28 5.38a.56.56 0 0 1-.84.61l-4.72-2.88a.56.56 0 0 0-.59 0l-4.72 2.88a.56.56 0 0 1-.84-.61l1.28-5.38a.56.56 0 0 0-.18-.56l-4.2-3.6a.56.56 0 0 1 .32-.99l5.52-.45a.56.56 0 0 0 .48-.34Z"></path></svg>
+                </span>
+                <span style="font-size: 12.5px; font-weight: 500; color: #6B7A99;">5.0 · Bev Banahene</span>
+              </div>
+            </div>
+
+            <!-- Right: report panel -->
+            <div style="flex: 0 1 432px; min-width: 300px; max-width: 100%; border-left: 1px solid rgba(217,224,255,0.7); background: #FFFFFF; display: flex; flex-direction: column;">
+
+              <!-- Score bar -->
+              <div style="padding: 22px 22px 20px; border-bottom: 1px solid rgba(217,224,255,0.6);">
+                <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;">
+                  <div style="display: flex; align-items: baseline; gap: 4px;">
+                    <span style="font-size: 40px; font-weight: 700; color: #000F4D; line-height: 0.9; letter-spacing: -0.02em;">93</span>
+                    <span style="font-size: 14px; font-weight: 500; color: #9aa6c3;">/ 100</span>
+                  </div>
+                  <span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; border-radius: 999px; background: rgba(45,170,99,0.12); color: #2DAA63; font-size: 12px; font-weight: 600;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    Approved
+                  </span>
+                </div>
+                <div style="margin: 14px 0 8px; height: 9px; border-radius: 999px; background: #E7EAF7; overflow: hidden;">
+                  <div style="width: 93%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #294FF6, #879CF7);"></div>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; font-weight: 400; color: #6B7A99;">
+                  <span style="display: inline-flex; align-items: center; gap: 5px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>7 of 7 checks passed</span>
+                  <span style="color: #9aa6c3;">Hook · Production · Compliance</span>
+                </div>
+              </div>
+
+              <!-- Grouped agents -->
+              <div style="padding: 12px 14px 6px; display: flex; flex-direction: column; gap: 8px;">
+
+                <!-- Group: Hook & attention -->
+                <details class="bltool" open style="border: 1px solid rgba(217,224,255,0.7); border-radius: 14px; overflow: hidden;">
+                  <summary style="display: flex; align-items: center; gap: 11px; padding: 12px 14px; cursor: pointer; background: rgba(135,156,247,0.06);" style-hover="background: rgba(135,156,247,0.1);">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: #fff; color: #294FF6; border: 1px solid rgba(217,224,255,0.8); flex: 0 0 auto;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></span>
+                    <span style="flex: 1 1 auto; font-size: 14px; font-weight: 600; color: #000F4D;">Hook &amp; attention</span>
+                    <span style="font-size: 11px; font-weight: 600; color: #2DAA63; background: rgba(45,170,99,0.12); padding: 3px 9px; border-radius: 999px;">3 pass</span>
+                    <svg class="blchev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa6c3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; transition: transform 0.18s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </summary>
+                  <div style="padding: 6px;">
+                    <!-- Hook speed -->
+                    <div style="display: flex; gap: 12px; padding: 10px; border-radius: 11px;" style-hover="background: #F7F9FF;">
+                      <img src="https://res.cloudinary.com/dspv9nm1n/video/upload/so_0/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" alt="" style="width: 50px; height: 68px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; border: 1px solid rgba(0,0,0,0.06);">
+                      <div style="flex: 1 1 auto; min-width: 0;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                          <span style="font-size: 13.5px; font-weight: 600; color: #000F4D;">Hook speed</span>
+                          <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>90</span>
+                        </div>
+                        <p style="margin: 4px 0 7px; font-size: 12px; line-height: 1.5; color: #6B7A99; font-weight: 300;">Audio hook “Stop losing things when you’re travelling!” lands a pain point in the first second.</p>
+                        <button data-vid="vid1b" data-sec="0" onClick="{{ seek }}" style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: none; background: rgba(135,156,247,0.12); color: #294FF6; font-family: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer;" style-hover="background: rgba(135,156,247,0.22);"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"></polygon></svg>0:00</button>
+                      </div>
+                    </div>
+                    <!-- Visual hook -->
+                    <div style="display: flex; gap: 12px; padding: 10px; border-radius: 11px;" style-hover="background: #F7F9FF;">
+                      <img src="https://res.cloudinary.com/dspv9nm1n/video/upload/so_1/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" alt="" style="width: 50px; height: 68px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; border: 1px solid rgba(0,0,0,0.06);">
+                      <div style="flex: 1 1 auto; min-width: 0;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                          <span style="font-size: 13.5px; font-weight: 600; color: #000F4D;">Visual hook</span>
+                          <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>90</span>
+                        </div>
+                        <p style="margin: 4px 0 7px; font-size: 12px; line-height: 1.5; color: #6B7A99; font-weight: 300;">A hand pulls a passport from a hidden pocket, an unexpected demo of a unique feature.</p>
+                        <button data-vid="vid1b" data-sec="1" onClick="{{ seek }}" style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: none; background: rgba(135,156,247,0.12); color: #294FF6; font-family: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer;" style-hover="background: rgba(135,156,247,0.22);"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"></polygon></svg>0:01</button>
+                      </div>
+                    </div>
+                    <!-- Scene pacing -->
+                    <div style="display: flex; gap: 12px; padding: 10px; border-radius: 11px;" style-hover="background: #F7F9FF;">
+                      <img src="https://res.cloudinary.com/dspv9nm1n/video/upload/so_10/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" alt="" style="width: 50px; height: 68px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; border: 1px solid rgba(0,0,0,0.06);">
+                      <div style="flex: 1 1 auto; min-width: 0;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                          <span style="font-size: 13.5px; font-weight: 600; color: #000F4D;">Scene pacing</span>
+                          <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>~2s</span>
+                        </div>
+                        <p style="margin: 4px 0 7px; font-size: 12px; line-height: 1.5; color: #6B7A99; font-weight: 300;">Rapid cuts averaging ~2 seconds per scene keep the viewer engaged across all features.</p>
+                        <button data-vid="vid1b" data-sec="10" onClick="{{ seek }}" style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: none; background: rgba(135,156,247,0.12); color: #294FF6; font-family: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer;" style-hover="background: rgba(135,156,247,0.22);"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"></polygon></svg>0:10</button>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- Group: Production quality -->
+                <details class="bltool" style="border: 1px solid rgba(217,224,255,0.7); border-radius: 14px; overflow: hidden;">
+                  <summary style="display: flex; align-items: center; gap: 11px; padding: 12px 14px; cursor: pointer; background: rgba(135,156,247,0.06);" style-hover="background: rgba(135,156,247,0.1);">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: #fff; color: #294FF6; border: 1px solid rgba(217,224,255,0.8); flex: 0 0 auto;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"></path><circle cx="12" cy="13" r="3"></circle></svg></span>
+                    <span style="flex: 1 1 auto; font-size: 14px; font-weight: 600; color: #000F4D;">Production quality</span>
+                    <span style="font-size: 11px; font-weight: 600; color: #2DAA63; background: rgba(45,170,99,0.12); padding: 3px 9px; border-radius: 999px;">2 pass</span>
+                    <svg class="blchev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa6c3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; transition: transform 0.18s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </summary>
+                  <div style="padding: 6px;">
+                    <div style="display: flex; gap: 12px; padding: 10px; border-radius: 11px;" style-hover="background: #F7F9FF;">
+                      <img src="https://res.cloudinary.com/dspv9nm1n/video/upload/so_17/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" alt="" style="width: 50px; height: 68px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; border: 1px solid rgba(0,0,0,0.06);">
+                      <div style="flex: 1 1 auto; min-width: 0;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                          <span style="font-size: 13.5px; font-weight: 600; color: #000F4D;">Energy &amp; authenticity</span>
+                          <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>95</span>
+                        </div>
+                        <p style="margin: 4px 0 7px; font-size: 12px; line-height: 1.5; color: #6B7A99; font-weight: 300;">Clear, enthusiastic delivery with genuine smiles, nailing the “best friend” brand voice.</p>
+                        <button data-vid="vid1b" data-sec="17" onClick="{{ seek }}" style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: none; background: rgba(135,156,247,0.12); color: #294FF6; font-family: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer;" style-hover="background: rgba(135,156,247,0.22);"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"></polygon></svg>0:17</button>
+                      </div>
+                    </div>
+                    <div style="display: flex; gap: 12px; padding: 10px; border-radius: 11px;" style-hover="background: #F7F9FF;">
+                      <img src="https://res.cloudinary.com/dspv9nm1n/video/upload/so_18/c_fill,h_1920,w_1080/qorue56gnkxsjtqabviy.jpg" alt="" style="width: 50px; height: 68px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; border: 1px solid rgba(0,0,0,0.06);">
+                      <div style="flex: 1 1 auto; min-width: 0;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                          <span style="font-size: 13.5px; font-weight: 600; color: #000F4D;">Wardrobe &amp; look</span>
+                          <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>95</span>
+                        </div>
+                        <p style="margin: 4px 0 7px; font-size: 12px; line-height: 1.5; color: #6B7A99; font-weight: 300;">Full Comfrt set and natural look fit the cozy, real-life aesthetic without being over-polished.</p>
+                        <button data-vid="vid1b" data-sec="18" onClick="{{ seek }}" style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: none; background: rgba(135,156,247,0.12); color: #294FF6; font-family: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer;" style-hover="background: rgba(135,156,247,0.22);"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"></polygon></svg>0:18</button>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- Group: Compliance & safety -->
+                <details class="bltool" style="border: 1px solid rgba(217,224,255,0.7); border-radius: 14px; overflow: hidden;">
+                  <summary style="display: flex; align-items: center; gap: 11px; padding: 12px 14px; cursor: pointer; background: rgba(135,156,247,0.06);" style-hover="background: rgba(135,156,247,0.1);">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: #fff; color: #294FF6; border: 1px solid rgba(217,224,255,0.8); flex: 0 0 auto;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+                    <span style="flex: 1 1 auto; font-size: 14px; font-weight: 600; color: #000F4D;">Compliance &amp; safety</span>
+                    <span style="font-size: 11px; font-weight: 600; color: #2DAA63; background: rgba(45,170,99,0.12); padding: 3px 9px; border-radius: 999px;">2 pass</span>
+                    <svg class="blchev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa6c3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; transition: transform 0.18s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </summary>
+                  <div style="padding: 6px;">
+                    <div style="display: flex; gap: 12px; padding: 10px; border-radius: 11px;" style-hover="background: #F7F9FF;">
+                      <span style="display: inline-flex; align-items: center; justify-content: center; width: 50px; height: 68px; border-radius: 9px; background: rgba(45,170,99,0.1); color: #2DAA63; flex: 0 0 auto;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+                      <div style="flex: 1 1 auto; min-width: 0;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                          <span style="font-size: 13.5px; font-weight: 600; color: #000F4D;">Copyright check</span>
+                          <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>Clear</span>
+                        </div>
+                        <p style="margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: #6B7A99; font-weight: 300;">No copyrighted music, logos (other than Comfrt), or IP identified in the video.</p>
+                      </div>
+                    </div>
+                    <div style="display: flex; gap: 12px; padding: 10px; border-radius: 11px;" style-hover="background: #F7F9FF;">
+                      <span style="display: inline-flex; align-items: center; justify-content: center; width: 50px; height: 68px; border-radius: 9px; background: rgba(45,170,99,0.1); color: #2DAA63; flex: 0 0 auto;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"></path></svg></span>
+                      <div style="flex: 1 1 auto; min-width: 0;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                          <span style="font-size: 13.5px; font-weight: 600; color: #000F4D;">Content moderation</span>
+                          <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #2DAA63; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2DAA63;"></span>Safe</span>
+                        </div>
+                        <p style="margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: #6B7A99; font-weight: 300;">No inappropriate content, language, or themes. Suitable for a general audience.</p>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+              </div>
+
+              <!-- Ask AI bar -->
+              <div style="margin-top: auto; padding: 16px; border-top: 1px solid rgba(217,224,255,0.6);">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 11px;">
+                  <img src="https://res.cloudinary.com/dspv9nm1n/image/upload/v1771427670/obl2odsrkhunneswor46.png" alt="Lee" style="width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto;">
+                  <span style="font-size: 12.5px; font-weight: 500; color: #000F4D;">Ask Lee about this review</span>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 11px;">
+                  <button style="height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(217,224,255,0.9); background: #fff; color: #294FF6; font-family: inherit; font-size: 11.5px; font-weight: 500; cursor: pointer;" style-hover="background: rgba(135,156,247,0.1);">Compare to my brief</button>
+                  <button style="height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(217,224,255,0.9); background: #fff; color: #294FF6; font-family: inherit; font-size: 11.5px; font-weight: 500; cursor: pointer;" style-hover="background: rgba(135,156,247,0.1);">Draft revision notes</button>
+                  <button style="height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(217,224,255,0.9); background: #fff; color: #294FF6; font-family: inherit; font-size: 11.5px; font-weight: 500; cursor: pointer;" style-hover="background: rgba(135,156,247,0.1);">Rewrite the CTA</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 6px 0 16px; border-radius: 14px; border: 1px solid rgba(217,224,255,0.9); background: #fff;">
+                  <input placeholder="Ask about this video…" style="flex: 1 1 auto; min-width: 0; border: none; outline: none; background: transparent; font-family: inherit; font-size: 13px; color: #000F4D;">
+                  <button aria-label="Send" style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; border: none; background: #879CF7; color: #fff; cursor: pointer; flex: 0 0 auto;" style-hover="background: #294FF6;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="19" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const seek = (e) => {
+      const b = e.currentTarget;
+      const v = document.getElementById(b.dataset.vid);
+      const s = Number(b.dataset.sec) || 0;
+      if (v) {
+        try { v.currentTime = s; if (v.play) v.play(); } catch (_) {}
+      }
+    };
+    return { seek };
+  }
+}
+</script>
+</body>
+</html>

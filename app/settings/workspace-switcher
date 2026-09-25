@@ -1,50 +1,43 @@
-// /settings · Workspace switcher (separate block)
+// Workspace switcher — multi-select.
 //
-// Sits ABOVE the tabs in the Softr page builder. Writes the selected
-// workspace's record ID into the URL as `?workspace=<id>`. The tab
-// blocks below (Quality, Workspace, Billing) read that param via a
-// Softr Source-tab filter — no code coupling between this block and
-// the tab content.
+// Click trigger to open. Click workspaces to tick / untick. Click
+// "Apply" to commit. Nothing ticked = no filter on the projects grid
+// (normal state, sample card visible). Multiple ticked = grid shows
+// projects from ANY of the ticked workspaces.
+//
+// URL format: ?workspace=id1,id2,id3 (comma-separated). No param at
+// all = the "normal" state.
+//
+// Trigger is a regular <button>; popover is positioned absolute below
+// it. No outside-click magic — user closes by clicking the trigger
+// again or by clicking Apply / Done. This keeps clicks on items
+// reliable (previous version's mousedown-listener was eating click
+// events on some browsers).
 //
 // SOFTR CONFIG REQUIRED:
-//
 //   1. THIS block's Source tab:
 //      - Bind to ACCOUNTS table.
 //      - Filter: accounts.users includes logged-in user.
-//        (Returns every workspace the user has access to.)
-//
-//   2. Each TAB block (Quality, etc.) Source tab:
-//      - Bind to ACCOUNTS table.
-//      - Filter: accounts.id equals URL parameter `workspace`,
-//        falling back to the user's first account when absent.
-//        (Returns ONE account record matching the URL.)
-//
-// "+ Add workspace" button:
-//   - Hidden by default. Flip SHOW_ADD_WORKSPACE to true once the
-//     /account/add modal page exists in Softr Studio.
-//   - Clicking it opens that page as a Softr modal via
-//     window.openSwModal.
 
-import { useState, useEffect } from "react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useEffect, useMemo, useState } from "react";
 import { useRecords, q } from "@/lib/datasource";
 
 const SHOW_ADD_WORKSPACE = false;
 const ADD_WORKSPACE_PATH = "/account/add";
-const ADD_WORKSPACE_MODAL_SIZE = "lg"; // 'sm' | 'md' | 'lg' | 'xl'
+const ADD_WORKSPACE_MODAL_SIZE = "lg";
 
 const select = q.select({
   name:    "aAKkT",
-  logo:    "q1B5K", // legacy ATTACHMENT field (fallback)
-  logoUrl: "nPI65", // FORMULA: Google favicon from website, or Brieflee
-                   // approval-stamp default when website is empty
+  logo:    "q1B5K",
+  logoUrl: "nPI65",
 });
+
+// Brand palette
+const NAVY_DEEP  = "#001364";
+const PERIWINKLE = "#879CF7";
+const PERIWINKLE_HOVER = "#294FF6";
+const MUTED      = "#6B7A99";
+const BORDER     = "rgba(217, 224, 255, 0.55)";
 
 export default function Block() {
   const { data, status } = useRecords({ select, count: 100 });
@@ -52,38 +45,35 @@ export default function Block() {
     data?.pages?.flatMap((p) => p?.items ?? []) ??
     (Array.isArray(data) ? data : []);
 
+  // Initial selection straight from the URL.
+  const initialIds = useMemo(() => readSelectionFromUrl(), []);
 
-  // Current selection — initialised from URL, kept in sync with it
-  const [currentId, setCurrentId] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return new URL(window.location.href).searchParams.get("workspace") || "";
-  });
+  // selected = the user's current draft picks (in-popover state).
+  // committedIds = what's in the URL right now (what the grid sees).
+  // We hard-nav only when the user hits Apply AND the draft differs.
+  const [selected, setSelected] = useState(initialIds);
+  const [open, setOpen] = useState(false);
 
-  // If the URL has no workspace param yet but accounts have loaded,
-  // pick the first one and write it to the URL silently (no reload —
-  // tab blocks haven't loaded against a stale param).
-  useEffect(() => {
-    if (currentId) return;
-    if (accounts.length === 0) return;
-    const firstId = accounts[0].id;
-    setCurrentId(firstId);
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.searchParams.set("workspace", firstId);
-      window.history.replaceState({}, "", url.toString());
+  const toggle = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const clearAll = () => setSelected([]);
+
+  const apply = () => {
+    setOpen(false);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (selected.length === 0) {
+      url.searchParams.delete("workspace");
+    } else {
+      url.searchParams.set("workspace", selected.join(","));
     }
-  }, [accounts, currentId]);
-
-  const handleSelect = (id) => {
-    if (!id || id === currentId) return;
-    setCurrentId(id);
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.searchParams.set("workspace", id);
-      // Hard navigation so each tab block re-runs its Source-tab
-      // filter against the new param.
-      window.location.href = url.toString();
-    }
+    // Hard nav so the projects-index block re-mounts and reads the
+    // new URL state.
+    window.location.href = url.toString();
   };
 
   const handleAddWorkspace = () => {
@@ -97,20 +87,25 @@ export default function Block() {
     }
   };
 
-  // Render guards — don't show anything until accounts have loaded
+  // Trigger label — summarises current SELECTED draft (not committed),
+  // so it updates as the user toggles before pressing Apply.
+  const triggerLabel = useMemo(() => {
+    if (selected.length === 0) return "All workspaces";
+    if (selected.length === 1) {
+      const only = accounts.find((a) => a.id === selected[0]);
+      return extractName(only) || "1 workspace";
+    }
+    return `${selected.length} workspaces`;
+  }, [selected, accounts]);
+
+  // Render guards
   if (status === "pending") return null;
   if (status === "error") return null;
+  const showSwitcher = accounts.length > 1;
+  if (!showSwitcher && !SHOW_ADD_WORKSPACE) return null;
 
-  // Single-workspace users see nothing unless the Add button is
-  // enabled and they have plan headroom (handled in the future when
-  // SHOW_ADD_WORKSPACE flips on).
-  const showSelect = accounts.length > 1;
-  if (!showSelect && !SHOW_ADD_WORKSPACE) return null;
-
-  // Logo for the currently-selected workspace (if any)
-  const currentAccount =
-    accounts.find((a) => a.id === currentId) ?? accounts[0];
-  const currentLogoUrl = extractLogoUrl(currentAccount);
+  // Dirty = user has changed selection vs what's in the URL
+  const dirty = selected.join(",") !== initialIds.join(",");
 
   return (
     <div
@@ -122,62 +117,164 @@ export default function Block() {
         flexWrap: "wrap",
         padding: "16px 24px",
         width: "100%",
+        fontFamily: "'League Spartan', sans-serif",
       }}
     >
       <div
         style={{
-          display: "flex",
+          position: "relative",
+          display: "inline-flex",
           alignItems: "center",
-          gap: "12px",
-          flexWrap: "wrap",
+          gap: "10px",
         }}
       >
-        {showSelect && (
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        {showSwitcher && (
+          <>
             <span
               style={{
                 fontSize: "11px",
                 fontWeight: 600,
-                color: "#879CF7",
+                color: PERIWINKLE,
                 textTransform: "uppercase",
                 letterSpacing: "0.05em",
-                fontFamily: "'League Spartan', sans-serif",
               }}
             >
               Workspace
             </span>
-            {currentLogoUrl ? (
-              <img
-                src={currentLogoUrl}
-                alt=""
+
+            <button
+              type="button"
+              onClick={() => setOpen((o) => !o)}
+              style={{
+                minWidth: "220px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "8px",
+                height: "38px",
+                padding: "0 12px",
+                background: "#FFFFFF",
+                color: NAVY_DEEP,
+                border: `1px solid ${BORDER}`,
+                borderRadius: "10px",
+                fontSize: "13px",
+                fontWeight: 500,
+                fontFamily: "'League Spartan', sans-serif",
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              <span>{triggerLabel}</span>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+
+            {open && (
+              <div
                 style={{
-                  height: "28px",
-                  width: "auto",
-                  maxWidth: "60px",
-                  objectFit: "contain",
-                  flexShrink: 0,
-                }}
-              />
-            ) : null}
-            <Select value={currentId} onValueChange={handleSelect}>
-              <SelectTrigger
-                style={{
-                  minWidth: "220px",
+                  position: "absolute",
+                  top: "calc(100% + 6px)",
+                  right: 0,
+                  minWidth: "280px",
+                  background: "#FFFFFF",
+                  border: `1px solid ${BORDER}`,
+                  borderRadius: "12px",
+                  boxShadow: "0 16px 36px -16px rgba(0, 15, 77, 0.30)",
+                  padding: "6px",
+                  zIndex: 50,
                   fontFamily: "'League Spartan', sans-serif",
                 }}
               >
-                <SelectValue placeholder="Select workspace" />
-              </SelectTrigger>
-              <SelectContent>
-                {accounts.map((account) => (
-                  <SelectItem key={account.id} value={account.id}>
-                    {extractName(account) || "Untitled workspace"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+                <div
+                  style={{
+                    maxHeight: "260px",
+                    overflowY: "auto",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "2px",
+                  }}
+                >
+                  {accounts.map((acc) => {
+                    const id = acc.id;
+                    const checked = selected.includes(id);
+                    return (
+                      <Row
+                        key={id}
+                        account={acc}
+                        checked={checked}
+                        onToggle={() => toggle(id)}
+                      />
+                    );
+                  })}
+                </div>
+
+                {/* Footer */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "8px",
+                    marginTop: "6px",
+                    paddingTop: "8px",
+                    borderTop: `1px solid ${BORDER}`,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={clearAll}
+                    disabled={selected.length === 0}
+                    style={{
+                      background: "transparent",
+                      color: selected.length === 0 ? "#C5CFE8" : MUTED,
+                      border: "none",
+                      padding: "6px 8px",
+                      fontSize: "12px",
+                      fontWeight: 500,
+                      fontFamily: "'League Spartan', sans-serif",
+                      cursor: selected.length === 0 ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Clear all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={apply}
+                    disabled={!dirty}
+                    style={{
+                      background: dirty ? PERIWINKLE : "#E5E9F5",
+                      color: dirty ? "#FFFFFF" : "#9AA3BF",
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "8px 14px",
+                      fontSize: "12px",
+                      fontWeight: 500,
+                      fontFamily: "'League Spartan', sans-serif",
+                      cursor: dirty ? "pointer" : "not-allowed",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (dirty) e.currentTarget.style.background = PERIWINKLE_HOVER;
+                    }}
+                    onMouseLeave={(e) => {
+                      if (dirty) e.currentTarget.style.background = PERIWINKLE;
+                    }}
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
+
         {SHOW_ADD_WORKSPACE && (
           <button
             type="button"
@@ -188,8 +285,8 @@ export default function Block() {
               gap: "6px",
               padding: "8px 14px",
               background: "transparent",
-              color: "#879CF7",
-              border: "1px dashed rgba(135, 156, 247, 0.55)",
+              color: PERIWINKLE,
+              border: `1px dashed rgba(135, 156, 247, 0.55)`,
               borderRadius: "999px",
               fontSize: "13px",
               fontWeight: 600,
@@ -205,21 +302,109 @@ export default function Block() {
   );
 }
 
-// Account name lookup — Softr's data layer surfaces fields under
-// account.fields.<alias>. Field aliases come from q.select.
+// ─── One workspace row inside the popover ────────────────────
+function Row({ account, checked, onToggle }) {
+  const [hover, setHover] = useState(false);
+  const name = extractName(account) || "Untitled workspace";
+  const logo = extractLogoUrl(account);
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "10px",
+        width: "100%",
+        padding: "8px 10px",
+        background: checked
+          ? "rgba(135, 156, 247, 0.10)"
+          : hover ? "rgba(135, 156, 247, 0.06)" : "transparent",
+        color: NAVY_DEEP,
+        border: "none",
+        borderRadius: "8px",
+        fontSize: "13px",
+        fontWeight: 500,
+        fontFamily: "'League Spartan', sans-serif",
+        textAlign: "left",
+        cursor: "pointer",
+        transition: "background 0.12s",
+      }}
+    >
+      <span
+        style={{
+          width: "16px",
+          height: "16px",
+          flexShrink: 0,
+          background: checked ? PERIWINKLE : "#FFFFFF",
+          border: `1px solid ${checked ? PERIWINKLE : BORDER}`,
+          borderRadius: "4px",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {checked && (
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#FFFFFF"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        )}
+      </span>
+
+      {logo && (
+        <img
+          src={logo}
+          alt=""
+          style={{
+            height: "20px",
+            width: "20px",
+            objectFit: "contain",
+            flexShrink: 0,
+            borderRadius: "4px",
+          }}
+        />
+      )}
+
+      <span
+        style={{
+          flex: 1,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {name}
+      </span>
+    </button>
+  );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────
+
+function readSelectionFromUrl() {
+  if (typeof window === "undefined") return [];
+  const raw = new URL(window.location.href).searchParams.get("workspace") || "";
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
 function extractName(account) {
-  const value = unwrap(account?.fields?.name);
-  return value || "";
+  return unwrap(account?.fields?.name) || "";
 }
 
 function extractLogoUrl(account) {
-  // Prefer the FORMULA-derived logo_url (Google favicon, or Brieflee
-  // approval-stamp default when website is empty). Falls back to the
-  // legacy `logo` ATTACHMENT for older rows that have a manually
-  // uploaded image.
   const formula = unwrap(account?.fields?.logoUrl);
   if (formula && /^https?:\/\//i.test(formula)) return formula;
-
   const raw = account?.fields?.logo;
   if (!raw) return null;
   if (typeof raw === "string") return raw;
@@ -229,9 +414,7 @@ function extractLogoUrl(account) {
     if (typeof first === "string") return first;
     return first.url || first.thumbnailUrl || null;
   }
-  if (typeof raw === "object") {
-    return raw.url || raw.thumbnailUrl || null;
-  }
+  if (typeof raw === "object") return raw.url || raw.thumbnailUrl || null;
   return null;
 }
 

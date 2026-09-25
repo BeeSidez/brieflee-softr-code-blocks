@@ -1,5 +1,7 @@
 // /settings · Quality tab — single Vibe Code block.
-// Three sub-sections: Review mode → QA Checklist → Thresholds.
+// Three sub-sections: Review mode → Review Agents → Thresholds.
+// (The agents write to the qa_checklist DB field — UI says "Review
+// Agents", the field id stays mZaRc.)
 // Each section has its own Save / Discard buttons; nothing persists
 // until the user explicitly hits Save. beforeunload warns on close
 // if there are unsaved changes (won't catch in-app tab switches).
@@ -96,6 +98,39 @@ const QA_CHECK_OPTIONS = [
   { id: "165f1575-d6b3-485b-b08b-58600de3041f", label: "Copyright check" },
   { id: "cff021c4-bf63-4ac9-993a-eb80b83b7965", label: "Inspiration link match" },
 ];
+
+// Review Agents picker language, borrowed from the brief builder's
+// checks panel so agents are explained the same way everywhere.
+const AGENTS_ICON_URL =
+  "https://res.cloudinary.com/dchroynzv/image/upload/brieflee_icon_review-eyes-glass-3d-clearer-periwinkle-transparent_2026-07.png";
+const AGENT_TOOLTIPS = {
+  "Brand alignment": "Watches that the video matches the brand's voice, look, and feel.",
+  "Hook quality": "Watches the first 3 seconds to make sure it grabs attention without sounding like an ad.",
+  "Watchable on mute": "Watches that the video still makes sense when the sound is off.",
+  "Scene pacing": "Watches that the video changes scenes often enough to keep viewers from scrolling.",
+  "Audio delivery": "Listens to the spoken script to make sure it's clear, natural, and on-brand.",
+  "Visual hook": "Watches the first 3 seconds for a visual moment strong enough to stop the scroll.",
+  "Lighting & camera": "Watches that the video is bright enough and the camera is steady and in focus.",
+  "Closed captions": "Reads the captions to make sure they're accurate and easy to follow.",
+  "Energy & authenticity": "Watches that the creator feels engaging and real, not scripted or flat.",
+  "Text legibility": "Reads any on-screen text to make sure it's big enough and easy to see.",
+  "Setting & background": "Watches that the background is tidy, on-brand, and not distracting.",
+  "Product visibility": "Watches that the product shows clearly enough times across the video.",
+  "Pronunciation": "Listens for the brand and product names to make sure they're said the right way.",
+  "Copyright check": "Checks the music, fonts, and clips for anything that could break copyright rules.",
+  "Music & sound balance": "Listens that the music doesn't drown out the voice.",
+  "Wardrobe & appearance": "Watches that the creator's outfit fits the brand and looks intentional.",
+  "Product usage": "Watches that the product is shown being used the way it's meant to be.",
+  "Brand name mentioned": "Listens for the brand name to be said the agreed number of times.",
+  "Audio clarity": "Listens that the audio is clean, no background noise, echo, or hum.",
+  "Follows the brief": "Reads the brief and checks that the video matches what was asked for.",
+  "Distracting elements": "Watches for anything in frame that pulls attention away from the product.",
+  "Safe zones": "Watches that important content stays inside the platform's safe zones, away from edges and overlays.",
+  "Video length": "Checks that the video runs for the right amount of time for the chosen format.",
+  "CTA present": "Watches for a call to action in the video, a clear ask to the viewer.",
+  "Inspiration link match": "Compares the video to the inspiration examples you linked on the brief.",
+  "Creator visability": "Watches that the creator's face shows enough across the video.",
+};
 
 // ---- Threshold rows ----------------------------------------------
 const THRESHOLD_ROWS = [
@@ -491,16 +526,29 @@ export default function Block() {
         </div>
       </SectionCard>
 
-      {/* ── Section 2 · QA Checklist ───────────────────────────────── */}
+      {/* ── Section 2 · Review Agents ──────────────────────────────── */}
       <SectionCard
-        title="QA Checklist"
-        subtitle="Default checks Brieflee runs on every quick review."
+        title="Review Agents"
+        subtitle="Default agents for quick reviews."
         dirty={isQaDirty}
         saving={savingSection === "qa"}
         justSaved={recentlySavedSection === "qa"}
         onSave={saveQA}
         onDiscard={discardQA}
       >
+        <div className="flex items-start gap-3 mb-3">
+          <img
+            src={AGENTS_ICON_URL}
+            alt=""
+            draggable={false}
+            style={{ width: 44, height: 44, objectFit: "contain", flexShrink: 0 }}
+          />
+          <p className="text-xs" style={{ color: "#6B7A99", fontWeight: 300, lineHeight: 1.5 }}>
+            AI agents watch every video you review. Pick the ones that should
+            always run on quick reviews. Hover any agent to see what it watches.
+            If a brief is attached, the brief's agents take over.
+          </p>
+        </div>
         <div className="flex flex-wrap gap-1.5">
           {QA_CHECK_OPTIONS.map((opt) => {
             const on = qaIds.includes(opt.id);
@@ -508,6 +556,7 @@ export default function Block() {
               <button
                 key={opt.id}
                 onClick={() => toggleQA(opt.id)}
+                title={AGENT_TOOLTIPS[opt.label] || ""}
                 className="text-xs rounded-full px-3 py-1.5 transition-all duration-150"
                 style={{
                   background: on ? "#879CF7" : "#fff",
@@ -523,15 +572,15 @@ export default function Block() {
         </div>
         <div className="text-xs mt-3" style={{ color: "#879CF7" }}>
           {qaIds.length === 0
-            ? "None selected — you'll pick checks each time."
-            : `${qaIds.length} check${qaIds.length === 1 ? "" : "s"} will run on every quick review.`}
+            ? "No agents watching yet. You'll pick them each time."
+            : `${qaIds.length} agent${qaIds.length === 1 ? "" : "s"} watching every quick review.`}
         </div>
       </SectionCard>
 
       {/* ── Section 3 · Thresholds ─────────────────────────────────── */}
       <SectionCard
         title="Default standards"
-        subtitle="Quality bar for each check. Briefs override these for full reviews — this is your safety net for quick reviews."
+        subtitle="The bar each agent holds content to. Briefs override these for full reviews, so this is your safety net for quick reviews."
         dirty={isThresholdsDirty}
         saving={savingSection === "thresholds"}
         justSaved={recentlySavedSection === "thresholds"}
